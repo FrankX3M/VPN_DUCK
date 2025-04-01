@@ -11,7 +11,9 @@ services:
       - DATABASE_SERVICE_URL=http://database-service:5002
 
   wireguard-service:
-    build: ./wireguard-service
+    build:
+      context: ./wireguard-service
+      dockerfile: Dockerfile
     restart: always
     privileged: true
     volumes:
@@ -19,10 +21,17 @@ services:
       - /root/wireguard-backup:/root/wireguard-backup
     ports:
       - "5001:5001"
+      - "51820:51820/udp"  # Убедитесь, что UDP порт проброшен правильно
     environment:
       - SERVER_ENDPOINT=${SERVER_ENDPOINT}
       - SERVER_PORT=${SERVER_PORT}
       - SERVER_ADDRESS=${SERVER_ADDRESS}
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
 
   database-service:
     build: ./database-service

@@ -6,6 +6,7 @@ RUN apt-get update && \
     iproute2 \
     python3 \
     python3-pip \
+    iptables \
     && apt-get clean
 
 WORKDIR /app
@@ -21,4 +22,9 @@ COPY . .
 RUN mkdir -p /etc/wireguard
 COPY ./wgup/wg0.conf /etc/wireguard/wg0.conf.backup
 
-CMD ["python3", "wireguard_manager.py"]
+# Сделайте скрипт исполняемым
+COPY init-iptables.sh /app/
+RUN chmod +x /app/init-iptables.sh
+
+# Запустите iptables и затем wireguard_manager.py
+CMD ["/bin/bash", "-c", "/app/init-iptables.sh && python3 wireguard_manager.py"]

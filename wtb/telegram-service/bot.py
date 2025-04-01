@@ -69,6 +69,9 @@ async def create_config(message: types.Message):
         config_data = wireguard_response.json()
         config_text = config_data.get("config")
         
+        # Добавляем имя туннеля в начало конфигурации
+        config_text = f"# Name = WireGuard VPN\n{config_text}"
+        
         # Calculate expiry time (24 hours from now)
         expiry_time = (datetime.now() + timedelta(hours=24)).isoformat()
         
@@ -166,6 +169,10 @@ async def check_status(message: types.Message):
                 
                 # Generate and send QR code again if requested
                 config_text = config_data.get("config")
+                
+                # Проверяем, есть ли уже имя туннеля в конфигурации
+                if not config_text.startswith("# Name ="):
+                    config_text = f"# Name = WireGuard VPN\n{config_text}"
                 
                 # Generate QR code
                 qr = qrcode.QRCode(
