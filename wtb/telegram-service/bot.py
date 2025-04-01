@@ -121,17 +121,17 @@ async def create_config(message: types.Message):
             )
             
             # Also send as a file
-            with open(f"config_{user_id}.conf", "w") as f:
+            with open(f"config{user_id}.conf", "w") as f:
                 f.write(config_text)
             
             await bot.send_document(
                 chat_id=user_id,
-                document=types.InputFile(f"config_{user_id}.conf"),
+                document=types.InputFile(f"config{user_id}.conf"),
                 caption="Ваша конфигурация WireGuard в виде файла"
             )
             
             # Remove the temporary file
-            os.remove(f"config_{user_id}.conf")
+            os.remove(f"config{user_id}.conf")
         else:
             await message.reply("Ошибка при сохранении конфигурации. Попробуйте позже.")
     else:
@@ -200,12 +200,12 @@ async def check_status(message: types.Message):
                 )
                 
                 # Also send as a file
-                with open(f"config_{user_id}.conf", "w") as f:
+                with open(f"config{user_id}.conf", "w") as f:
                     f.write(config_text)
                 
                 await bot.send_document(
                     chat_id=user_id,
-                    document=types.InputFile(f"config_{user_id}.conf"),
+                    document=types.InputFile(f"config{user_id}.conf"),
                     caption="Ваша текущая конфигурация WireGuard"
                 )
                 
