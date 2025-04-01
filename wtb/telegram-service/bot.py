@@ -210,7 +210,7 @@ async def check_status(message: types.Message):
                 )
                 
                 # Remove the temporary file
-                os.remove(f"config_{user_id}.conf")
+                os.remove(f"config{user_id}.conf")
             else:
                 await message.reply(
                     "Ваша конфигурация истекла.\n"
