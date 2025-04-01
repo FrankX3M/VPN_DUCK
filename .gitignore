@@ -1,0 +1,8 @@
+*.conf
+*.key
+__pycache__/
+*.py[cod]
+*.class
+.env
+data/
+.DS_Store

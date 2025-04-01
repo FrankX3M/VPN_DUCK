@@ -1,0 +1,43 @@
+services:
+  telegram-service:
+    build: ./telegram-service
+    restart: always
+    depends_on:
+      - wireguard-service
+      - database-service
+    environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
+      - DATABASE_SERVICE_URL=http://database-service:5002
+
+  wireguard-service:
+    build: ./wireguard-service
+    restart: always
+    privileged: true
+    volumes:
+      - /etc/wireguard:/etc/wireguard
+      - /root/wireguard-backup:/root/wireguard-backup
+    ports:
+      - "5001:5001"
+    environment:
+      - SERVER_ENDPOINT=${SERVER_ENDPOINT}
+      - SERVER_PORT=${SERVER_PORT}
+      - SERVER_ADDRESS=${SERVER_ADDRESS}
+
+  database-service:
+    build: ./database-service
+    restart: always
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "5002:5002"
+
+  cleanup-cron:
+    image: alpine
+    restart: always
+    depends_on:
+      - database-service
+    command: >
+      sh -c "apk add --no-cache curl &&
+             echo '0 * * * * curl -X POST http://database-service:5002/cleanup_expired' > /etc/crontabs/root &&
+             crond -f -d 8"
