@@ -2,9 +2,9 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Установка библиотек клиента PostgreSQL
+# Установка библиотек клиента PostgreSQL и postgresql-client
 RUN apt-get update && \
-    apt-get install -y libpq-dev gcc && \
+    apt-get install -y libpq-dev gcc postgresql-client && \
     apt-get clean
 
 # Устанавливаем специфические версии Werkzeug и Flask
@@ -19,5 +19,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 RUN mkdir -p data
+
+# Делаем wait-for-postgres.sh исполняемым
+RUN chmod +x wait-for-postgres.sh
 
 CMD ["python", "db_manager.py"]
