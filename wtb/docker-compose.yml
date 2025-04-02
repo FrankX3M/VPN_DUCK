@@ -11,9 +11,7 @@ services:
       - DATABASE_SERVICE_URL=http://database-service:5002
 
   wireguard-service:
-    build:
-      context: ./wireguard-service
-      dockerfile: Dockerfile
+    build: ./wireguard-service
     restart: always
     privileged: true
     volumes:
@@ -21,25 +19,36 @@ services:
       - /root/wireguard-backup:/root/wireguard-backup
     ports:
       - "5001:5001"
-      - "51820:51820/udp"  # Убедитесь, что UDP порт проброшен правильно
     environment:
       - SERVER_ENDPOINT=${SERVER_ENDPOINT}
       - SERVER_PORT=${SERVER_PORT}
       - SERVER_ADDRESS=${SERVER_ADDRESS}
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    sysctls:
-      - net.ipv4.ip_forward=1
-      - net.ipv4.conf.all.src_valid_mark=1
 
   database-service:
     build: ./database-service
     restart: always
-    volumes:
-      - ./data:/app/data
+    depends_on:
+      - postgres
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=wireguard
+      - DB_USER=postgres
+      - DB_PASS=${POSTGRES_PASSWORD}
     ports:
       - "5002:5002"
+
+  postgres:
+    image: postgres:14-alpine
+    restart: always
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=wireguard
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
 
   cleanup-cron:
     image: alpine
@@ -50,3 +59,6 @@ services:
       sh -c "apk add --no-cache curl &&
              echo '0 * * * * curl -X POST http://database-service:5002/cleanup_expired' > /etc/crontabs/root &&
              crond -f -d 8"
+
+volumes:
+  postgres-data:
