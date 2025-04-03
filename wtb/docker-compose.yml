@@ -19,6 +19,7 @@ services:
       - /root/wireguard-backup:/root/wireguard-backup
     ports:
       - "5001:5001"
+      - "51820:51820/udp"  # Добавьте эту строку для проброса UDP-порта
     environment:
       - SERVER_ENDPOINT=${SERVER_ENDPOINT}
       - SERVER_PORT=${SERVER_PORT}
