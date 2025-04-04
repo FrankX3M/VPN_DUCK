@@ -19,7 +19,7 @@ services:
       - /root/wireguard-backup:/root/wireguard-backup
     ports:
       - "5001:5001"
-      - "51820:51820/udp"  # Добавьте эту строку для проброса UDP-порта
+      - "51820:51820/udp"  # Для проброса UDP-порта WireGuard
     environment:
       - SERVER_ENDPOINT=${SERVER_ENDPOINT}
       - SERVER_PORT=${SERVER_PORT}
@@ -36,6 +36,7 @@ services:
       - DB_NAME=wireguard
       - DB_USER=postgres
       - DB_PASS=${POSTGRES_PASSWORD}
+      - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
     ports:
       - "5002:5002"
     command: ["./wait-for-postgres.sh", "postgres", "python", "db_manager.py"]

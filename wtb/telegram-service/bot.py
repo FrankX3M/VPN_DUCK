@@ -37,24 +37,28 @@ class ExtendConfigStates(StatesGroup):
 
 # Константы для продления
 EXTEND_OPTIONS = [
-    {"days": 7, "stars": 500, "label": "7 дней - 500 ⭐"},
-    {"days": 30, "stars": 1800, "label": "30 дней - 1800 ⭐"},
-    {"days": 90, "stars": 5000, "label": "90 дней - 5000 ⭐"},
-    {"days": 365, "stars": 18000, "label": "365 дней - 18000 ⭐"}
+    {"days": 7, "stars": 50, "label": "7 дней - 50 ⭐"},
+    {"days": 30, "stars": 210, "label": "30 дней - 210 ⭐"},
+    {"days": 90, "stars": 560, "label": "90 дней - 560 ⭐"},
+    {"days": 180, "stars": 950, "label": "180 дней - 950 ⭐"},
+    {"days": 365, "stars": 1550, "label": "365 дней - 1550 ⭐"}
 ]
 
 # Existing functions like get_permanent_keyboard(), send_welcome(), etc. remain the same...
 
-# Функция для получения баланса Telegram Stars
+# Функция для эмуляции получения баланса Telegram Stars
 async def get_stars_balance(user_id):
-    """Получение баланса Telegram Stars пользователя."""
-    try:
-        # Используем Stars API для получения баланса
-        result = await bot.get_stars_balance(user_id)
-        return result.stars_amount
-    except Exception as e:
-        logger.error(f"Ошибка при получении баланса звезд: {str(e)}")
-        return 0  # В случае ошибки возвращаем 0
+    """
+    Эта функция не может напрямую получить баланс Telegram Stars пользователя.
+    
+    Согласно документации Telegram Bot API, нет прямого метода для проверки баланса звезд.
+    Вместо этого мы должны использовать процесс создания инвойса и проверки возможности оплаты
+    через pre_checkout_query.
+    
+    Возвращаем условное значение для продолжения работы бота.
+    """
+    logger.warning("Прямая проверка баланса звезд через API не доступна")
+    return 10000  # Возвращаем условное значение
 
 # Функция для создания invoice для оплаты звездами
 async def create_stars_invoice(user_id, days, stars):
@@ -63,28 +67,26 @@ async def create_stars_invoice(user_id, days, stars):
     payment_id = str(uuid.uuid4())
     
     # Формируем информацию о платеже
-    title = f"Продление WireGuard на {days} дней"
+    title = f"VPN Duck: {days} дней"
     description = f"Продление доступа к VPN через WireGuard на {days} дней"
     
     # Создаем invoice с использованием Stars
     prices = [LabeledPrice(label=f"Продление на {days} дней", amount=stars)]
     
     try:
-        # Создаем invoice для оплаты звездами
-        invoice = await bot.create_invoice(
+        # Отправляем invoice
+        await bot.send_invoice(
+            chat_id=user_id,
             title=title,
             description=description,
             payload=f"extend_{user_id}_{days}_{stars}_{payment_id}",
-            provider_token="stars",  # Указываем, что используем Stars
-            currency="STARS",  # Валюта - звезды
+            provider_token="",  # Пустая строка для цифровых товаров
+            currency="XTR",     # XTR - валюта для звезд Telegram
             prices=prices,
-            max_tip_amount=0,
-            suggested_tip_amounts=[],
-            start_parameter=payment_id,
-            provider_data=None
+            start_parameter=payment_id
         )
         
-        return payment_id, title, description, invoice
+        return payment_id, title, description
     except Exception as e:
         logger.error(f"Ошибка при создании invoice: {str(e)}")
         raise e
@@ -100,18 +102,6 @@ async def process_pre_checkout(pre_checkout_query: types.PreCheckoutQuery, state
         user_id = int(user_id)
         days = int(days)
         stars = int(stars)
-        
-        # Проверяем, достаточно ли у пользователя звезд
-        user_balance = await get_stars_balance(user_id)
-        
-        if user_balance < stars:
-            # Если недостаточно звезд, отклоняем платеж
-            await bot.answer_pre_checkout_query(
-                pre_checkout_query.id,
-                ok=False,
-                error_message="На вашем счету недостаточно звезд для оплаты. Пожалуйста, пополните баланс."
-            )
-            return
         
         # Если все проверки пройдены, принимаем платеж
         await bot.answer_pre_checkout_query(
@@ -230,60 +220,12 @@ async def process_extend_option(callback_query: types.CallbackQuery, state: FSMC
     
     user_id = callback_query.from_user.id
     
-    # Проверка баланса пользователя
-    user_balance = await get_stars_balance(user_id)
-    
-    if user_balance < stars:
-        # Если у пользователя недостаточно звезд, предлагаем пополнить баланс
-        keyboard = InlineKeyboardMarkup(row_width=1)
-        keyboard.add(
-            InlineKeyboardButton("💵 Пополнить баланс звезд", callback_data="topup_stars")
-        )
-        keyboard.add(
-            InlineKeyboardButton("❌ Отменить", callback_data="cancel_extend")
-        )
-        
-        await bot.edit_message_text(
-            f"⚠️ *Недостаточно звезд для продления*\n\n"
-            f"Для продления на {days} дней требуется {stars} ⭐\n"
-            f"Ваш текущий баланс: {user_balance} ⭐\n\n"
-            f"Пожалуйста, пополните баланс звезд.",
-            chat_id=callback_query.message.chat.id,
-            message_id=callback_query.message.message_id,
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=keyboard
-        )
-        return
-    
     try:
         # Создаем платежную форму
-        payment_id, title, description, invoice = await create_stars_invoice(
+        payment_id, title, description = await create_stars_invoice(
             user_id=user_id,
             days=days,
             stars=stars
-        )
-        
-        # Создаем сообщение с инвойсом
-        await bot.send_invoice(
-            chat_id=user_id,
-            title=title,
-            description=description,
-            payload=f"extend_{user_id}_{days}_{stars}_{payment_id}",
-            provider_token="stars",  # Используем Stars
-            currency="STARS",
-            prices=[LabeledPrice(label=f"Продление на {days} дней", amount=stars)],
-            max_tip_amount=0,
-            suggested_tip_amounts=[],
-            start_parameter=payment_id,
-            provider_data=None,
-            need_name=False,
-            need_phone_number=False,
-            need_email=False,
-            need_shipping_address=False,
-            is_flexible=False,
-            disable_notification=False,
-            protect_content=False,
-            reply_markup=None
         )
         
         # Обновляем сообщение с информацией о процессе оплаты
@@ -317,11 +259,7 @@ async def topup_stars(callback_query: types.CallbackQuery):
     """Пополнение баланса звезд."""
     await bot.answer_callback_query(callback_query.id)
     
-    # Здесь должна быть интеграция с Telegram Stars API для пополнения баланса
-    # Согласно документации, используется метод payments.getStarsTopupOptions
-    # и далее payments.getPaymentForm с inputInvoiceStars
-    
-    # В данном примере просто показываем информационное сообщение
+    # Информационное сообщение о пополнении звезд
     await bot.edit_message_text(
         "💵 *Пополнение баланса Telegram Stars*\n\n"
         "Для пополнения баланса звезд Telegram, пожалуйста, воспользуйтесь официальным интерфейсом Telegram.\n\n"
@@ -534,6 +472,58 @@ async def get_payment_history(message: types.Message):
         await message.reply(
             "❌ Не удалось получить историю платежей. Попробуйте позже.",
             parse_mode=ParseMode.MARKDOWN
+        )
+
+# Универсальный обработчик неизвестных колбэков
+@dp.callback_query_handler(lambda c: True, state='*')
+async def process_unknown_callback(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обработка неизвестных колбэков."""
+    try:
+        await bot.answer_callback_query(callback_query.id)
+        callback_data = callback_query.data
+        
+        # Логируем неизвестный колбэк
+        logger.info(f"Получен неизвестный колбэк: {callback_data}")
+        
+        # Обрабатываем известные шаблоны колбэков
+        if callback_data == "status":
+            # Здесь должен быть вызов функции проверки статуса
+            user_id = callback_query.from_user.id
+            response = requests.get(f"{DATABASE_SERVICE_URL}/config/{user_id}")
+            
+            if response.status_code == 200:
+                config_data = response.json()
+                expiry_time = config_data.get("expiry_time")
+                expiry_dt = datetime.fromisoformat(expiry_time)
+                expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
+                
+                await bot.send_message(
+                    user_id,
+                    f"📊 *Статус вашей конфигурации*\n\n"
+                    f"▫️ Активна: *{'Да' if config_data.get('active') else 'Нет'}*\n"
+                    f"▫️ Срок действия: до *{expiry_formatted}*\n",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            else:
+                await bot.send_message(
+                    user_id,
+                    "❌ *У вас нет активной конфигурации*\n\n"
+                    "Создайте новую с помощью команды /create.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+        elif callback_data.startswith("extend_") and not await state.get_state():
+            # Если пользователь находится вне процесса продления,
+            # но нажал на кнопку продления, начинаем процесс заново
+            await ExtendConfigStates.selecting_duration.set()
+            await process_extend_option(callback_query, state)
+        else:
+            # Для совсем неизвестных колбэков ничего не делаем, просто логируем
+            logger.warning(f"Неизвестный формат колбэка: {callback_data}")
+    except Exception as e:
+        logger.error(f"Ошибка при обработке неизвестного колбэка: {str(e)}")
+        await bot.send_message(
+            callback_query.from_user.id,
+            "❌ Произошла ошибка при обработке запроса. Пожалуйста, попробуйте позже."
         )
 
 # Обновление команд при старте бота
