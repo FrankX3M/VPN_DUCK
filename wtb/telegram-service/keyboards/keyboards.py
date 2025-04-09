@@ -13,6 +13,7 @@ def get_permanent_keyboard():
         KeyboardButton("ℹ️ Помощь")
     ]
     keyboard.add(*buttons)
+    
     return keyboard
 
 # Клавиатура для продления подписки
@@ -36,8 +37,8 @@ def get_create_confirm_keyboard():
     """Возвращает клавиатуру для подтверждения создания конфигурации."""
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
-        InlineKeyboardButton("✅ Подтвердить", callback_data="confirm_create"),
-        InlineKeyboardButton("❌ Отменить", callback_data="cancel_create")
+        InlineKeyboardButton("✅ Подтвердить", callback_data="direct_create"),
+        InlineKeyboardButton("❌ Отменить", callback_data="direct_cancel")
     )
     return keyboard
 

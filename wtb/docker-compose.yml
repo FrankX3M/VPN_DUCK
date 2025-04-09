@@ -5,8 +5,10 @@ services:
     depends_on:
       - wireguard-service
       - database-service
+    env_file:
+      - .env
     environment:
-      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      # - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
       - DATABASE_SERVICE_URL=http://database-service:5002
 

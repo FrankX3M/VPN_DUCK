@@ -4,6 +4,8 @@ from aiogram import Bot, Dispatcher
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
+# from core.callback_middleware import CallbackMiddleware
+
 # Конфигурация логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,6 +25,7 @@ bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 dp.middleware.setup(LoggingMiddleware())
+# dp.middleware.setup(CallbackMiddleware())
 
 # Константы для продления
 EXTEND_OPTIONS = [

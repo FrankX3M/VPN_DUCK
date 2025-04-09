@@ -9,8 +9,12 @@ async def process_unknown_callback(callback_query: types.CallbackQuery, state: F
         await bot.answer_callback_query(callback_query.id)
         callback_data = callback_query.data
         
-        # Логируем неизвестный колбэк
-        logger.info(f"Получен неизвестный колбэк: {callback_data}")
+        # Детальное логирование для отладки
+        logger.warning(f"Получен неизвестный колбэк: {callback_data}")
+        current_state = await state.get_state()
+        logger.warning(f"Текущее состояние: {current_state}")
+        
+        # Не отправляем сообщение пользователю, чтобы не спамить
         
     except Exception as e:
         logger.error(f"Ошибка при обработке неизвестного колбэка: {str(e)}")
@@ -21,14 +25,21 @@ async def process_unknown_callback(callback_query: types.CallbackQuery, state: F
 
 def register_handlers_callbacks(dp: Dispatcher):
     """Регистрирует обработчики для колбэков."""
-    # Создайте список известных колбэков, которые должны обрабатываться специфическими обработчиками
-    known_callbacks = ['confirm_create', 'cancel_create', 'create_config', 
-                      'start_extend', 'confirm_recreate', 'cancel_recreate',
-                      'status', 'get_config', 'recreate_config']
+    # Создаем список известных колбэков и их префиксов
+    known_callbacks = [
+        'confirm_create', 'cancel_create', 'create_config', 
+        'start_extend', 'confirm_recreate', 'cancel_recreate',
+        'status', 'get_config', 'recreate_config',
+        'show_stars_info', 'topup_stars', 'cancel_extend'
+    ]
+    
+    known_prefixes = [
+        'extend_'  # Для колбэков с переменными частями
+    ]
     
     # Регистрируем обработчик только для неизвестных колбэков
     dp.register_callback_query_handler(
         process_unknown_callback, 
-        lambda c: c.data not in known_callbacks, 
+        lambda c: c.data not in known_callbacks and not any(c.data.startswith(prefix) for prefix in known_prefixes), 
         state='*'
     )

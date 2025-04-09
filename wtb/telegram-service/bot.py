@@ -2,8 +2,9 @@ import logging
 import asyncio
 from aiogram import executor
 
-from core.settings import dp, bot
+from core.settings import dp, bot, logger
 from handlers.init import register_all_handlers
+from core.callback_middleware import CallbackMiddleware
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -13,6 +14,9 @@ logger = logging.getLogger(__name__)
 async def on_startup(dp):
     """Set up bot on startup."""
     logging.info("Bot started!")
+    
+    # Регистрация Callback middleware
+    dp.middleware.setup(CallbackMiddleware(bot, logger))
     
     # Регистрация всех обработчиков
     register_all_handlers(dp)

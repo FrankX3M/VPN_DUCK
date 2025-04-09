@@ -10,13 +10,79 @@ from keyboards.keyboards import get_create_confirm_keyboard, get_active_config_k
 from utils.bd import get_user_config, create_new_config, get_config_from_wireguard
 from utils.qr import generate_config_qr
 
-# Прямой обработчик для подтверждения создания конфигурации
-async def direct_confirm_create(callback_query: types.CallbackQuery):
-    """Прямой обработчик подтверждения создания конфигурации."""
-    logger.info(f"Вызван прямой обработчик direct_confirm_create с данными: {callback_query.data}")
+# Обработчик для создания новой конфигурации
+async def create_config(message: types.Message, state: FSMContext):
+    """Создание новой конфигурации WireGuard."""
+    user_id = message.from_user.id
     
+    try:
+        # Проверяем, есть ли уже активная конфигурация
+        config = await get_user_config(user_id)
+        
+        if config and config.get("active", False):
+            # У пользователя уже есть активная конфигурация
+            expiry_time = config.get("expiry_time")
+            expiry_dt = datetime.fromisoformat(expiry_time)
+            expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
+            
+            await message.reply(
+                f"⚠️ *У вас уже есть активная конфигурация!*\n\n"
+                f"Срок действия: до *{expiry_formatted}*\n\n"
+                f"Вы можете продлить срок действия, получить файл конфигурации снова "
+                f"или пересоздать конфигурацию (текущая будет деактивирована).",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_active_config_keyboard()
+            )
+            return
+        
+        # Отправляем сообщение с запросом подтверждения
+        await message.reply(
+            "🔑 *Создание новой конфигурации WireGuard*\n\n"
+            "После создания вы получите файл конфигурации и QR-код для быстрой настройки.\n\n"
+            "Начальный срок действия: *7 дней*\n\n"
+            "Подтвердите создание новой конфигурации:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_create_confirm_keyboard()
+        )
+        
+        # Переходим в состояние подтверждения создания
+        logger.info(f"Устанавливаем состояние CreateConfigStates.confirming_create для пользователя {message.from_user.id}")
+        await CreateConfigStates.confirming_create.set()
+    except Exception as e:
+        logger.error(f"Ошибка при создании конфигурации: {str(e)}")
+        await message.reply(
+            "❌ *Произошла ошибка*\n\n"
+            "Пожалуйста, попробуйте позже.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+# Обработчик для подтверждения создания конфигурации
+async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMContext):
+    """Подтверждение создания новой конфигурации."""
+    logger.info(f"Вызван обработчик confirm_create_config с callback_data: {callback_query.data}")
+    current_state = await state.get_state()
+    logger.info(f"Текущее состояние пользователя: {current_state}")
+    
+    # Добавляем подробное логирование для отладки
+    user_state_data = await state.get_data()
+    logger.info(f"Данные состояния пользователя: {user_state_data}")
+    
+    # Проверяем наличие текущего состояния явно
+    if current_state is None:
+        logger.warning(f"Состояние пользователя не установлено. Устанавливаем его вручную.")
+        await CreateConfigStates.confirming_create.set()
+    
+    # Остальной код остается без изменений
     await bot.answer_callback_query(callback_query.id)
     user_id = callback_query.from_user.id
+# async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMContext):
+#     """Подтверждение создания новой конфигурации."""
+#     logger.info(f"Вызван обработчик confirm_create_config с callback_data: {callback_query.data}")
+#     current_state = await state.get_state()
+#     logger.info(f"Текущее состояние пользователя: {current_state}")
+    
+#     await bot.answer_callback_query(callback_query.id)
+#     user_id = callback_query.from_user.id
     
     # Сообщаем пользователю о начале процесса создания
     await bot.edit_message_text(
@@ -38,6 +104,7 @@ async def direct_confirm_create(callback_query: types.CallbackQuery):
                 message_id=callback_query.message.message_id,
                 parse_mode=ParseMode.MARKDOWN
             )
+            await state.finish()
             return
         
         config_text = config_data.get("config_text")
@@ -50,6 +117,7 @@ async def direct_confirm_create(callback_query: types.CallbackQuery):
                 message_id=callback_query.message.message_id,
                 parse_mode=ParseMode.MARKDOWN
             )
+            await state.finish()
             return
         
         # Получаем данные о сроке действия из базы данных
@@ -129,30 +197,16 @@ async def direct_confirm_create(callback_query: types.CallbackQuery):
             message_id=callback_query.message.message_id,
             parse_mode=ParseMode.MARKDOWN
         )
-
-
-
-# Прямой обработчик для подтверждения создания конфигурации
-async def direct_confirm_create(callback_query: types.CallbackQuery):
-    """Прямой обработчик подтверждения создания конфигурации."""
-    logger.info(f"Вызван прямой обработчик direct_confirm_create с данными: {callback_query.data}")
     
-    await bot.answer_callback_query(callback_query.id)
-    user_id = callback_query.from_user.id
-    
-    # Сообщаем пользователю о начале процесса создания
-    await bot.edit_message_text(
-        "🔄 *Создание конфигурации...*\n\n"
-        "Пожалуйста, подождите. Это может занять несколько секунд.",
-        chat_id=callback_query.message.chat.id,
-        message_id=callback_query.message.message_id,
-        parse_mode=ParseMode.MARKDOWN
-    )
+    # Сбрасываем состояние
+    await state.finish()
 
-# Прямой обработчик для отмены создания конфигурации
-async def direct_cancel_create(callback_query: types.CallbackQuery):
-    """Прямой обработчик отмены создания конфигурации."""
-    logger.info(f"Вызван прямой обработчик direct_cancel_create с данными: {callback_query.data}")
+# Обработчик для отмены создания конфигурации
+async def cancel_create_config(callback_query: types.CallbackQuery, state: FSMContext):
+    """Отмена процесса создания конфигурации."""
+    logger.info(f"Вызван обработчик cancel_create_config с callback_data: {callback_query.data}")
+    current_state = await state.get_state()
+    logger.info(f"Текущее состояние пользователя: {current_state}")
     
     await bot.answer_callback_query(callback_query.id)
     
@@ -161,52 +215,9 @@ async def direct_cancel_create(callback_query: types.CallbackQuery):
         chat_id=callback_query.message.chat.id,
         message_id=callback_query.message.message_id
     )
-
-# Обработчик для создания новой конфигурации
-async def create_config(message: types.Message, state: FSMContext):
-    """Создание новой конфигурации WireGuard."""
-    user_id = message.from_user.id
     
-    try:
-        # Проверяем, есть ли уже активная конфигурация
-        config = await get_user_config(user_id)
-        
-        if config and config.get("active", False):
-            # У пользователя уже есть активная конфигурация
-            expiry_time = config.get("expiry_time")
-            expiry_dt = datetime.fromisoformat(expiry_time)
-            expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
-            
-            await message.reply(
-                f"⚠️ *У вас уже есть активная конфигурация!*\n\n"
-                f"Срок действия: до *{expiry_formatted}*\n\n"
-                f"Вы можете продлить срок действия, получить файл конфигурации снова "
-                f"или пересоздать конфигурацию (текущая будет деактивирована).",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=get_active_config_keyboard()
-            )
-            return
-        
-        # Отправляем сообщение с запросом подтверждения
-        await message.reply(
-            "🔑 *Создание новой конфигурации WireGuard*\n\n"
-            "После создания вы получите файл конфигурации и QR-код для быстрой настройки.\n\n"
-            "Начальный срок действия: *7 дней*\n\n"
-            "Подтвердите создание новой конфигурации:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=get_create_confirm_keyboard()
-        )
-        
-        # Переходим в состояние подтверждения создания
-        logger.info(f"Устанавливаем состояние CreateConfigStates.confirming_create для пользователя {message.from_user.id}")
-        await CreateConfigStates.confirming_create.set()
-    except Exception as e:
-        logger.error(f"Ошибка при создании конфигурации: {str(e)}")
-        await message.reply(
-            "❌ *Произошла ошибка*\n\n"
-            "Пожалуйста, попробуйте позже.",
-            parse_mode=ParseMode.MARKDOWN
-        )
+    # Сбрасываем состояние
+    await state.finish()
 
 # Обработчик для inline-кнопки создания конфигурации
 async def create_config_from_button(callback_query: types.CallbackQuery, state: FSMContext):
@@ -265,22 +276,26 @@ async def create_config_from_button(callback_query: types.CallbackQuery, state: 
             parse_mode=ParseMode.MARKDOWN
         )
 
-
+# def register_handlers_create(dp: Dispatcher):
+#     """Регистрирует обработчики для создания конфигурации."""
+#     dp.register_message_handler(create_config, commands=['create'])
+#     dp.register_message_handler(create_config, lambda message: message.text == "🔑 Создать")
+#     dp.register_callback_query_handler(create_config_from_button, lambda c: c.data == 'create_config')
     
-
-
+#     # Регистрация обработчиков с привязкой к состоянию
+#     dp.register_callback_query_handler(confirm_create_config, lambda c: c.data == 'confirm_create', state=CreateConfigStates.confirming_create)
+#     dp.register_callback_query_handler(cancel_create_config, lambda c: c.data == 'cancel_create', state=CreateConfigStates.confirming_create)
+    
+#     # Если нужно отлаживать без привязки к состоянию, раскомментируйте эти строки
+#     # dp.register_callback_query_handler(confirm_create_config, lambda c: c.data == 'confirm_create')
+#     # dp.register_callback_query_handler(cancel_create_config, lambda c: c.data == 'cancel_create')
 
 def register_handlers_create(dp: Dispatcher):
     """Регистрирует обработчики для создания конфигурации."""
-    # Регистрируем прямые обработчики в первую очередь (высокий приоритет)
-    dp.register_callback_query_handler(direct_confirm_create, lambda c: c.data == 'direct_create', state='*')
-    dp.register_callback_query_handler(direct_cancel_create, lambda c: c.data == 'direct_cancel', state='*')
-    dp.register_callback_query_handler(direct_confirm_create, lambda c: c.data == 'confirm_create', state='*')
-    dp.register_callback_query_handler(direct_cancel_create, lambda c: c.data == 'cancel_create', state='*')
-    
-    # Затем регистрируем обычные обработчики
     dp.register_message_handler(create_config, commands=['create'])
     dp.register_message_handler(create_config, lambda message: message.text == "🔑 Создать")
     dp.register_callback_query_handler(create_config_from_button, lambda c: c.data == 'create_config')
-
     
+    # Fix: Move these handlers outside state checking to debug
+    dp.register_callback_query_handler(confirm_create_config, lambda c: c.data == 'confirm_create')
+    dp.register_callback_query_handler(cancel_create_config, lambda c: c.data == 'cancel_create')
