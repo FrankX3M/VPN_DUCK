@@ -130,25 +130,6 @@ async def direct_confirm_create(callback_query: types.CallbackQuery):
             parse_mode=ParseMode.MARKDOWN
         )
 
-
-
-# Прямой обработчик для подтверждения создания конфигурации
-async def direct_confirm_create(callback_query: types.CallbackQuery):
-    """Прямой обработчик подтверждения создания конфигурации."""
-    logger.info(f"Вызван прямой обработчик direct_confirm_create с данными: {callback_query.data}")
-    
-    await bot.answer_callback_query(callback_query.id)
-    user_id = callback_query.from_user.id
-    
-    # Сообщаем пользователю о начале процесса создания
-    await bot.edit_message_text(
-        "🔄 *Создание конфигурации...*\n\n"
-        "Пожалуйста, подождите. Это может занять несколько секунд.",
-        chat_id=callback_query.message.chat.id,
-        message_id=callback_query.message.message_id,
-        parse_mode=ParseMode.MARKDOWN
-    )
-
 # Прямой обработчик для отмены создания конфигурации
 async def direct_cancel_create(callback_query: types.CallbackQuery):
     """Прямой обработчик отмены создания конфигурации."""
@@ -265,22 +246,21 @@ async def create_config_from_button(callback_query: types.CallbackQuery, state: 
             parse_mode=ParseMode.MARKDOWN
         )
 
-
-    
-
-
-
 def register_handlers_create(dp: Dispatcher):
     """Регистрирует обработчики для создания конфигурации."""
-    # Регистрируем прямые обработчики в первую очередь (высокий приоритет)
-    dp.register_callback_query_handler(direct_confirm_create, lambda c: c.data == 'direct_create', state='*')
-    dp.register_callback_query_handler(direct_cancel_create, lambda c: c.data == 'direct_cancel', state='*')
-    dp.register_callback_query_handler(direct_confirm_create, lambda c: c.data == 'confirm_create', state='*')
-    dp.register_callback_query_handler(direct_cancel_create, lambda c: c.data == 'cancel_create', state='*')
-    
-    # Затем регистрируем обычные обработчики
+    # Основные хендлеры
     dp.register_message_handler(create_config, commands=['create'])
     dp.register_message_handler(create_config, lambda message: message.text == "🔑 Создать")
     dp.register_callback_query_handler(create_config_from_button, lambda c: c.data == 'create_config')
-
     
+    # Регистрация колбэк-обработчиков с фильтрами, которые не пересекаются с middleware
+    dp.register_callback_query_handler(
+        direct_confirm_create, 
+        lambda c: c.data == 'confirm_create' and not c.data == 'direct_create',
+        state=CreateConfigStates.confirming_create
+    )
+    dp.register_callback_query_handler(
+        direct_cancel_create,
+        lambda c: c.data == 'cancel_create' and not c.data == 'direct_cancel',
+        state=CreateConfigStates.confirming_create
+    )

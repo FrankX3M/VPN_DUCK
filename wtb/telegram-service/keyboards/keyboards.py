@@ -35,6 +35,8 @@ def get_extend_keyboard():
 # Клавиатура для подтверждения создания
 def get_create_confirm_keyboard():
     """Возвращает клавиатуру для подтверждения создания конфигурации."""
+    # ВАЖНО: Используем direct_create и direct_cancel вместо confirm_create и cancel_create
+    # Это будет соответствовать названиям колбэков в middleware
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
         InlineKeyboardButton("✅ Подтвердить", callback_data="direct_create"),

@@ -53,8 +53,11 @@ async def extend_config_start(message: types.Message):
         )
 
 # Обработчик для inline-кнопки начала продления
-async def start_extend_from_button(callback_query: types.CallbackQuery):
+async def start_extend_from_button(callback_query: types.CallbackQuery, state: FSMContext = None):
     """Начало процесса продления через inline кнопку."""
+    logger.info(f"Вызван start_extend_from_button с callback_data: {callback_query.data}")
+    
+    # Отмечаем колбэк как обработанный
     await bot.answer_callback_query(callback_query.id)
     
     # Получаем user_id из callback_query
@@ -90,8 +93,9 @@ async def start_extend_from_button(callback_query: types.CallbackQuery):
             reply_markup=keyboard
         )
         
-        # Переходим в состояние выбора длительности
-        await ExtendConfigStates.selecting_duration.set()
+        # Переходим в состояние выбора длительности, но только если state передан
+        if state:
+            await ExtendConfigStates.selecting_duration.set()
     except Exception as e:
         logger.error(f"Ошибка при запросе к API: {str(e)}")
         await bot.send_message(
@@ -262,7 +266,12 @@ def register_handlers_extend(dp: Dispatcher):
     """Регистрирует обработчики для продления конфигурации."""
     dp.register_message_handler(extend_config_start, commands=['extend'])
     dp.register_message_handler(extend_config_start, lambda message: message.text == "⏰ Продлить")
-    dp.register_callback_query_handler(start_extend_from_button, lambda c: c.data == 'start_extend')
+    
+    # Важно - обработчик start_extend теперь должен быть зарегистрирован с высоким приоритетом
+    # и без привязки к состоянию для поддержки callback-запросов из других обработчиков
+    dp.register_callback_query_handler(start_extend_from_button, lambda c: c.data == 'start_extend', state='*')
+    
+    # Остальные обработчики с привязкой к состоянию
     dp.register_callback_query_handler(process_extend_option, lambda c: c.data.startswith('extend_'), state=ExtendConfigStates.selecting_duration)
     dp.register_callback_query_handler(cancel_extend, lambda c: c.data == 'cancel_extend', state=[ExtendConfigStates.selecting_duration, ExtendConfigStates.confirming_payment])
     dp.register_pre_checkout_query_handler(process_pre_checkout, state=ExtendConfigStates.confirming_payment)

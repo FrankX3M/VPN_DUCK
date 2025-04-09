@@ -5,10 +5,6 @@ from datetime import datetime
 from io import BytesIO
 import logging
 
-# Удаляем импорт из core.settings
-# Эти объекты будут переданы в конструктор
-# from core.settings import bot, logger
-
 from utils.bd import get_user_config, create_new_config, get_config_from_wireguard
 from utils.qr import generate_config_qr
 
@@ -53,7 +49,10 @@ class CallbackMiddleware(BaseMiddleware):
                         message_id=callback_query.message.message_id,
                         parse_mode=ParseMode.MARKDOWN
                     )
-                    return
+                    # Помечаем колбэк как обработанный - НЕСКОЛЬКИМИ СПОСОБАМИ для обхода ошибки aiogram
+                    data['_handled'] = True
+                    callback_query._handled = True
+                    return True
                 
                 config_text = config_data.get("config_text")
                 
@@ -65,7 +64,10 @@ class CallbackMiddleware(BaseMiddleware):
                         message_id=callback_query.message.message_id,
                         parse_mode=ParseMode.MARKDOWN
                     )
-                    return
+                    # Помечаем колбэк как обработанный - НЕСКОЛЬКИМИ СПОСОБАМИ для обхода ошибки aiogram
+                    data['_handled'] = True
+                    callback_query._handled = True
+                    return True
                 
                 # Получаем данные о сроке действия из базы данных
                 db_data = await get_user_config(user_id)
@@ -136,8 +138,9 @@ class CallbackMiddleware(BaseMiddleware):
                     reply_markup=keyboard
                 )
                 
-                # Помечаем колбэк как обработанный
-                data['middleware_data'] = {'handled': True}
+                # Помечаем колбэк как обработанный - НЕСКОЛЬКИМИ СПОСОБАМИ для обхода ошибки aiogram
+                data['_handled'] = True
+                callback_query._handled = True
                 return True
                 
             except Exception as e:
@@ -150,8 +153,9 @@ class CallbackMiddleware(BaseMiddleware):
                     parse_mode=ParseMode.MARKDOWN
                 )
                 
-                # Помечаем колбэк как обработанный
-                data['middleware_data'] = {'handled': True}
+                # Помечаем колбэк как обработанный - НЕСКОЛЬКИМИ СПОСОБАМИ
+                data['_handled'] = True
+                callback_query._handled = True
                 return True
         
         # Обрабатываем колбэк direct_cancel
@@ -166,6 +170,15 @@ class CallbackMiddleware(BaseMiddleware):
                 message_id=callback_query.message.message_id
             )
             
-            # Помечаем колбэк как обработанный
-            data['middleware_data'] = {'handled': True}
+            # Помечаем колбэк как обработанный - НЕСКОЛЬКИМИ СПОСОБАМИ
+            data['_handled'] = True
+            callback_query._handled = True
             return True
+            
+        # Колбэки на продление мы НЕ обрабатываем в middleware
+        elif callback_query.data == "start_extend":
+            self.logger.info("Middleware: получен колбэк start_extend")
+            # Этот колбэк пропускаем в основные обработчики
+            pass
+            
+        return None  # Продолжаем обработку другими обработчиками

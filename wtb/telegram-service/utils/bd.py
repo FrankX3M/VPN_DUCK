@@ -1,16 +1,25 @@
 import logging
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from core.settings import DATABASE_SERVICE_URL, WIREGUARD_SERVICE_URL, logger
 
 # Функция для получения конфигурации пользователя
 async def get_user_config(user_id):
     """Получает конфигурацию пользователя из базы данных."""
     try:
+        logger.info(f"Получение конфигурации для пользователя {user_id}")
         response = requests.get(f"{DATABASE_SERVICE_URL}/config/{user_id}", timeout=5)
+        
+        logger.info(f"Ответ API: код {response.status_code}")
+        
         if response.status_code == 200:
             return response.json()
+            
+        # Подробный вывод информации об ошибке
+        if response.status_code != 404:  # 404 - нормальный ответ, если конфиг не найден
+            logger.error(f"Ошибка API: {response.status_code}, тело: {response.text}")
+            
         return None
     except requests.RequestException as e:
         logger.error(f"Ошибка запроса конфигурации пользователя: {str(e)}")
@@ -34,25 +43,67 @@ async def get_stars_balance(user_id):
 async def create_new_config(user_id):
     """Создает новую конфигурацию WireGuard."""
     try:
-        # Исправленный URL для создания конфигурации
-        response = requests.post(
+        logger.info(f"Создание новой конфигурации для пользователя {user_id}")
+        
+        # Сначала запрашиваем создание конфигурации у wireguard-service
+        wg_response = requests.post(
             f"{WIREGUARD_SERVICE_URL}/create",
             json={"user_id": user_id},
             timeout=20
         )
         
-        if response.status_code == 201:  # Учитываем, что сервис возвращает 201 Created
-            data = response.json()
-            # Преобразуем ответ в нужный формат для бота
-            return {
-                "config_text": data.get("config"),
-                "public_key": data.get("public_key")
-            }
+        logger.info(f"Ответ API wireguard-service: код {wg_response.status_code}")
         
+        if wg_response.status_code == 201:
+            wg_data = wg_response.json()
+            config_text = wg_data.get("config")
+            public_key = wg_data.get("public_key")
+            
+            # Рассчитываем дату истечения (7 дней от текущей даты)
+            expiry_time = (datetime.now() + timedelta(days=7)).isoformat()
+            
+            # Сохраняем в базе данных через database-service
+            db_response = requests.post(
+                f"{DATABASE_SERVICE_URL}/config",
+                json={
+                    "user_id": user_id,
+                    "config": config_text,
+                    "expiry_time": expiry_time,
+                    "active": True
+                },
+                timeout=10
+            )
+            
+            logger.info(f"Ответ API database-service: код {db_response.status_code}")
+            
+            if db_response.status_code in [200, 201]:
+                # Возвращаем успешный результат
+                return {
+                    "config_text": config_text,
+                    "public_key": public_key
+                }
+            else:
+                # Логируем ошибку сохранения в БД
+                error_msg = f"Ошибка сохранения в БД: код {db_response.status_code}"
+                if db_response.headers.get('content-type') == 'application/json':
+                    try:
+                        error_data = db_response.json()
+                        if "error" in error_data:
+                            error_msg = error_data.get("error")
+                    except:
+                        pass
+                logger.error(error_msg)
+                # Но все равно возвращаем конфигурацию, так как она создана успешно
+                return {
+                    "config_text": config_text,
+                    "public_key": public_key
+                }
+        
+        # В случае ошибки от wireguard-service
         error_message = "Ошибка при создании конфигурации."
-        if response.headers.get('content-type') == 'application/json':
+        if wg_response.headers.get('content-type') == 'application/json':
             try:
-                response_data = response.json()
+                response_data = wg_response.json()
                 if "error" in response_data:
                     error_message = response_data.get("error")
             except json.JSONDecodeError:
@@ -67,24 +118,38 @@ async def create_new_config(user_id):
 async def recreate_config(user_id):
     """Пересоздает конфигурацию WireGuard."""
     try:
-        # Сначала получаем текущую конфигурацию для получения public_key
+        logger.info(f"Пересоздание конфигурации для пользователя {user_id}")
+        
+        # Получаем текущую конфигурацию
         current_config = await get_user_config(user_id)
         
         if current_config and current_config.get("public_key"):
-            # Деактивируем текущую конфигурацию
+            # Деактивируем текущую конфигурацию в WireGuard
             public_key = current_config.get("public_key")
-            requests.delete(f"{WIREGUARD_SERVICE_URL}/remove/{public_key}", timeout=10)
+            logger.info(f"Деактивация текущей конфигурации с public_key: {public_key}")
+            
+            try:
+                deactivate_response = requests.delete(
+                    f"{WIREGUARD_SERVICE_URL}/remove/{public_key}", 
+                    timeout=10
+                )
+                logger.info(f"Ответ API на деактивацию: код {deactivate_response.status_code}")
+            except Exception as e:
+                logger.error(f"Ошибка при деактивации: {str(e)}")
+                # Продолжаем, даже если деактивация не удалась
         
-        # Создаем новую конфигурацию
+        # Создаем новую конфигурацию (с сохранением в БД)
         return await create_new_config(user_id)
-    except requests.RequestException as e:
+    except Exception as e:
         logger.error(f"Ошибка при запросе к API: {str(e)}")
         return {"error": f"Ошибка при пересоздании конфигурации: {str(e)}. Пожалуйста, попробуйте позже."}
 
 # Функция для получения конфигурации из WireGuard сервиса
 async def get_config_from_wireguard(user_id):
-    """Получает конфигурацию из WireGuard сервиса."""
+    """Получает конфигурацию из базы данных."""
     try:
+        logger.info(f"Получение конфигурации для пользователя {user_id}")
+        
         # Получаем информацию о конфигурации пользователя из базы данных
         config_info = await get_user_config(user_id)
         
@@ -106,6 +171,8 @@ async def get_config_from_wireguard(user_id):
 async def extend_config(user_id, days, stars, transaction_id):
     """Продлевает срок действия конфигурации."""
     try:
+        logger.info(f"Продление конфигурации для пользователя {user_id} на {days} дней за {stars} звезд")
+        
         response = requests.post(
             f"{DATABASE_SERVICE_URL}/config/extend",
             json={
@@ -117,8 +184,13 @@ async def extend_config(user_id, days, stars, transaction_id):
             timeout=10
         )
         
+        logger.info(f"Ответ API: код {response.status_code}")
+        
         if response.status_code == 200:
             return response.json()
+        
+        # Подробный вывод информации об ошибке
+        logger.error(f"Ошибка API: {response.status_code}, тело: {response.text}")
         
         error_message = "Ошибка при продлении конфигурации. Обратитесь в поддержку."
         if response.headers.get('content-type') == 'application/json':
@@ -138,10 +210,17 @@ async def extend_config(user_id, days, stars, transaction_id):
 async def get_payment_history(user_id):
     """Получает историю платежей пользователя."""
     try:
+        logger.info(f"Получение истории платежей для пользователя {user_id}")
+        
         response = requests.get(f"{DATABASE_SERVICE_URL}/payments/history/{user_id}", timeout=5)
+        
+        logger.info(f"Ответ API: код {response.status_code}")
         
         if response.status_code == 200:
             return response.json()
+        
+        # Подробный вывод информации об ошибке
+        logger.error(f"Ошибка API: {response.status_code}, тело: {response.text}")
         
         return {"error": "Не удалось получить историю платежей. Попробуйте позже."}
     except requests.RequestException as e:

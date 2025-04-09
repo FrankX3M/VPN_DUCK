@@ -15,11 +15,11 @@ async def on_startup(dp):
     """Set up bot on startup."""
     logging.info("Bot started!")
     
-    # Регистрация Callback middleware
-    dp.middleware.setup(CallbackMiddleware(bot, logger))
-    
-    # Регистрация всех обработчиков
+    # Сначала регистрируем все обработчики
     register_all_handlers(dp)
+    
+    # Затем устанавливаем middleware
+    dp.middleware.setup(CallbackMiddleware(bot, logger))
     
     # Установка команд бота
     from handlers.start import setup_bot_commands

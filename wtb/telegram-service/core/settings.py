@@ -4,8 +4,6 @@ from aiogram import Bot, Dispatcher
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
-# from core.callback_middleware import CallbackMiddleware
-
 # Конфигурация логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,7 +23,13 @@ bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 dp.middleware.setup(LoggingMiddleware())
-# dp.middleware.setup(CallbackMiddleware())
+# Middleware регистрируется в bot.py
+
+# Функция для установки состояния FSM
+def set_state(user_id, state_name):
+    """Устанавливает состояние для пользователя и логирует."""
+    logger.info(f"Устанавливаем состояние {state_name} для пользователя {user_id}")
+    # Реальная установка состояния происходит в обработчиках
 
 # Константы для продления
 EXTEND_OPTIONS = [
