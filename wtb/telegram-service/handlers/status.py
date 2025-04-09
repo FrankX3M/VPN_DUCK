@@ -29,11 +29,11 @@ async def get_config_status(message: types.Message):
             
             # Статус конфигурации
             status_text = (
-                f"📊 *Статус вашей конфигурации WireGuard*\n\n"
-                f"▫️ Активна: *Да*\n"
-                f"▫️ Создана: *{created_at}*\n"
-                f"▫️ Действует до: *{expiry_formatted}*\n"
-                f"▫️ Осталось: *{remaining_days} дн. {remaining_hours} ч.*\n"
+                f"📊 <b>Статус вашей конфигурации WireGuard</b>\n\n"
+                f"▫️ Активна: <b>Да</b>\n"
+                f"▫️ Создана: <b>{created_at}</b>\n"
+                f"▫️ Действует до: <b>{expiry_formatted}</b>\n"
+                f"▫️ Осталось: <b>{remaining_days} дн. {remaining_hours} ч.</b>\n"
             )
             
             # Формируем клавиатуру
@@ -41,29 +41,34 @@ async def get_config_status(message: types.Message):
             
             await message.reply(
                 status_text,
-                parse_mode=ParseMode.MARKDOWN,
+                parse_mode=ParseMode.HTML,
                 reply_markup=keyboard
             )
         else:
             keyboard = get_create_config_keyboard()
             
             await message.reply(
-                "⚠️ *У вас нет активной конфигурации*\n\n"
+                "⚠️ <b>У вас нет активной конфигурации</b>\n\n"
                 "Для создания новой конфигурации нажмите кнопку ниже или используйте команду /create.",
-                parse_mode=ParseMode.MARKDOWN,
+                parse_mode=ParseMode.HTML,
                 reply_markup=keyboard
             )
     except Exception as e:
-        logger.error(f"Ошибка при запросе к API: {str(e)}")
+        logger.error(f"Ошибка при запросе к API: {str(e)}", exc_info=True)
         await message.reply(
-            "❌ *Ошибка при получении данных о конфигурации*\n\n"
+            "❌ <b>Ошибка при получении данных о конфигурации</b>\n\n"
             "Пожалуйста, попробуйте позже.",
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
 
 # Обработчик для callback кнопки status
 async def status_callback(callback_query: types.CallbackQuery):
     """Обработка запроса статуса через callback."""
+    # Проверка что колбэк не был уже обработан middleware
+    if getattr(callback_query, '_handled', False):
+        logger.info(f"Колбэк {callback_query.data} уже обработан middleware, пропускаем")
+        return
+        
     await bot.answer_callback_query(callback_query.id)
     
     user_id = callback_query.from_user.id
@@ -86,40 +91,30 @@ async def status_callback(callback_query: types.CallbackQuery):
             
             await bot.send_message(
                 user_id,
-                f"📊 *Статус вашей конфигурации*\n\n"
-                f"▫️ Активна: *Да*\n"
-                f"▫️ Срок действия: до *{expiry_formatted}*\n"
-                f"▫️ Осталось: *{remaining_days} дн. {remaining_hours} ч.*\n",
-                parse_mode=ParseMode.MARKDOWN
+                f"📊 <b>Статус вашей конфигурации</b>\n\n"
+                f"▫️ Активна: <b>Да</b>\n"
+                f"▫️ Срок действия: до <b>{expiry_formatted}</b>\n"
+                f"▫️ Осталось: <b>{remaining_days} дн. {remaining_hours} ч.</b>\n",
+                parse_mode=ParseMode.HTML
             )
         else:
             await bot.send_message(
                 user_id,
-                "❌ *У вас нет активной конфигурации*\n\n"
+                "❌ <b>У вас нет активной конфигурации</b>\n\n"
                 "Создайте новую с помощью команды /create.",
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
     except Exception as e:
-        logger.error(f"Ошибка при запросе к API: {str(e)}")
+        logger.error(f"Ошибка при запросе к API: {str(e)}", exc_info=True)
         await bot.send_message(
             user_id,
-            "❌ *Ошибка при получении данных о конфигурации*\n\n"
+            "❌ <b>Ошибка при получении данных о конфигурации</b>\n\n"
             "Пожалуйста, попробуйте позже.",
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
-
-# Обработчик для получения конфигурации
-async def send_config_file(callback_query: types.CallbackQuery):
-    """Отправка файла конфигурации пользователю."""
-    await bot.answer_callback_query(callback_query.id)
-    user_id = callback_query.from_user.id
-    
-    # Эту функцию нужно реализовать отдельно
-    # Здесь должен быть код для получения и отправки конфигурации
 
 def register_handlers_status(dp: Dispatcher):
     """Регистрирует обработчики для проверки статуса."""
     dp.register_message_handler(get_config_status, commands=['status'])
     dp.register_message_handler(get_config_status, lambda message: message.text == "📊 Статус")
-    dp.register_callback_query_handler(status_callback, lambda c: c.data == "status")
-    dp.register_callback_query_handler(send_config_file, lambda c: c.data == "get_config")
+    dp.register_callback_query_handler(status_callback, lambda c: c.data == "status", state="*")

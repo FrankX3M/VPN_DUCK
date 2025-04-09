@@ -9,7 +9,7 @@ async def stars_info_callback(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     
     info_text = (
-        "⭐ *Telegram Stars - Информация*\n\n"
+        "⭐ <b>Telegram Stars - Информация</b>\n\n"
         "Telegram Stars - это виртуальная валюта Telegram, которую можно использовать для покупки "
         "цифровых товаров и услуг в экосистеме Telegram.\n\n"
         "С помощью Stars вы можете:\n"
@@ -28,7 +28,7 @@ async def stars_info_callback(callback_query: types.CallbackQuery):
         info_text,
         chat_id=callback_query.message.chat.id,
         message_id=callback_query.message.message_id,
-        parse_mode=ParseMode.MARKDOWN,
+        parse_mode=ParseMode.HTML,
         reply_markup=keyboard
     )
 
@@ -36,7 +36,7 @@ async def stars_info_callback(callback_query: types.CallbackQuery):
 async def stars_info_command(message: types.Message):
     """Информация о Telegram Stars через команду."""
     info_text = (
-        "⭐ *Telegram Stars - Информация*\n\n"
+        "⭐ <b>Telegram Stars - Информация</b>\n\n"
         "Telegram Stars - это виртуальная валюта Telegram, которую можно использовать для покупки "
         "цифровых товаров и услуг в экосистеме Telegram.\n\n"
         "С помощью Stars вы можете:\n"
@@ -53,7 +53,7 @@ async def stars_info_command(message: types.Message):
     
     await message.reply(
         info_text,
-        parse_mode=ParseMode.MARKDOWN,
+        parse_mode=ParseMode.HTML,
         reply_markup=keyboard
     )
 
@@ -64,7 +64,7 @@ async def topup_stars(callback_query: types.CallbackQuery):
     
     # Информационное сообщение о пополнении звезд
     await bot.edit_message_text(
-        "💵 *Пополнение баланса Telegram Stars*\n\n"
+        "💵 <b>Пополнение баланса Telegram Stars</b>\n\n"
         "Для пополнения баланса звезд Telegram, пожалуйста, воспользуйтесь официальным интерфейсом Telegram.\n\n"
         "1. Откройте любой чат\n"
         "2. Нажмите на кнопку прикрепления (скрепка)\n"
@@ -72,7 +72,7 @@ async def topup_stars(callback_query: types.CallbackQuery):
         "4. Следуйте инструкциям для пополнения баланса",
         chat_id=callback_query.message.chat.id,
         message_id=callback_query.message.message_id,
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
 
 def register_handlers_stars_info(dp: Dispatcher):

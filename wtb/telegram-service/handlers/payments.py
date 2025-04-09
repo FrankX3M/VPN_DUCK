@@ -16,8 +16,7 @@ async def get_payment_history_handler(message: types.Message):
         
         if "error" in result:
             await message.reply(
-                f"❌ {result['error']}",
-                parse_mode=ParseMode.MARKDOWN
+                f"❌ {result['error']}"
             )
             return
         
@@ -25,34 +24,34 @@ async def get_payment_history_handler(message: types.Message):
         
         if not payments:
             await message.reply(
-                "📊 *История платежей*\n\n"
+                "📊 <b>История платежей</b>\n\n"
                 "У вас еще нет платежей за продление конфигурации.",
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
             return
         
         # Формируем сообщение с историей платежей
-        history_text = "📊 *История платежей*\n\n"
+        history_text = "📊 <b>История платежей</b>\n\n"
         
         for i, payment in enumerate(payments[:10], 1):  # Ограничиваем 10 последними платежами
             created_at = datetime.fromisoformat(payment["created_at"]).strftime("%d.%m.%Y %H:%M")
             history_text += (
-                f"*{i}.* {created_at}\n"
-                f"▫️ Продление: *{payment['days_extended']} дней*\n"
-                f"▫️ Оплачено: *{payment['stars_amount']} ⭐*\n"
-                f"▫️ Статус: *{payment['status']}*\n\n"
+                f"<b>{i}.</b> {created_at}\n"
+                f"▫️ Продление: <b>{payment['days_extended']} дней</b>\n"
+                f"▫️ Оплачено: <b>{payment['stars_amount']} ⭐</b>\n"
+                f"▫️ Статус: <b>{payment['status']}</b>\n\n"
             )
         
         await message.reply(
             history_text,
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
     except Exception as e:
-        logger.error(f"Ошибка при получении истории платежей: {str(e)}")
+        logger.error(f"Ошибка при получении истории платежей: {str(e)}", exc_info=True)
         await message.reply(
-            "❌ *Произошла ошибка*\n\n"
+            "❌ <b>Произошла ошибка</b>\n\n"
             "Пожалуйста, попробуйте позже.",
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
 
 def register_handlers_payments(dp: Dispatcher):

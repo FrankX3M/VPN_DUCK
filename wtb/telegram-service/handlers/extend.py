@@ -20,9 +20,9 @@ async def extend_config_start(message: types.Message):
         
         if not config or not config.get("active", False):
             await message.reply(
-                "⚠️ *У вас нет активной конфигурации для продления!*\n\n"
+                "⚠️ <b>У вас нет активной конфигурации для продления!</b>\n\n"
                 "Сначала создайте конфигурацию с помощью команды /create.",
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
             return
         
@@ -35,26 +35,31 @@ async def extend_config_start(message: types.Message):
         keyboard = get_extend_keyboard()
         
         await message.reply(
-            f"⏰ *Продление конфигурации WireGuard*\n\n"
-            f"Текущий срок действия: до *{expiry_formatted}*\n\n"
+            f"⏰ <b>Продление конфигурации WireGuard</b>\n\n"
+            f"Текущий срок действия: до <b>{expiry_formatted}</b>\n\n"
             f"Выберите длительность продления:",
-            parse_mode=ParseMode.MARKDOWN,
+            parse_mode=ParseMode.HTML,
             reply_markup=keyboard
         )
         
         # Переходим в состояние выбора длительности
         await ExtendConfigStates.selecting_duration.set()
     except Exception as e:
-        logger.error(f"Ошибка при запросе к API: {str(e)}")
+        logger.error(f"Ошибка при запросе к API: {str(e)}", exc_info=True)
         await message.reply(
-            "❌ *Ошибка при получении данных о конфигурации*\n\n"
+            "❌ <b>Ошибка при получении данных о конфигурации</b>\n\n"
             "Пожалуйста, попробуйте позже.",
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
 
 # Обработчик для inline-кнопки начала продления
-async def start_extend_from_button(callback_query: types.CallbackQuery, state: FSMContext = None):
+async def start_extend_from_button(callback_query: types.CallbackQuery, state: FSMContext):
     """Начало процесса продления через inline кнопку."""
+    # Проверка что колбэк не был уже обработан
+    if getattr(callback_query, '_handled', False):
+        logger.info(f"Колбэк {callback_query.data} уже обработан, пропускаем")
+        return
+        
     logger.info(f"Вызван start_extend_from_button с callback_data: {callback_query.data}")
     
     # Отмечаем колбэк как обработанный
@@ -63,6 +68,11 @@ async def start_extend_from_button(callback_query: types.CallbackQuery, state: F
     # Получаем user_id из callback_query
     user_id = callback_query.from_user.id
     
+    # Сбрасываем предыдущее состояние, если было
+    current_state = await state.get_state()
+    if current_state:
+        await state.finish()
+    
     try:
         # Проверяем, есть ли у пользователя активная конфигурация
         config = await get_user_config(user_id)
@@ -70,9 +80,9 @@ async def start_extend_from_button(callback_query: types.CallbackQuery, state: F
         if not config or not config.get("active", False):
             await bot.send_message(
                 user_id,
-                "⚠️ *У вас нет активной конфигурации для продления!*\n\n"
+                "⚠️ <b>У вас нет активной конфигурации для продления!</b>\n\n"
                 "Сначала создайте конфигурацию с помощью команды /create.",
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
             return
         
@@ -86,23 +96,22 @@ async def start_extend_from_button(callback_query: types.CallbackQuery, state: F
         
         await bot.send_message(
             user_id,
-            f"⏰ *Продление конфигурации WireGuard*\n\n"
-            f"Текущий срок действия: до *{expiry_formatted}*\n\n"
+            f"⏰ <b>Продление конфигурации WireGuard</b>\n\n"
+            f"Текущий срок действия: до <b>{expiry_formatted}</b>\n\n"
             f"Выберите длительность продления:",
-            parse_mode=ParseMode.MARKDOWN,
+            parse_mode=ParseMode.HTML,
             reply_markup=keyboard
         )
         
-        # Переходим в состояние выбора длительности, но только если state передан
-        if state:
-            await ExtendConfigStates.selecting_duration.set()
+        # Переходим в состояние выбора длительности
+        await ExtendConfigStates.selecting_duration.set()
     except Exception as e:
-        logger.error(f"Ошибка при запросе к API: {str(e)}")
+        logger.error(f"Ошибка при запросе к API: {str(e)}", exc_info=True)
         await bot.send_message(
             user_id,
-            "❌ *Ошибка при получении данных о конфигурации*\n\n"
+            "❌ <b>Ошибка при получении данных о конфигурации</b>\n\n"
             "Пожалуйста, попробуйте позже.",
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
 
 # Обработчик для выбора опции продления
@@ -130,24 +139,24 @@ async def process_extend_option(callback_query: types.CallbackQuery, state: FSMC
         
         # Обновляем сообщение с информацией о процессе оплаты
         await bot.edit_message_text(
-            f"⏰ *Продление конфигурации WireGuard*\n\n"
-            f"Вы выбрали продление на *{days} дней* за *{stars} ⭐*\n\n"
+            f"⏰ <b>Продление конфигурации WireGuard</b>\n\n"
+            f"Вы выбрали продление на <b>{days} дней</b> за <b>{stars} ⭐</b>\n\n"
             f"Для оплаты используйте форму оплаты, отправленную выше.",
             chat_id=callback_query.message.chat.id,
             message_id=callback_query.message.message_id,
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
         
         # Переходим в состояние подтверждения оплаты
         await ExtendConfigStates.confirming_payment.set()
     except Exception as e:
-        logger.error(f"Ошибка при создании платежной формы: {str(e)}")
+        logger.error(f"Ошибка при создании платежной формы: {str(e)}", exc_info=True)
         await bot.edit_message_text(
-            f"❌ *Ошибка при создании платежной формы*\n\n"
+            f"❌ <b>Ошибка при создании платежной формы</b>\n\n"
             f"Пожалуйста, попробуйте позже или обратитесь в поддержку.",
             chat_id=callback_query.message.chat.id,
             message_id=callback_query.message.message_id,
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
         
         # Сбрасываем состояние
@@ -191,7 +200,7 @@ async def process_pre_checkout(pre_checkout_query: types.PreCheckoutQuery, state
             stars=stars
         )
     except Exception as e:
-        logger.error(f"Ошибка при обработке pre-checkout: {str(e)}")
+        logger.error(f"Ошибка при обработке pre-checkout: {str(e)}", exc_info=True)
         await bot.answer_pre_checkout_query(
             pre_checkout_query.id,
             ok=False,
@@ -220,8 +229,8 @@ async def process_successful_payment(message: types.Message, state: FSMContext):
         
         if "error" in result:
             await message.reply(
-                f"❌ *Ошибка!*\n\n{result['error']}",
-                parse_mode=ParseMode.MARKDOWN
+                f"❌ <b>Ошибка!</b>\n\n{result['error']}",
+                parse_mode=ParseMode.HTML
             )
         else:
             # Получаем обновленные данные о конфигурации
@@ -236,27 +245,27 @@ async def process_successful_payment(message: types.Message, state: FSMContext):
                 keyboard = get_status_keyboard()
                 
                 await message.reply(
-                    f"✅ *Конфигурация успешно продлена!*\n\n"
-                    f"▫️ Продление: *{days} дней*\n"
-                    f"▫️ Оплачено: *{stars} ⭐*\n"
-                    f"▫️ Действует до: *{expiry_formatted}*\n\n"
+                    f"✅ <b>Конфигурация успешно продлена!</b>\n\n"
+                    f"▫️ Продление: <b>{days} дней</b>\n"
+                    f"▫️ Оплачено: <b>{stars} ⭐</b>\n"
+                    f"▫️ Действует до: <b>{expiry_formatted}</b>\n\n"
                     f"Спасибо за использование нашего сервиса!",
-                    parse_mode=ParseMode.MARKDOWN,
+                    parse_mode=ParseMode.HTML,
                     reply_markup=keyboard
                 )
             else:
                 await message.reply(
-                    f"✅ *Конфигурация успешно продлена на {days} дней!*\n\n"
-                    f"Оплачено: *{stars} ⭐*\n\n"
+                    f"✅ <b>Конфигурация успешно продлена на {days} дней!</b>\n\n"
+                    f"Оплачено: <b>{stars} ⭐</b>\n\n"
                     f"Для просмотра обновленной информации используйте команду /status.",
-                    parse_mode=ParseMode.MARKDOWN
+                    parse_mode=ParseMode.HTML
                 )
     except Exception as e:
-        logger.error(f"Ошибка при обработке платежа: {str(e)}")
+        logger.error(f"Ошибка при обработке платежа: {str(e)}", exc_info=True)
         await message.reply(
-            "❌ *Ошибка при обработке платежа*\n\n"
+            "❌ <b>Ошибка при обработке платежа</b>\n\n"
             "Пожалуйста, свяжитесь с поддержкой для решения проблемы.",
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
     
     # Сбрасываем состояние

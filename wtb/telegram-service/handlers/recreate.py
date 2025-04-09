@@ -17,7 +17,7 @@ async def recreate_config_handler(callback_query: types.CallbackQuery):
     keyboard = get_recreate_confirm_keyboard()
     
     await bot.edit_message_text(
-        "⚠️ *Пересоздание конфигурации WireGuard*\n\n"
+        "⚠️ <b>Пересоздание конфигурации WireGuard</b>\n\n"
         "Внимание! При пересоздании конфигурации:\n"
         "• Текущая конфигурация будет деактивирована\n"
         "• Вы получите новую конфигурацию с новыми ключами\n"
@@ -26,7 +26,7 @@ async def recreate_config_handler(callback_query: types.CallbackQuery):
         "Подтвердите пересоздание конфигурации:",
         chat_id=callback_query.message.chat.id,
         message_id=callback_query.message.message_id,
-        parse_mode=ParseMode.MARKDOWN,
+        parse_mode=ParseMode.HTML,
         reply_markup=keyboard
     )
 
@@ -38,11 +38,11 @@ async def confirm_recreate_config(callback_query: types.CallbackQuery):
     
     # Сообщаем пользователю о начале процесса пересоздания
     await bot.edit_message_text(
-        "🔄 *Пересоздание конфигурации...*\n\n"
+        "🔄 <b>Пересоздание конфигурации...</b>\n\n"
         "Пожалуйста, подождите. Это может занять несколько секунд.",
         chat_id=callback_query.message.chat.id,
         message_id=callback_query.message.message_id,
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
     
     try:
@@ -51,10 +51,10 @@ async def confirm_recreate_config(callback_query: types.CallbackQuery):
         
         if "error" in config_data:
             await bot.edit_message_text(
-                f"❌ *Ошибка!*\n\n{config_data['error']}",
+                f"❌ <b>Ошибка!</b>\n\n{config_data['error']}",
                 chat_id=callback_query.message.chat.id,
                 message_id=callback_query.message.message_id,
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
             return
         
@@ -62,11 +62,11 @@ async def confirm_recreate_config(callback_query: types.CallbackQuery):
         
         if not config_text:
             await bot.edit_message_text(
-                "❌ *Ошибка при пересоздании конфигурации*\n\n"
+                "❌ <b>Ошибка при пересоздании конфигурации</b>\n\n"
                 "Пожалуйста, попробуйте позже.",
                 chat_id=callback_query.message.chat.id,
                 message_id=callback_query.message.message_id,
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
             return
         
@@ -79,7 +79,7 @@ async def confirm_recreate_config(callback_query: types.CallbackQuery):
             if expiry_time:
                 expiry_dt = datetime.fromisoformat(expiry_time)
                 expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
-                expiry_text = f"▫️ Срок действия: до *{expiry_formatted}*\n"
+                expiry_text = f"▫️ Срок действия: до <b>{expiry_formatted}</b>\n"
         
         # Создаем файл конфигурации
         config_file = BytesIO(config_text.encode('utf-8'))
@@ -90,12 +90,12 @@ async def confirm_recreate_config(callback_query: types.CallbackQuery):
         
         # Обновляем сообщение об успешном пересоздании
         await bot.edit_message_text(
-            f"✅ *Конфигурация успешно пересоздана!*\n\n"
+            f"✅ <b>Конфигурация успешно пересоздана!</b>\n\n"
             f"{expiry_text}\n"
             f"Файл конфигурации и QR-код будут отправлены отдельными сообщениями.",
             chat_id=callback_query.message.chat.id,
             message_id=callback_query.message.message_id,
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
         
         if qr_buffer:
@@ -103,23 +103,23 @@ async def confirm_recreate_config(callback_query: types.CallbackQuery):
             await bot.send_photo(
                 user_id,
                 qr_buffer,
-                caption="🔑 *QR-код вашей новой конфигурации WireGuard*\n\n"
+                caption="🔑 <b>QR-код вашей новой конфигурации WireGuard</b>\n\n"
                         "Отсканируйте этот код в приложении WireGuard для быстрой настройки.",
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
         
         # Отправляем файл конфигурации
         await bot.send_document(
             user_id,
             config_file,
-            caption="📋 *Файл конфигурации WireGuard*\n\n"
+            caption="📋 <b>Файл конфигурации WireGuard</b>\n\n"
                     "Импортируйте этот файл в приложение WireGuard для настройки соединения.",
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
         
         # Отправляем напоминание
         reminder_text = (
-            "⚠️ *Важное напоминание*\n\n"
+            "⚠️ <b>Важное напоминание</b>\n\n"
             "Не забудьте обновить конфигурацию на всех ваших устройствах!\n"
             "Старая конфигурация больше не будет работать."
         )
@@ -132,17 +132,17 @@ async def confirm_recreate_config(callback_query: types.CallbackQuery):
         await bot.send_message(
             user_id,
             reminder_text,
-            parse_mode=ParseMode.MARKDOWN,
+            parse_mode=ParseMode.HTML,
             reply_markup=keyboard
         )
     except Exception as e:
-        logger.error(f"Неожиданная ошибка: {str(e)}")
+        logger.error(f"Неожиданная ошибка: {str(e)}", exc_info=True)
         await bot.edit_message_text(
-            "❌ *Произошла ошибка*\n\n"
+            "❌ <b>Произошла ошибка</b>\n\n"
             "Пожалуйста, попробуйте позже.",
             chat_id=callback_query.message.chat.id,
             message_id=callback_query.message.message_id,
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
 
 # Обработчик для отмены пересоздания конфигурации
@@ -166,12 +166,12 @@ async def cancel_recreate_config(callback_query: types.CallbackQuery):
         )
         
         await bot.edit_message_text(
-            f"✅ *Текущая конфигурация сохранена*\n\n"
-            f"▫️ Срок действия: до *{expiry_formatted}*\n\n"
+            f"✅ <b>Текущая конфигурация сохранена</b>\n\n"
+            f"▫️ Срок действия: до <b>{expiry_formatted}</b>\n\n"
             f"Вы можете продлить срок действия или получить файл конфигурации снова.",
             chat_id=callback_query.message.chat.id,
             message_id=callback_query.message.message_id,
-            parse_mode=ParseMode.MARKDOWN,
+            parse_mode=ParseMode.HTML,
             reply_markup=keyboard
         )
     else:

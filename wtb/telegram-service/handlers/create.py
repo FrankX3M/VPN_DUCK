@@ -13,6 +13,11 @@ from utils.qr import generate_config_qr
 # Прямой обработчик для подтверждения создания конфигурации
 async def direct_confirm_create(callback_query: types.CallbackQuery):
     """Прямой обработчик подтверждения создания конфигурации."""
+    # Проверка что колбэк не был уже обработан middleware
+    if getattr(callback_query, '_handled', False):
+        logger.info(f"Колбэк {callback_query.data} уже обработан middleware, пропускаем")
+        return
+        
     logger.info(f"Вызван прямой обработчик direct_confirm_create с данными: {callback_query.data}")
     
     await bot.answer_callback_query(callback_query.id)
@@ -20,11 +25,11 @@ async def direct_confirm_create(callback_query: types.CallbackQuery):
     
     # Сообщаем пользователю о начале процесса создания
     await bot.edit_message_text(
-        "🔄 *Создание конфигурации...*\n\n"
+        "🔄 <b>Создание конфигурации...</b>\n\n"
         "Пожалуйста, подождите. Это может занять несколько секунд.",
         chat_id=callback_query.message.chat.id,
         message_id=callback_query.message.message_id,
-        parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.HTML
     )
     
     try:
@@ -33,10 +38,10 @@ async def direct_confirm_create(callback_query: types.CallbackQuery):
         
         if "error" in config_data:
             await bot.edit_message_text(
-                f"❌ *Ошибка!*\n\n{config_data['error']}",
+                f"❌ <b>Ошибка!</b>\n\n{config_data['error']}",
                 chat_id=callback_query.message.chat.id,
                 message_id=callback_query.message.message_id,
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
             return
         
@@ -44,11 +49,11 @@ async def direct_confirm_create(callback_query: types.CallbackQuery):
         
         if not config_text:
             await bot.edit_message_text(
-                "❌ *Ошибка при создании конфигурации*\n\n"
+                "❌ <b>Ошибка при создании конфигурации</b>\n\n"
                 "Пожалуйста, попробуйте позже.",
                 chat_id=callback_query.message.chat.id,
                 message_id=callback_query.message.message_id,
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
             return
         
@@ -61,7 +66,7 @@ async def direct_confirm_create(callback_query: types.CallbackQuery):
             if expiry_time:
                 expiry_dt = datetime.fromisoformat(expiry_time)
                 expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
-                expiry_text = f"▫️ Срок действия: до *{expiry_formatted}*\n"
+                expiry_text = f"▫️ Срок действия: до <b>{expiry_formatted}</b>\n"
         
         # Создаем файл конфигурации
         config_file = BytesIO(config_text.encode('utf-8'))
@@ -72,12 +77,12 @@ async def direct_confirm_create(callback_query: types.CallbackQuery):
         
         # Обновляем сообщение об успешном создании
         await bot.edit_message_text(
-            f"✅ *Конфигурация успешно создана!*\n\n"
+            f"✅ <b>Конфигурация успешно создана!</b>\n\n"
             f"{expiry_text}\n"
             f"Файл конфигурации и QR-код будут отправлены отдельными сообщениями.",
             chat_id=callback_query.message.chat.id,
             message_id=callback_query.message.message_id,
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
         
         if qr_buffer:
@@ -85,23 +90,23 @@ async def direct_confirm_create(callback_query: types.CallbackQuery):
             await bot.send_photo(
                 user_id,
                 qr_buffer,
-                caption="🔑 *QR-код вашей конфигурации WireGuard*\n\n"
+                caption="🔑 <b>QR-код вашей конфигурации WireGuard</b>\n\n"
                         "Отсканируйте этот код в приложении WireGuard для быстрой настройки.",
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
         
         # Отправляем файл конфигурации
         await bot.send_document(
             user_id,
             config_file,
-            caption="📋 *Файл конфигурации WireGuard*\n\n"
+            caption="📋 <b>Файл конфигурации WireGuard</b>\n\n"
                     "Импортируйте этот файл в приложение WireGuard для настройки соединения.",
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
         
         # Отправляем инструкции
         instructions_text = (
-            "📱 *Как использовать конфигурацию:*\n\n"
+            "📱 <b>Как использовать конфигурацию:</b>\n\n"
             "1️⃣ Установите приложение WireGuard на ваше устройство\n"
             "2️⃣ Откройте приложение и нажмите кнопку '+'\n"
             "3️⃣ Выберите 'Сканировать QR-код' или 'Импорт из файла'\n"
@@ -117,22 +122,27 @@ async def direct_confirm_create(callback_query: types.CallbackQuery):
         await bot.send_message(
             user_id,
             instructions_text,
-            parse_mode=ParseMode.MARKDOWN,
+            parse_mode=ParseMode.HTML,
             reply_markup=keyboard
         )
     except Exception as e:
-        logger.error(f"Неожиданная ошибка: {str(e)}")
+        logger.error(f"Неожиданная ошибка: {str(e)}", exc_info=True)
         await bot.edit_message_text(
-            "❌ *Произошла ошибка*\n\n"
+            "❌ <b>Произошла ошибка</b>\n\n"
             "Пожалуйста, попробуйте позже.",
             chat_id=callback_query.message.chat.id,
             message_id=callback_query.message.message_id,
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
 
 # Прямой обработчик для отмены создания конфигурации
 async def direct_cancel_create(callback_query: types.CallbackQuery):
     """Прямой обработчик отмены создания конфигурации."""
+    # Проверка что колбэк не был уже обработан middleware
+    if getattr(callback_query, '_handled', False):
+        logger.info(f"Колбэк {callback_query.data} уже обработан middleware, пропускаем")
+        return
+        
     logger.info(f"Вызван прямой обработчик direct_cancel_create с данными: {callback_query.data}")
     
     await bot.answer_callback_query(callback_query.id)
@@ -146,6 +156,11 @@ async def direct_cancel_create(callback_query: types.CallbackQuery):
 # Обработчик для создания новой конфигурации
 async def create_config(message: types.Message, state: FSMContext):
     """Создание новой конфигурации WireGuard."""
+    # Сначала завершаем предыдущее состояние, если было
+    current_state = await state.get_state()
+    if current_state:
+        await state.finish()
+        
     user_id = message.from_user.id
     
     try:
@@ -159,22 +174,22 @@ async def create_config(message: types.Message, state: FSMContext):
             expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
             
             await message.reply(
-                f"⚠️ *У вас уже есть активная конфигурация!*\n\n"
-                f"Срок действия: до *{expiry_formatted}*\n\n"
+                f"⚠️ <b>У вас уже есть активная конфигурация!</b>\n\n"
+                f"Срок действия: до <b>{expiry_formatted}</b>\n\n"
                 f"Вы можете продлить срок действия, получить файл конфигурации снова "
                 f"или пересоздать конфигурацию (текущая будет деактивирована).",
-                parse_mode=ParseMode.MARKDOWN,
+                parse_mode=ParseMode.HTML,
                 reply_markup=get_active_config_keyboard()
             )
             return
         
         # Отправляем сообщение с запросом подтверждения
         await message.reply(
-            "🔑 *Создание новой конфигурации WireGuard*\n\n"
+            "🔑 <b>Создание новой конфигурации WireGuard</b>\n\n"
             "После создания вы получите файл конфигурации и QR-код для быстрой настройки.\n\n"
-            "Начальный срок действия: *7 дней*\n\n"
+            "Начальный срок действия: <b>7 дней</b>\n\n"
             "Подтвердите создание новой конфигурации:",
-            parse_mode=ParseMode.MARKDOWN,
+            parse_mode=ParseMode.HTML,
             reply_markup=get_create_confirm_keyboard()
         )
         
@@ -182,11 +197,11 @@ async def create_config(message: types.Message, state: FSMContext):
         logger.info(f"Устанавливаем состояние CreateConfigStates.confirming_create для пользователя {message.from_user.id}")
         await CreateConfigStates.confirming_create.set()
     except Exception as e:
-        logger.error(f"Ошибка при создании конфигурации: {str(e)}")
+        logger.error(f"Ошибка при создании конфигурации: {str(e)}", exc_info=True)
         await message.reply(
-            "❌ *Произошла ошибка*\n\n"
+            "❌ <b>Произошла ошибка</b>\n\n"
             "Пожалуйста, попробуйте позже.",
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
 
 # Обработчик для inline-кнопки создания конфигурации
@@ -195,6 +210,11 @@ async def create_config_from_button(callback_query: types.CallbackQuery, state: 
     logger.info(f"Вызван обработчик create_config_from_button с callback_data: {callback_query.data}")
     
     await bot.answer_callback_query(callback_query.id)
+    
+    # Сначала завершаем предыдущее состояние, если было
+    current_state = await state.get_state()
+    if current_state:
+        await state.finish()
     
     # Получаем user_id из callback_query
     user_id = callback_query.from_user.id
@@ -211,11 +231,11 @@ async def create_config_from_button(callback_query: types.CallbackQuery, state: 
             
             await bot.send_message(
                 user_id,
-                f"⚠️ *У вас уже есть активная конфигурация!*\n\n"
-                f"Срок действия: до *{expiry_formatted}*\n\n"
+                f"⚠️ <b>У вас уже есть активная конфигурация!</b>\n\n"
+                f"Срок действия: до <b>{expiry_formatted}</b>\n\n"
                 f"Вы можете продлить срок действия, получить файл конфигурации снова "
                 f"или пересоздать конфигурацию (текущая будет деактивирована).",
-                parse_mode=ParseMode.MARKDOWN,
+                parse_mode=ParseMode.HTML,
                 reply_markup=get_active_config_keyboard()
             )
             return
@@ -226,11 +246,11 @@ async def create_config_from_button(callback_query: types.CallbackQuery, state: 
         # Отправляем сообщение с запросом подтверждения
         await bot.send_message(
             user_id,
-            "🔑 *Создание новой конфигурации WireGuard*\n\n"
+            "🔑 <b>Создание новой конфигурации WireGuard</b>\n\n"
             "После создания вы получите файл конфигурации и QR-код для быстрой настройки.\n\n"
-            "Начальный срок действия: *7 дней*\n\n"
+            "Начальный срок действия: <b>7 дней</b>\n\n"
             "Подтвердите создание новой конфигурации:",
-            parse_mode=ParseMode.MARKDOWN,
+            parse_mode=ParseMode.HTML,
             reply_markup=keyboard
         )
         
@@ -238,12 +258,12 @@ async def create_config_from_button(callback_query: types.CallbackQuery, state: 
         logger.info(f"Устанавливаем состояние CreateConfigStates.confirming_create для пользователя {user_id}")
         await CreateConfigStates.confirming_create.set()
     except Exception as e:
-        logger.error(f"Ошибка при запросе к API: {str(e)}")
+        logger.error(f"Ошибка при запросе к API: {str(e)}", exc_info=True)
         await bot.send_message(
             user_id,
-            "❌ *Ошибка при проверке существующей конфигурации*\n\n"
+            "❌ <b>Ошибка при проверке существующей конфигурации</b>\n\n"
             "Пожалуйста, попробуйте позже.",
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
 
 def register_handlers_create(dp: Dispatcher):
@@ -256,11 +276,11 @@ def register_handlers_create(dp: Dispatcher):
     # Регистрация колбэк-обработчиков с фильтрами, которые не пересекаются с middleware
     dp.register_callback_query_handler(
         direct_confirm_create, 
-        lambda c: c.data == 'confirm_create' and not c.data == 'direct_create',
-        state=CreateConfigStates.confirming_create
+        lambda c: c.data == 'confirm_create',
+        state='*'
     )
     dp.register_callback_query_handler(
         direct_cancel_create,
-        lambda c: c.data == 'cancel_create' and not c.data == 'direct_cancel',
-        state=CreateConfigStates.confirming_create
+        lambda c: c.data == 'cancel_create',
+        state='*'
     )

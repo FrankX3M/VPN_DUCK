@@ -19,6 +19,11 @@ class CallbackMiddleware(BaseMiddleware):
     
     async def on_pre_process_callback_query(self, callback_query: types.CallbackQuery, data: dict):
         """Обрабатывает колбэки перед основной диспетчеризацией."""
+        # Проверяем, обрабатывался ли уже этот callback
+        if getattr(callback_query, '_handled', False) or data.get('_handled', False):
+            self.logger.info(f"Колбэк {callback_query.data} уже был обработан, пропускаем")
+            return True
+            
         self.logger.info(f"Middleware: получен колбэк {callback_query.data}")
         
         # Обрабатываем колбэк direct_create
@@ -31,11 +36,11 @@ class CallbackMiddleware(BaseMiddleware):
             
             # Сообщаем пользователю о начале процесса создания
             await self.bot.edit_message_text(
-                "🔄 *Создание конфигурации...*\n\n"
+                "🔄 <b>Создание конфигурации...</b>\n\n"
                 "Пожалуйста, подождите. Это может занять несколько секунд.",
                 chat_id=callback_query.message.chat.id,
                 message_id=callback_query.message.message_id,
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
             
             try:
@@ -44,10 +49,10 @@ class CallbackMiddleware(BaseMiddleware):
                 
                 if "error" in config_data:
                     await self.bot.edit_message_text(
-                        f"❌ *Ошибка!*\n\n{config_data['error']}",
+                        f"❌ <b>Ошибка!</b>\n\n{config_data['error']}",
                         chat_id=callback_query.message.chat.id,
                         message_id=callback_query.message.message_id,
-                        parse_mode=ParseMode.MARKDOWN
+                        parse_mode=ParseMode.HTML
                     )
                     # Помечаем колбэк как обработанный - НЕСКОЛЬКИМИ СПОСОБАМИ для обхода ошибки aiogram
                     data['_handled'] = True
@@ -58,11 +63,11 @@ class CallbackMiddleware(BaseMiddleware):
                 
                 if not config_text:
                     await self.bot.edit_message_text(
-                        "❌ *Ошибка при создании конфигурации*\n\n"
+                        "❌ <b>Ошибка при создании конфигурации</b>\n\n"
                         "Пожалуйста, попробуйте позже.",
                         chat_id=callback_query.message.chat.id,
                         message_id=callback_query.message.message_id,
-                        parse_mode=ParseMode.MARKDOWN
+                        parse_mode=ParseMode.HTML
                     )
                     # Помечаем колбэк как обработанный - НЕСКОЛЬКИМИ СПОСОБАМИ для обхода ошибки aiogram
                     data['_handled'] = True
@@ -78,7 +83,7 @@ class CallbackMiddleware(BaseMiddleware):
                     if expiry_time:
                         expiry_dt = datetime.fromisoformat(expiry_time)
                         expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
-                        expiry_text = f"▫️ Срок действия: до *{expiry_formatted}*\n"
+                        expiry_text = f"▫️ Срок действия: до <b>{expiry_formatted}</b>\n"
                 
                 # Создаем файл конфигурации
                 config_file = BytesIO(config_text.encode('utf-8'))
@@ -89,12 +94,12 @@ class CallbackMiddleware(BaseMiddleware):
                 
                 # Обновляем сообщение об успешном создании
                 await self.bot.edit_message_text(
-                    f"✅ *Конфигурация успешно создана!*\n\n"
+                    f"✅ <b>Конфигурация успешно создана!</b>\n\n"
                     f"{expiry_text}\n"
                     f"Файл конфигурации и QR-код будут отправлены отдельными сообщениями.",
                     chat_id=callback_query.message.chat.id,
                     message_id=callback_query.message.message_id,
-                    parse_mode=ParseMode.MARKDOWN
+                    parse_mode=ParseMode.HTML
                 )
                 
                 if qr_buffer:
@@ -102,23 +107,23 @@ class CallbackMiddleware(BaseMiddleware):
                     await self.bot.send_photo(
                         user_id,
                         qr_buffer,
-                        caption="🔑 *QR-код вашей конфигурации WireGuard*\n\n"
+                        caption="🔑 <b>QR-код вашей конфигурации WireGuard</b>\n\n"
                                 "Отсканируйте этот код в приложении WireGuard для быстрой настройки.",
-                        parse_mode=ParseMode.MARKDOWN
+                        parse_mode=ParseMode.HTML
                     )
                 
                 # Отправляем файл конфигурации
                 await self.bot.send_document(
                     user_id,
                     config_file,
-                    caption="📋 *Файл конфигурации WireGuard*\n\n"
+                    caption="📋 <b>Файл конфигурации WireGuard</b>\n\n"
                             "Импортируйте этот файл в приложение WireGuard для настройки соединения.",
-                    parse_mode=ParseMode.MARKDOWN
+                    parse_mode=ParseMode.HTML
                 )
                 
                 # Отправляем инструкции
                 instructions_text = (
-                    "📱 *Как использовать конфигурацию:*\n\n"
+                    "📱 <b>Как использовать конфигурацию:</b>\n\n"
                     "1️⃣ Установите приложение WireGuard на ваше устройство\n"
                     "2️⃣ Откройте приложение и нажмите кнопку '+'\n"
                     "3️⃣ Выберите 'Сканировать QR-код' или 'Импорт из файла'\n"
@@ -134,7 +139,7 @@ class CallbackMiddleware(BaseMiddleware):
                 await self.bot.send_message(
                     user_id,
                     instructions_text,
-                    parse_mode=ParseMode.MARKDOWN,
+                    parse_mode=ParseMode.HTML,
                     reply_markup=keyboard
                 )
                 
@@ -144,13 +149,13 @@ class CallbackMiddleware(BaseMiddleware):
                 return True
                 
             except Exception as e:
-                self.logger.error(f"Middleware: ошибка при создании конфигурации: {str(e)}")
+                self.logger.error(f"Middleware: ошибка при создании конфигурации: {str(e)}", exc_info=True)
                 await self.bot.edit_message_text(
-                    "❌ *Произошла ошибка*\n\n"
+                    "❌ <b>Произошла ошибка</b>\n\n"
                     "Пожалуйста, попробуйте позже.",
                     chat_id=callback_query.message.chat.id,
                     message_id=callback_query.message.message_id,
-                    parse_mode=ParseMode.MARKDOWN
+                    parse_mode=ParseMode.HTML
                 )
                 
                 # Помечаем колбэк как обработанный - НЕСКОЛЬКИМИ СПОСОБАМИ
@@ -189,8 +194,8 @@ class CallbackMiddleware(BaseMiddleware):
                 if "error" in config_data:
                     await self.bot.send_message(
                         user_id,
-                        f"⚠️ *Ошибка при получении конфигурации*\n\n{config_data['error']}",
-                        parse_mode=ParseMode.MARKDOWN
+                        f"⚠️ <b>Ошибка при получении конфигурации</b>\n\n{config_data['error']}",
+                        parse_mode=ParseMode.HTML
                     )
                     data['_handled'] = True
                     callback_query._handled = True
@@ -201,9 +206,9 @@ class CallbackMiddleware(BaseMiddleware):
                 if not config_text:
                     await self.bot.send_message(
                         user_id,
-                        "⚠️ *Ошибка при получении конфигурации*\n\n"
+                        "⚠️ <b>Ошибка при получении конфигурации</b>\n\n"
                         "Конфигурация не найдена. Пожалуйста, создайте новую с помощью команды /create.",
-                        parse_mode=ParseMode.MARKDOWN
+                        parse_mode=ParseMode.HTML
                     )
                     data['_handled'] = True
                     callback_query._handled = True
@@ -221,23 +226,23 @@ class CallbackMiddleware(BaseMiddleware):
                     await self.bot.send_photo(
                         user_id,
                         qr_buffer,
-                        caption="🔑 *QR-код вашей конфигурации WireGuard*\n\n"
+                        caption="🔑 <b>QR-код вашей конфигурации WireGuard</b>\n\n"
                                 "Отсканируйте этот код в приложении WireGuard для быстрой настройки.",
-                        parse_mode=ParseMode.MARKDOWN
+                        parse_mode=ParseMode.HTML
                     )
                 
                 # Отправляем файл конфигурации
                 await self.bot.send_document(
                     user_id,
                     config_file,
-                    caption="📋 *Файл конфигурации WireGuard*\n\n"
+                    caption="📋 <b>Файл конфигурации WireGuard</b>\n\n"
                             "Импортируйте этот файл в приложение WireGuard для настройки соединения.",
-                    parse_mode=ParseMode.MARKDOWN
+                    parse_mode=ParseMode.HTML
                 )
                 
                 # Отправляем инструкции
                 instructions_text = (
-                    "📱 *Как использовать конфигурацию:*\n\n"
+                    "📱 <b>Как использовать конфигурацию:</b>\n\n"
                     "1️⃣ Установите приложение WireGuard на ваше устройство\n"
                     "2️⃣ Откройте приложение и нажмите кнопку '+'\n"
                     "3️⃣ Выберите 'Сканировать QR-код' или 'Импорт из файла'\n"
@@ -248,7 +253,7 @@ class CallbackMiddleware(BaseMiddleware):
                 await self.bot.send_message(
                     user_id,
                     instructions_text,
-                    parse_mode=ParseMode.MARKDOWN
+                    parse_mode=ParseMode.HTML
                 )
                 
                 # Помечаем колбэк как обработанный
@@ -257,12 +262,12 @@ class CallbackMiddleware(BaseMiddleware):
                 return True
                 
             except Exception as e:
-                self.logger.error(f"Middleware: ошибка при получении конфигурации: {str(e)}")
+                self.logger.error(f"Middleware: ошибка при получении конфигурации: {str(e)}", exc_info=True)
                 await self.bot.send_message(
                     user_id,
-                    "❌ *Ошибка при получении конфигурации*\n\n"
+                    "❌ <b>Ошибка при получении конфигурации</b>\n\n"
                     "Пожалуйста, попробуйте позже.",
-                    parse_mode=ParseMode.MARKDOWN
+                    parse_mode=ParseMode.HTML
                 )
                 
                 # Помечаем колбэк как обработанный
@@ -272,9 +277,9 @@ class CallbackMiddleware(BaseMiddleware):
             
         # Колбэки на продление мы НЕ обрабатываем в middleware
         elif callback_query.data == "start_extend":
-            self.logger.info("Middleware: получен колбэк start_extend")
+            self.logger.info("Middleware: получен колбэк start_extend, передаем в обработчики")
             # Этот колбэк пропускаем в основные обработчики
-            pass
+            return None
 
         # Обработка колбэка status
         elif callback_query.data == "status":
@@ -301,18 +306,18 @@ class CallbackMiddleware(BaseMiddleware):
                     
                     await self.bot.send_message(
                         user_id,
-                        f"📊 *Статус вашей конфигурации*\n\n"
-                        f"▫️ Активна: *Да*\n"
-                        f"▫️ Срок действия: до *{expiry_formatted}*\n"
-                        f"▫️ Осталось: *{remaining_days} дн. {remaining_hours} ч.*\n",
-                        parse_mode=ParseMode.MARKDOWN
+                        f"📊 <b>Статус вашей конфигурации</b>\n\n"
+                        f"▫️ Активна: <b>Да</b>\n"
+                        f"▫️ Срок действия: до <b>{expiry_formatted}</b>\n"
+                        f"▫️ Осталось: <b>{remaining_days} дн. {remaining_hours} ч.</b>\n",
+                        parse_mode=ParseMode.HTML
                     )
                 else:
                     await self.bot.send_message(
                         user_id,
-                        "❌ *У вас нет активной конфигурации*\n\n"
+                        "❌ <b>У вас нет активной конфигурации</b>\n\n"
                         "Создайте новую с помощью команды /create.",
-                        parse_mode=ParseMode.MARKDOWN
+                        parse_mode=ParseMode.HTML
                     )
                     
                 # Помечаем колбэк как обработанный
@@ -320,12 +325,12 @@ class CallbackMiddleware(BaseMiddleware):
                 callback_query._handled = True
                 return True
             except Exception as e:
-                self.logger.error(f"Middleware: ошибка при получении данных о конфигурации: {str(e)}")
+                self.logger.error(f"Middleware: ошибка при получении данных о конфигурации: {str(e)}", exc_info=True)
                 await self.bot.send_message(
                     user_id,
-                    "❌ *Ошибка при получении данных о конфигурации*\n\n"
+                    "❌ <b>Ошибка при получении данных о конфигурации</b>\n\n"
                     "Пожалуйста, попробуйте позже.",
-                    parse_mode=ParseMode.MARKDOWN
+                    parse_mode=ParseMode.HTML
                 )
                 
                 # Помечаем колбэк как обработанный
