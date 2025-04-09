@@ -175,10 +175,162 @@ class CallbackMiddleware(BaseMiddleware):
             callback_query._handled = True
             return True
             
+        # ДОБАВЛЕНО: Обработка колбэка get_config
+        elif callback_query.data == "get_config":
+            self.logger.info("Middleware: обрабатываем колбэк get_config")
+            
+            await self.bot.answer_callback_query(callback_query.id)
+            user_id = callback_query.from_user.id
+            
+            try:
+                # Запрашиваем данные о конфигурации
+                config_data = await get_config_from_wireguard(user_id)
+                
+                if "error" in config_data:
+                    await self.bot.send_message(
+                        user_id,
+                        f"⚠️ *Ошибка при получении конфигурации*\n\n{config_data['error']}",
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    data['_handled'] = True
+                    callback_query._handled = True
+                    return True
+                
+                config_text = config_data.get("config_text")
+                
+                if not config_text:
+                    await self.bot.send_message(
+                        user_id,
+                        "⚠️ *Ошибка при получении конфигурации*\n\n"
+                        "Конфигурация не найдена. Пожалуйста, создайте новую с помощью команды /create.",
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    data['_handled'] = True
+                    callback_query._handled = True
+                    return True
+                
+                # Создаем файл конфигурации
+                config_file = BytesIO(config_text.encode('utf-8'))
+                config_file.name = f"vpn_duck_{user_id}.conf"
+                
+                # Генерируем QR-код
+                qr_buffer = await generate_config_qr(config_text)
+                
+                if qr_buffer:
+                    # Отправляем QR-код
+                    await self.bot.send_photo(
+                        user_id,
+                        qr_buffer,
+                        caption="🔑 *QR-код вашей конфигурации WireGuard*\n\n"
+                                "Отсканируйте этот код в приложении WireGuard для быстрой настройки.",
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                
+                # Отправляем файл конфигурации
+                await self.bot.send_document(
+                    user_id,
+                    config_file,
+                    caption="📋 *Файл конфигурации WireGuard*\n\n"
+                            "Импортируйте этот файл в приложение WireGuard для настройки соединения.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+                # Отправляем инструкции
+                instructions_text = (
+                    "📱 *Как использовать конфигурацию:*\n\n"
+                    "1️⃣ Установите приложение WireGuard на ваше устройство\n"
+                    "2️⃣ Откройте приложение и нажмите кнопку '+'\n"
+                    "3️⃣ Выберите 'Сканировать QR-код' или 'Импорт из файла'\n"
+                    "4️⃣ После импорта нажмите на добавленную конфигурацию для подключения\n\n"
+                    "Готово! Теперь ваше соединение защищено VPN Duck 🦆"
+                )
+                
+                await self.bot.send_message(
+                    user_id,
+                    instructions_text,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+                # Помечаем колбэк как обработанный
+                data['_handled'] = True
+                callback_query._handled = True
+                return True
+                
+            except Exception as e:
+                self.logger.error(f"Middleware: ошибка при получении конфигурации: {str(e)}")
+                await self.bot.send_message(
+                    user_id,
+                    "❌ *Ошибка при получении конфигурации*\n\n"
+                    "Пожалуйста, попробуйте позже.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+                # Помечаем колбэк как обработанный
+                data['_handled'] = True
+                callback_query._handled = True
+                return True
+            
         # Колбэки на продление мы НЕ обрабатываем в middleware
         elif callback_query.data == "start_extend":
             self.logger.info("Middleware: получен колбэк start_extend")
             # Этот колбэк пропускаем в основные обработчики
             pass
+
+        # Обработка колбэка status
+        elif callback_query.data == "status":
+            self.logger.info("Middleware: обрабатываем колбэк status")
             
+            await self.bot.answer_callback_query(callback_query.id)
+            user_id = callback_query.from_user.id
+            
+            try:
+                # Запрашиваем данные о конфигурации
+                config = await get_user_config(user_id)
+                
+                if config and config.get("active", False):
+                    # Парсим и форматируем данные о конфигурации
+                    created_at = datetime.fromisoformat(config.get("created_at")).strftime("%d.%m.%Y %H:%M:%S")
+                    expiry_time = datetime.fromisoformat(config.get("expiry_time"))
+                    expiry_formatted = expiry_time.strftime("%d.%m.%Y %H:%M:%S")
+                    
+                    # Рассчитываем оставшееся время
+                    now = datetime.now()
+                    remaining_time = expiry_time - now
+                    remaining_days = remaining_time.days
+                    remaining_hours = remaining_time.seconds // 3600
+                    
+                    await self.bot.send_message(
+                        user_id,
+                        f"📊 *Статус вашей конфигурации*\n\n"
+                        f"▫️ Активна: *Да*\n"
+                        f"▫️ Срок действия: до *{expiry_formatted}*\n"
+                        f"▫️ Осталось: *{remaining_days} дн. {remaining_hours} ч.*\n",
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                else:
+                    await self.bot.send_message(
+                        user_id,
+                        "❌ *У вас нет активной конфигурации*\n\n"
+                        "Создайте новую с помощью команды /create.",
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    
+                # Помечаем колбэк как обработанный
+                data['_handled'] = True
+                callback_query._handled = True
+                return True
+            except Exception as e:
+                self.logger.error(f"Middleware: ошибка при получении данных о конфигурации: {str(e)}")
+                await self.bot.send_message(
+                    user_id,
+                    "❌ *Ошибка при получении данных о конфигурации*\n\n"
+                    "Пожалуйста, попробуйте позже.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+                # Помечаем колбэк как обработанный
+                data['_handled'] = True
+                callback_query._handled = True
+                return True
+
         return None  # Продолжаем обработку другими обработчиками

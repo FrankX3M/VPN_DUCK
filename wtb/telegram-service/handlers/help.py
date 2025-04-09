@@ -23,13 +23,11 @@ async def send_help(message: types.Message):
         "Сервис использует Telegram Stars для оплаты. "
         "Для пополнения баланса звезд используйте официальный интерфейс Telegram.\n\n"
         
-        "Если у вас возникли вопросы или проблемы, пожалуйста, свяжитесь с поддержкой."
+        "Если у вас возникли вопросы или проблемы, свяжитесь с поддержкой."
     )
     
-    await message.reply(
-        help_text,
-        parse_mode=ParseMode.MARKDOWN
-    )
+    # Используем обычный текст вместо Markdown, чтобы избежать проблем с форматированием
+    await message.reply(help_text)
 
 def register_handlers_help(dp: Dispatcher):
     """Регистрирует обработчики для справки."""
