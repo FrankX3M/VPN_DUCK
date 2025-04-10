@@ -1,6 +1,7 @@
 *.conf
 *.key
 __pycache__/
+wiki/
 *.py[cod]
 *.class
 .env
