@@ -29,11 +29,13 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY . .
 RUN mkdir -p /etc/wireguard
-COPY ./wgup/wg0.conf /etc/wireguard/wg0.conf.backup
+# COPY ./wgup/wg0.conf /etc/wireguard/wg0.conf.backup
 
 # Делаем скрипт исполняемым
 COPY init-iptables.sh /app/
 RUN chmod +x /app/init-iptables.sh
+COPY wireguard_manager.py /app/
+
 
 # Запускаем iptables и затем wireguard_manager.py
 CMD ["/bin/bash", "-c", "/app/init-iptables.sh && python3 wireguard_manager.py"]

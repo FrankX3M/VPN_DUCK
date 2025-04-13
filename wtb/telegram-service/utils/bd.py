@@ -9,7 +9,9 @@ async def get_user_config(user_id):
     """Получает конфигурацию пользователя из базы данных."""
     try:
         logger.info(f"Получение конфигурации для пользователя {user_id}")
-        response = requests.get(f"{DATABASE_SERVICE_URL}/config/{user_id}", timeout=5)
+        logger.info(f"Используем URL: {DATABASE_SERVICE_URL}/config/{user_id}")
+        
+        response = requests.get(f"{DATABASE_SERVICE_URL}/config/{user_id}", timeout=10)
         
         logger.info(f"Ответ API: код {response.status_code}")
         
@@ -25,31 +27,18 @@ async def get_user_config(user_id):
         logger.error(f"Ошибка запроса конфигурации пользователя: {str(e)}")
         return None
 
-# Функция для эмуляции получения баланса Telegram Stars
-async def get_stars_balance(user_id):
-    """
-    Эта функция не может напрямую получить баланс Telegram Stars пользователя.
-    
-    Согласно документации Telegram Bot API, нет прямого метода для проверки баланса звезд.
-    Вместо этого мы должны использовать процесс создания инвойса и проверки возможности оплаты
-    через pre_checkout_query.
-    
-    Возвращаем условное значение для продолжения работы бота.
-    """
-    logger.warning("Прямая проверка баланса звезд через API не доступна")
-    return 10000  # Возвращаем условное значение
-
 # Функция для создания новой конфигурации
 async def create_new_config(user_id):
     """Создает новую конфигурацию WireGuard."""
     try:
         logger.info(f"Создание новой конфигурации для пользователя {user_id}")
+        logger.info(f"Используем URL wireguard-service: {WIREGUARD_SERVICE_URL}/create")
         
         # Сначала запрашиваем создание конфигурации у wireguard-service
         wg_response = requests.post(
             f"{WIREGUARD_SERVICE_URL}/create",
             json={"user_id": user_id},
-            timeout=20
+            timeout=30  # увеличиваем таймаут для надежности
         )
         
         logger.info(f"Ответ API wireguard-service: код {wg_response.status_code}")
@@ -59,10 +48,14 @@ async def create_new_config(user_id):
             config_text = wg_data.get("config")
             public_key = wg_data.get("public_key")
             
+            logger.info(f"Конфигурация получена успешно. Public key: {public_key}")
+            
             # Рассчитываем дату истечения (7 дней от текущей даты)
             expiry_time = (datetime.now() + timedelta(days=7)).isoformat()
             
             # Сохраняем в базе данных через database-service
+            logger.info(f"Сохраняем в БД. URL: {DATABASE_SERVICE_URL}/config")
+            
             db_response = requests.post(
                 f"{DATABASE_SERVICE_URL}/config",
                 json={
@@ -71,13 +64,14 @@ async def create_new_config(user_id):
                     "expiry_time": expiry_time,
                     "active": True
                 },
-                timeout=10
+                timeout=20
             )
             
             logger.info(f"Ответ API database-service: код {db_response.status_code}")
             
             if db_response.status_code in [200, 201]:
                 # Возвращаем успешный результат
+                logger.info("Конфигурация успешно создана и сохранена в БД")
                 return {
                     "config_text": config_text,
                     "public_key": public_key
@@ -90,8 +84,9 @@ async def create_new_config(user_id):
                         error_data = db_response.json()
                         if "error" in error_data:
                             error_msg = error_data.get("error")
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.error(f"Ошибка при разборе JSON: {str(e)}")
+                
                 logger.error(error_msg)
                 # Но все равно возвращаем конфигурацию, так как она создана успешно
                 return {
@@ -109,6 +104,7 @@ async def create_new_config(user_id):
             except json.JSONDecodeError:
                 pass
         
+        logger.error(f"Ошибка от wireguard-service: {error_message}")
         return {"error": error_message}
     except requests.RequestException as e:
         logger.error(f"Ошибка при запросе к API: {str(e)}")
@@ -129,6 +125,7 @@ async def recreate_config(user_id):
             logger.info(f"Деактивация текущей конфигурации с public_key: {public_key}")
             
             try:
+                logger.info(f"Отправляем запрос на удаление: {WIREGUARD_SERVICE_URL}/remove/{public_key}")
                 deactivate_response = requests.delete(
                     f"{WIREGUARD_SERVICE_URL}/remove/{public_key}", 
                     timeout=10
@@ -139,6 +136,7 @@ async def recreate_config(user_id):
                 # Продолжаем, даже если деактивация не удалась
         
         # Создаем новую конфигурацию (с сохранением в БД)
+        logger.info("Создаем новую конфигурацию для пользователя")
         return await create_new_config(user_id)
     except Exception as e:
         logger.error(f"Ошибка при запросе к API: {str(e)}")
@@ -154,14 +152,17 @@ async def get_config_from_wireguard(user_id):
         config_info = await get_user_config(user_id)
         
         if not config_info or not config_info.get("active"):
+            logger.warning(f"Активная конфигурация не найдена для пользователя {user_id}")
             return {"error": "Активная конфигурация не найдена"}
         
         # Конфигурация хранится непосредственно в БД
         config_text = config_info.get("config")
         
         if not config_text:
+            logger.warning(f"Текст конфигурации отсутствует в БД для пользователя {user_id}")
             return {"error": "Текст конфигурации отсутствует в базе данных"}
         
+        logger.info(f"Конфигурация успешно получена для пользователя {user_id}")
         return {"config_text": config_text}
     except requests.RequestException as e:
         logger.error(f"Ошибка при запросе к API: {str(e)}")
@@ -172,6 +173,7 @@ async def extend_config(user_id, days, stars, transaction_id):
     """Продлевает срок действия конфигурации."""
     try:
         logger.info(f"Продление конфигурации для пользователя {user_id} на {days} дней за {stars} звезд")
+        logger.info(f"Используем URL: {DATABASE_SERVICE_URL}/config/extend")
         
         response = requests.post(
             f"{DATABASE_SERVICE_URL}/config/extend",
@@ -187,6 +189,7 @@ async def extend_config(user_id, days, stars, transaction_id):
         logger.info(f"Ответ API: код {response.status_code}")
         
         if response.status_code == 200:
+            logger.info("Конфигурация успешно продлена")
             return response.json()
         
         # Подробный вывод информации об ошибке
@@ -211,8 +214,9 @@ async def get_payment_history(user_id):
     """Получает историю платежей пользователя."""
     try:
         logger.info(f"Получение истории платежей для пользователя {user_id}")
+        logger.info(f"Используем URL: {DATABASE_SERVICE_URL}/payments/history/{user_id}")
         
-        response = requests.get(f"{DATABASE_SERVICE_URL}/payments/history/{user_id}", timeout=5)
+        response = requests.get(f"{DATABASE_SERVICE_URL}/payments/history/{user_id}", timeout=10)
         
         logger.info(f"Ответ API: код {response.status_code}")
         

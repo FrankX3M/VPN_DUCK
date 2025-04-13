@@ -14,9 +14,9 @@ if not API_TOKEN:
     logger.error("TELEGRAM_TOKEN not found in environment variables!")
     exit(1)
 
-# URL-ы сервисов
-WIREGUARD_SERVICE_URL = os.getenv('WIREGUARD_SERVICE_URL', 'http://wireguard-service:8080')
-DATABASE_SERVICE_URL = os.getenv('DATABASE_SERVICE_URL', 'http://database-service:8081')
+# URL-ы сервисов - правильные URL-адреса с портами
+WIREGUARD_SERVICE_URL = os.getenv('WIREGUARD_SERVICE_URL', 'http://wireguard-service:5001')
+DATABASE_SERVICE_URL = os.getenv('DATABASE_SERVICE_URL', 'http://database-service:5002')
 
 # Инициализация бота и диспетчера с хранилищем FSM
 bot = Bot(token=API_TOKEN)
