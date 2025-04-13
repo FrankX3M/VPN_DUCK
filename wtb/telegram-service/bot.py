@@ -26,4 +26,10 @@ async def on_startup(dp):
     await setup_bot_commands(bot)
 
 if __name__ == '__main__':
-    executor.start_polling(dp, on_startup=on_startup, skip_updates=True)
+    # Явно указываем, что нужно принимать callback_query, это критически важно!
+    executor.start_polling(
+        dp, 
+        on_startup=on_startup, 
+        skip_updates=True, 
+        allowed_updates=["message", "callback_query", "inline_query", "chosen_inline_result", "chat_member", "poll"]
+    )
