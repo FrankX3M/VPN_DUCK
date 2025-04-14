@@ -9,10 +9,34 @@ def get_permanent_keyboard():
         KeyboardButton("🔑 Создать"),
         KeyboardButton("⏰ Продлить"),
         KeyboardButton("📊 Статус"),
+        KeyboardButton("🌍 Геолокация"),  # Добавляем кнопку геолокации
         KeyboardButton("💳 История платежей"),
         KeyboardButton("ℹ️ Помощь")
     ]
     keyboard.add(*buttons)
+    
+    return keyboard
+# функция выбора гео
+def get_geolocation_keyboard(geolocations):
+    """Creates an inline keyboard with available geolocations."""
+    keyboard = InlineKeyboardMarkup(row_width=1)
+    
+    for geo in geolocations:
+        geo_id = geo.get('id')
+        geo_name = geo.get('name')
+        server_count = geo.get('active_servers_count', 0)
+        
+        # Format button text with additional info
+        button_text = f"{geo_name} ({server_count} servers)"
+        
+        keyboard.add(
+            InlineKeyboardButton(button_text, callback_data=f"geo_{geo_id}")
+        )
+    
+    # Add cancel button
+    keyboard.add(
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_geo")
+    )
     
     return keyboard
 
@@ -60,7 +84,10 @@ def get_active_config_keyboard():
         InlineKeyboardButton("⏰ Продлить", callback_data="start_extend"),
         InlineKeyboardButton("📋 Получить конфиг", callback_data="get_config")
     )
-    keyboard.add(InlineKeyboardButton("🔄 Пересоздать", callback_data="recreate_config"))
+    keyboard.add(
+        InlineKeyboardButton("🌍 Геолокация", callback_data="choose_geo"),  # Добавляем кнопку геолокации
+        InlineKeyboardButton("🔄 Пересоздать", callback_data="recreate_config")
+    )
     return keyboard
 
 # Клавиатура для создания новой конфигурации

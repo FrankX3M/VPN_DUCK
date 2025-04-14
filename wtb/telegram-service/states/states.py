@@ -7,3 +7,7 @@ class ExtendConfigStates(StatesGroup):
 
 class CreateConfigStates(StatesGroup):
     confirming_create = State()
+
+# Добавляем состояние для выбора геолокации
+class GeoLocationStates(StatesGroup):
+    selecting_geolocation = State()
