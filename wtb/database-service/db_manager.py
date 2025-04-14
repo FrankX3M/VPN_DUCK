@@ -947,7 +947,240 @@ def cleanup_expired_configs():
         logger.error(f"Ошибка при очистке истекших конфигураций: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+# Добавьте следующие функции в db_manager.py в соответствующие секции:
 
+#-------------------------
+# API для миграции пользователей
+#-------------------------
+
+@app.route('/servers/<int:server_id>/connections', methods=['GET'])
+def get_server_connections(server_id):
+    """Получает список активных подключений к серверу."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute(
+            """
+            SELECT ac.*, c.id as config_id, c.geolocation_id
+            FROM active_connections ac
+            JOIN configurations c ON ac.user_id = c.user_id AND c.active = TRUE
+            WHERE ac.server_id = %s AND ac.last_activity > NOW() - INTERVAL '1 hour'
+            ORDER BY ac.last_activity DESC
+            """,
+            (server_id,)
+        )
+        
+        connections = cursor.fetchall()
+        
+        # Преобразуем временные метки в строки для JSON-сериализации
+        for conn_data in connections:
+            if 'connected_at' in conn_data and conn_data['connected_at']:
+                conn_data['connected_at'] = conn_data['connected_at'].isoformat()
+            if 'last_activity' in conn_data and conn_data['last_activity']:
+                conn_data['last_activity'] = conn_data['last_activity'].isoformat()
+        
+        conn.close()
+        
+        return jsonify({"connections": connections}), 200
+    except Exception as e:
+        logger.error(f"Ошибка при получении списка подключений: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/servers/<int:server_id>/status', methods=['POST'])
+def update_server_status(server_id):
+    """Обновляет статус сервера."""
+    data = request.json
+    
+    if not data or 'status' not in data:
+        return jsonify({"error": "Отсутствует поле 'status'"}), 400
+    
+    status = data.get('status')
+    
+    # Проверяем допустимость статуса
+    valid_statuses = ['active', 'inactive', 'degraded', 'maintenance']
+    if status not in valid_statuses:
+        return jsonify({"error": f"Недопустимый статус. Допустимые значения: {valid_statuses}"}), 400
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            """
+            UPDATE servers
+            SET status = %s, last_check = NOW()
+            WHERE id = %s
+            RETURNING id, status
+            """,
+            (status, server_id)
+        )
+        
+        result = cursor.fetchone()
+        
+        if not result:
+            conn.close()
+            return jsonify({"error": f"Сервер с ID {server_id} не найден"}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "server_id": result[0],
+            "status": result[1],
+            "updated_at": datetime.now().isoformat()
+        }), 200
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении статуса сервера: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/servers/update_status_batch', methods=['POST'])
+def update_servers_status_batch():
+    """Обновляет статус нескольких серверов за один запрос."""
+    data = request.json
+    
+    if not data or 'servers' not in data:
+        return jsonify({"error": "Отсутствует поле 'servers'"}), 400
+    
+    servers = data.get('servers')
+    if not isinstance(servers, list) or not servers:
+        return jsonify({"error": "Поле 'servers' должно быть непустым списком"}), 400
+    
+    # Проверяем допустимость статусов
+    valid_statuses = ['active', 'inactive', 'degraded', 'maintenance']
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        updated_servers = []
+        
+        for server in servers:
+            server_id = server.get('id')
+            status = server.get('status')
+            
+            if not server_id or not status:
+                continue
+                
+            if status not in valid_statuses:
+                continue
+            
+            cursor.execute(
+                """
+                UPDATE servers
+                SET status = %s, last_check = NOW()
+                WHERE id = %s
+                RETURNING id, status
+                """,
+                (status, server_id)
+            )
+            
+            result = cursor.fetchone()
+            
+            if result:
+                updated_servers.append({
+                    "server_id": result[0],
+                    "status": result[1]
+                })
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "updated_servers": updated_servers,
+            "count": len(updated_servers),
+            "updated_at": datetime.now().isoformat()
+        }), 200
+    except Exception as e:
+        logger.error(f"Ошибка при пакетном обновлении статуса серверов: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/server_migrations/log', methods=['POST'])
+def log_server_migration():
+    """Записывает информацию о миграции пользователя в журнал."""
+    data = request.json
+    
+    required_fields = ['user_id', 'from_server_id', 'to_server_id', 'migration_reason']
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": "Отсутствуют обязательные поля"}), 400
+    
+    user_id = data.get('user_id')
+    from_server_id = data.get('from_server_id')
+    to_server_id = data.get('to_server_id')
+    migration_reason = data.get('migration_reason')
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            """
+            INSERT INTO server_migrations
+            (user_id, from_server_id, to_server_id, migration_reason, migration_time, success)
+            VALUES (%s, %s, %s, %s, NOW(), TRUE)
+            RETURNING id
+            """,
+            (user_id, from_server_id, to_server_id, migration_reason)
+        )
+        
+        migration_id = cursor.fetchone()[0]
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "status": "success",
+            "migration_id": migration_id,
+            "user_id": user_id,
+            "from_server_id": from_server_id,
+            "to_server_id": to_server_id,
+            "migration_reason": migration_reason,
+            "migration_time": datetime.now().isoformat()
+        }), 201
+    except Exception as e:
+        logger.error(f"Ошибка при записи информации о миграции: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/servers/<int:server_id>', methods=['GET'])
+def get_server_details(server_id):
+    """Получает детальную информацию о сервере."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute(
+            """
+            SELECT s.*, g.name as geolocation_name, g.code as geolocation_code,
+                   sl.city, sl.country, sl.latitude, sl.longitude,
+                   (SELECT COUNT(*) FROM active_connections WHERE server_id = s.id) as active_connections_count,
+                   (SELECT AVG(latency) FROM server_metrics WHERE server_id = s.id AND measured_at > NOW() - INTERVAL '24 hours') as avg_latency,
+                   (SELECT AVG(packet_loss) FROM server_metrics WHERE server_id = s.id AND measured_at > NOW() - INTERVAL '24 hours') as avg_packet_loss
+            FROM servers s
+            LEFT JOIN geolocations g ON s.geolocation_id = g.id
+            LEFT JOIN server_locations sl ON s.id = sl.server_id
+            WHERE s.id = %s
+            """,
+            (server_id,)
+        )
+        
+        server = cursor.fetchone()
+        
+        if not server:
+            conn.close()
+            return jsonify({"error": f"Сервер с ID {server_id} не найден"}), 404
+        
+        # Преобразуем временные метки в строки для JSON-сериализации
+        if 'last_check' in server and server['last_check']:
+            server['last_check'] = server['last_check'].isoformat()
+        if 'created_at' in server and server['created_at']:
+            server['created_at'] = server['created_at'].isoformat()
+        
+        conn.close()
+        
+        return jsonify(server), 200
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации о сервере: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 
 
