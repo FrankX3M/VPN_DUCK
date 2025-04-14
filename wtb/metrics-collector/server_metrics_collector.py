@@ -305,9 +305,15 @@ def register_own_server():
         # Получаем геолокацию сервера
         location = get_server_location(server_ip)
         
-        if not location:
-            logger.error("Не удалось определить геолокацию сервера")
-            return False
+        # Если не удалось получить геолокацию, устанавливаем значения по умолчанию
+        if not location or location.get('latitude') is None or location.get('longitude') is None:
+            logger.warning("Не удалось определить геолокацию сервера, устанавливаем значения по умолчанию")
+            location = {
+                'latitude': 55.7558,  # Москва (или другие значения по умолчанию)
+                'longitude': 37.6173,
+                'city': 'Unknown City',
+                'country': 'Unknown Country'
+            }
         
         # Получаем список геолокаций
         try:
@@ -381,7 +387,8 @@ def register_own_server():
             register_response = make_api_request(
                 'post', 
                 f"{DATABASE_SERVICE_URL}/servers/register",
-                json=server_data
+                json=server_data,
+                max_retries=3
             )
             
             result = register_response.json()

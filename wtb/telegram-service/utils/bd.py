@@ -28,21 +28,80 @@ async def get_available_geolocations():
         logger.error(f"Ошибка запроса доступных геолокаций: {str(e)}")
         return []
 
+# # Функция для изменения геолокации конфигурации пользователя
+# async def change_config_geolocation(user_id, geolocation_id, server_id=None):
+#     """Изменяет геолокацию активной конфигурации пользователя."""
+#     try:
+#         logger.info(f"Изменение геолокации для пользователя {user_id} на {geolocation_id}")
+        
+#         # Формируем данные запроса
+#         data = {
+#             "user_id": user_id,
+#             "geolocation_id": geolocation_id
+#         }
+        
+#         # Если указан конкретный сервер, добавляем его ID
+#         if server_id:
+#             data["server_id"] = server_id
+        
+#         # Отправляем запрос на изменение геолокации
+#         response = requests.post(
+#             f"{DATABASE_SERVICE_URL}/configs/change_geolocation",
+#             json=data,
+#             timeout=30
+#         )
+        
+#         logger.info(f"Ответ API: код {response.status_code}")
+        
+#         if response.status_code == 200:
+#             return response.json()
+        
+#         # Подробный вывод информации об ошибке
+#         error_message = "Ошибка при изменении геолокации."
+#         if response.headers.get('content-type') == 'application/json':
+#             try:
+#                 response_data = response.json()
+#                 if "error" in response_data:
+#                     error_message = response_data.get("error")
+#             except json.JSONDecodeError:
+#                 pass
+        
+#         logger.error(f"Ошибка API: {error_message}")
+#         return {"error": error_message}
+#     except requests.RequestException as e:
+#         logger.error(f"Ошибка при запросе к API: {str(e)}")
+#         return {"error": f"Ошибка при изменении геолокации: {str(e)}. Пожалуйста, попробуйте позже."}
+
 # Функция для изменения геолокации конфигурации пользователя
 async def change_config_geolocation(user_id, geolocation_id, server_id=None):
     """Изменяет геолокацию активной конфигурации пользователя."""
     try:
         logger.info(f"Изменение геолокации для пользователя {user_id} на {geolocation_id}")
         
+        # Если server_id не предоставлен, нужно получить его
+        if not server_id:
+            # Получаем список серверов для выбранной геолокации
+            server_response = requests.get(
+                f"{DATABASE_SERVICE_URL}/servers/geolocation/{geolocation_id}",
+                timeout=10
+            )
+            
+            if server_response.status_code == 200:
+                servers = server_response.json().get("servers", [])
+                if servers:
+                    # Выбираем первый доступный сервер
+                    server_id = servers[0].get("id")
+                    logger.info(f"Автоматически выбран сервер {server_id} для геолокации {geolocation_id}")
+            
+            if not server_id:
+                return {"error": "Не удалось найти подходящий сервер для выбранной геолокации"}
+        
         # Формируем данные запроса
         data = {
             "user_id": user_id,
-            "geolocation_id": geolocation_id
+            "geolocation_id": geolocation_id,
+            "server_id": server_id
         }
-        
-        # Если указан конкретный сервер, добавляем его ID
-        if server_id:
-            data["server_id"] = server_id
         
         # Отправляем запрос на изменение геолокации
         response = requests.post(

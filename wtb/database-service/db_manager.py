@@ -874,6 +874,83 @@ def get_all_servers():
         logger.error(f"Ошибка при получении списка серверов: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/cleanup_expired', methods=['POST'])
+def cleanup_expired_configs():
+    """Очищает истекшие конфигурации."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Деактивируем конфигурации, срок действия которых истек
+        cursor.execute(
+            """
+            UPDATE configurations
+            SET active = FALSE
+            WHERE expiry_time < NOW() AND active = TRUE
+            RETURNING id, user_id, public_key
+            """
+        )
+        
+        expired_configs = cursor.fetchall()
+        
+        for config_id, user_id, public_key in expired_configs:
+            # Логируем информацию о деактивированной конфигурации
+            logger.info(f"Деактивирована истекшая конфигурация: id={config_id}, user_id={user_id}")
+            
+            # Пытаемся удалить пир из WireGuard, если предоставлен public_key
+            if public_key:
+                try:
+                    # Отправка запроса на удаление пира из WireGuard
+                    wireguard_url = os.getenv('WIREGUARD_SERVICE_URL', 'http://wireguard-service:5001')
+                    remove_response = requests.delete(
+                        f"{wireguard_url}/remove/{public_key}",
+                        timeout=5
+                    )
+                    
+                    if remove_response.status_code == 200:
+                        logger.info(f"WireGuard-пир с ключом {public_key} успешно удален")
+                    else:
+                        logger.warning(f"Не удалось удалить WireGuard-пир: {remove_response.status_code}, {remove_response.text}")
+                except Exception as e:
+                    logger.error(f"Ошибка при удалении WireGuard-пира: {str(e)}")
+        
+        conn.commit()
+        
+        # Также можно проверить и удалить строки с данными пользователей,
+        # с которыми нет активных конфигураций более X дней (опционально)
+        try:
+            # Например, стирание информации о пользователях, неактивных более 90 дней
+            days_to_retain = 90
+            cursor.execute(
+                """
+                DELETE FROM user_locations
+                WHERE user_id NOT IN (
+                    SELECT user_id FROM configurations WHERE active = TRUE
+                ) AND updated_at < NOW() - INTERVAL %s DAY
+                """,
+                (days_to_retain,)
+            )
+            
+            deleted_rows = cursor.rowcount
+            if deleted_rows > 0:
+                logger.info(f"Удалены данные о местоположении для {deleted_rows} неактивных пользователей")
+            
+            conn.commit()
+        except Exception as e:
+            logger.warning(f"Ошибка при очистке устаревших данных о пользователях: {str(e)}")
+            conn.rollback()
+        
+        conn.close()
+        
+        return jsonify({"cleaned": len(expired_configs)}), 200
+    except Exception as e:
+        logger.error(f"Ошибка при очистке истекших конфигураций: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+
+
+
 # @app.route('/servers/register', methods=['POST'])
 # def register_server():
 #     """Регистрирует новый сервер в базе данных."""
