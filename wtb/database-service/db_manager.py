@@ -22,13 +22,36 @@ DB_NAME = os.getenv('DB_NAME', 'wireguard')
 DB_USER = os.getenv('DB_USER', 'postgres')
 DB_PASS = os.getenv('DB_PASS', 'postgres')
 
+
 def init_db():
     """Инициализация базы данных."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    # Общая функция для выполнения операции с базой данных с обработкой ошибок
+    def execute_and_commit(query, params=None, commit=True, message=None):
+        conn = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            if commit:
+                conn.commit()
+            result = None
+            if cursor.description:  # Если есть результат (SELECT)
+                result = cursor.fetchall()
+            if message:
+                logger.info(message)
+            return result
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Ошибка при выполнении запроса: {str(e)}")
+            logger.error(f"Запрос: {query}")
+            return None
+        finally:
+            if conn:
+                conn.close()
     
-    # Создаем базовые таблицы (уже существуют в текущей версии)
-    cursor.execute('''
+    # 1. Создаем базовые таблицы
+    execute_and_commit('''
     CREATE TABLE IF NOT EXISTS configurations (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -38,9 +61,9 @@ def init_db():
         active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMP NOT NULL
     )
-    ''')
+    ''', message="Таблица configurations создана или уже существует")
     
-    cursor.execute('''
+    execute_and_commit('''
     CREATE TABLE IF NOT EXISTS payments (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -51,12 +74,10 @@ def init_db():
         days_extended INTEGER NOT NULL,
         created_at TIMESTAMP NOT NULL
     )
-    ''')
+    ''', message="Таблица payments создана или уже существует")
     
-    # Создаем новые таблицы для мульти-геолокационной архитектуры
-    
-    # 1. Таблица для геолокаций
-    cursor.execute('''
+    # 2. Создаем таблицы для мульти-геолокационной архитектуры
+    execute_and_commit('''
     CREATE TABLE IF NOT EXISTS geolocations (
         id SERIAL PRIMARY KEY,
         code VARCHAR(10) NOT NULL UNIQUE,
@@ -66,10 +87,9 @@ def init_db():
         avg_rating FLOAT DEFAULT 0,
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
-    ''')
+    ''', message="Таблица geolocations создана или уже существует")
     
-    # 2. Таблица для серверов
-    cursor.execute('''
+    execute_and_commit('''
     CREATE TABLE IF NOT EXISTS servers (
         id SERIAL PRIMARY KEY,
         geolocation_id INTEGER REFERENCES geolocations(id),
@@ -84,10 +104,9 @@ def init_db():
         metrics_rating FLOAT DEFAULT 0,
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
-    ''')
+    ''', message="Таблица servers создана или уже существует")
     
-    # 3. Таблицы для хранения географических данных
-    cursor.execute('''
+    execute_and_commit('''
     CREATE TABLE IF NOT EXISTS server_locations (
         server_id INTEGER PRIMARY KEY REFERENCES servers(id),
         latitude FLOAT NOT NULL,
@@ -96,9 +115,9 @@ def init_db():
         country TEXT,
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
-    ''')
+    ''', message="Таблица server_locations создана или уже существует")
     
-    cursor.execute('''
+    execute_and_commit('''
     CREATE TABLE IF NOT EXISTS user_locations (
         user_id INTEGER PRIMARY KEY,
         latitude FLOAT NOT NULL,
@@ -108,10 +127,9 @@ def init_db():
         accuracy FLOAT,
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
-    ''')
+    ''', message="Таблица user_locations создана или уже существует")
     
-    # 4. Таблица для метрик серверов
-    cursor.execute('''
+    execute_and_commit('''
     CREATE TABLE IF NOT EXISTS server_metrics (
         id SERIAL PRIMARY KEY,
         server_id INTEGER REFERENCES servers(id),
@@ -121,10 +139,9 @@ def init_db():
         packet_loss FLOAT,
         measured_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
-    ''')
+    ''', message="Таблица server_metrics создана или уже существует")
     
-    # 5. Таблицы для соединений и предпочтений пользователей
-    cursor.execute('''
+    execute_and_commit('''
     CREATE TABLE IF NOT EXISTS active_connections (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -135,9 +152,9 @@ def init_db():
         bytes_sent BIGINT DEFAULT 0,
         bytes_received BIGINT DEFAULT 0
     )
-    ''')
+    ''', message="Таблица active_connections создана или уже существует")
     
-    cursor.execute('''
+    execute_and_commit('''
     CREATE TABLE IF NOT EXISTS user_connections (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -151,9 +168,9 @@ def init_db():
         connection_quality INTEGER,
         ip_address TEXT
     )
-    ''')
+    ''', message="Таблица user_connections создана или уже существует")
     
-    cursor.execute('''
+    execute_and_commit('''
     CREATE TABLE IF NOT EXISTS user_preferences (
         user_id INTEGER PRIMARY KEY,
         preferred_server_id INTEGER REFERENCES servers(id),
@@ -164,10 +181,9 @@ def init_db():
         auto_connect BOOLEAN DEFAULT FALSE,
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
-    ''')
+    ''', message="Таблица user_preferences создана или уже существует")
     
-    # 6. Таблица для миграций между серверами
-    cursor.execute('''
+    execute_and_commit('''
     CREATE TABLE IF NOT EXISTS server_migrations (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -177,10 +193,9 @@ def init_db():
         migration_time TIMESTAMP NOT NULL DEFAULT NOW(),
         success BOOLEAN DEFAULT TRUE
     )
-    ''')
+    ''', message="Таблица server_migrations создана или уже существует")
     
-    # 7. Таблица для хранения всех конфигураций пользователя
-    cursor.execute('''
+    execute_and_commit('''
     CREATE TABLE IF NOT EXISTS user_configurations (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -189,89 +204,95 @@ def init_db():
         config_text TEXT NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
-    ''')
+    ''', message="Таблица user_configurations создана или уже существует")
     
-    # 8. Добавляем новые колонки в существующие таблицы
+    # Добавляем новые колонки в существующие таблицы
     try:
-        cursor.execute('ALTER TABLE configurations ADD COLUMN geolocation_id INTEGER REFERENCES geolocations(id)')
+        execute_and_commit('ALTER TABLE configurations ADD COLUMN geolocation_id INTEGER REFERENCES geolocations(id)')
     except:
         logger.info("Колонка geolocation_id уже существует в таблице configurations")
     
     try:
-        cursor.execute('ALTER TABLE configurations ADD COLUMN server_id INTEGER REFERENCES servers(id)')
+        execute_and_commit('ALTER TABLE configurations ADD COLUMN server_id INTEGER REFERENCES servers(id)')
     except:
         logger.info("Колонка server_id уже существует в таблице configurations")
     
-    # 9. Создаем индексы для оптимизации запросов
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_servers_geolocation_id ON servers(geolocation_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_servers_status ON servers(status)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_servers_metrics_rating ON servers(metrics_rating)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_geolocations_avg_rating ON geolocations(avg_rating)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_servers_last_check ON servers(last_check)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_server_metrics_server_id_measured_at ON server_metrics(server_id, measured_at)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_active_connections_user_id ON active_connections(user_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_active_connections_server_id ON active_connections(server_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_connections_user_id ON user_connections(user_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_connections_server_id ON user_connections(server_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_connections_connected_at ON user_connections(connected_at)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_configurations_user_id ON user_configurations(user_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_configurations_server_id ON user_configurations(server_id)')
+    # Создаем индексы для оптимизации запросов - каждый индекс отдельно
+    index_queries = [
+        'CREATE INDEX IF NOT EXISTS idx_servers_geolocation_id ON servers(geolocation_id)',
+        'CREATE INDEX IF NOT EXISTS idx_servers_status ON servers(status)',
+        'CREATE INDEX IF NOT EXISTS idx_servers_metrics_rating ON servers(metrics_rating)',
+        'CREATE INDEX IF NOT EXISTS idx_geolocations_avg_rating ON geolocations(avg_rating)',
+        'CREATE INDEX IF NOT EXISTS idx_servers_last_check ON servers(last_check)',
+        'CREATE INDEX IF NOT EXISTS idx_server_metrics_server_id_measured_at ON server_metrics(server_id, measured_at)',
+        'CREATE INDEX IF NOT EXISTS idx_active_connections_user_id ON active_connections(user_id)',
+        'CREATE INDEX IF NOT EXISTS idx_active_connections_server_id ON active_connections(server_id)',
+        'CREATE INDEX IF NOT EXISTS idx_user_connections_user_id ON user_connections(user_id)',
+        'CREATE INDEX IF NOT EXISTS idx_user_connections_server_id ON user_connections(server_id)',
+        'CREATE INDEX IF NOT EXISTS idx_user_connections_connected_at ON user_connections(connected_at)',
+        'CREATE INDEX IF NOT EXISTS idx_user_configurations_user_id ON user_configurations(user_id)',
+        'CREATE INDEX IF NOT EXISTS idx_user_configurations_server_id ON user_configurations(server_id)'
+    ]
     
-    # 10. Добавляем начальные данные для геолокаций, если таблица пуста
-    cursor.execute('SELECT COUNT(*) FROM geolocations')
-    if cursor.fetchone()[0] == 0:
-        cursor.execute('''
+    for query in index_queries:
+        execute_and_commit(query)
+    
+    # Добавляем начальные данные для геолокаций, если таблица пуста
+    count = execute_and_commit('SELECT COUNT(*) FROM geolocations', commit=False)
+    if count and count[0][0] == 0:
+        execute_and_commit('''
         INSERT INTO geolocations (code, name, description, available, created_at)
         VALUES 
             ('ru', 'Россия', 'Серверы в России', TRUE, NOW()),
             ('us', 'США', 'Серверы в США', TRUE, NOW()),
             ('eu', 'Европа', 'Серверы в странах Европы', TRUE, NOW()),
             ('asia', 'Азия', 'Серверы в странах Азии', TRUE, NOW())
-        ''')
+        ''', message="Добавлены начальные данные для геолокаций")
     
-    # 11. Инициализируем данные для первого сервера, если таблица серверов пуста
-    cursor.execute('SELECT COUNT(*) FROM servers')
-    if cursor.fetchone()[0] == 0:
+    # Инициализируем данные для первого сервера, если таблица серверов пуста
+    count = execute_and_commit('SELECT COUNT(*) FROM servers', commit=False)
+    if count and count[0][0] == 0:
         # Получаем geolocation_id для России
-        cursor.execute('SELECT id FROM geolocations WHERE code = %s', ('ru',))
-        geo_id = cursor.fetchone()[0]
+        geo_id_result = execute_and_commit('SELECT id FROM geolocations WHERE code = %s', ('ru',), commit=False)
         
-        # Получаем данные сервера из окружения
-        server_endpoint = os.getenv('SERVER_ENDPOINT', 'your-server-endpoint.com')
-        server_port = int(os.getenv('SERVER_PORT', '51820'))
-        server_address = os.getenv('SERVER_ADDRESS', '10.0.0.1/24')
-        
-        # Получаем ключи из WireGuard
-        try:
-            with open('/etc/wireguard/private.key', 'r') as f:
-                server_private_key = f.read().strip()
-                
-            with open('/etc/wireguard/public.key', 'r') as f:
-                server_public_key = f.read().strip()
-        except Exception as e:
-            logger.warning(f"Не удалось получить ключи WireGuard: {str(e)}")
-            # Используем заглушки для ключей
+        if geo_id_result:
+            geo_id = geo_id_result[0][0]
+            
+            # Получаем данные сервера из окружения
+            server_endpoint = os.getenv('SERVER_ENDPOINT', 'your-server-endpoint.com')
+            server_port = int(os.getenv('SERVER_PORT', '51820'))
+            server_address = os.getenv('SERVER_ADDRESS', '10.0.0.1/24')
+            
+            # Получаем ключи из WireGuard
             server_private_key = "dummy_private_key"
             server_public_key = "dummy_public_key"
-        
-        cursor.execute('''
-        INSERT INTO servers 
-            (geolocation_id, endpoint, port, public_key, private_key, address, status, last_check, created_at)
-        VALUES
-            (%s, %s, %s, %s, %s, %s, 'active', NOW(), NOW())
-        ''', (geo_id, server_endpoint, server_port, server_public_key, server_private_key, server_address))
+            
+            try:
+                with open('/etc/wireguard/private.key', 'r') as f:
+                    server_private_key = f.read().strip()
+                    
+                with open('/etc/wireguard/public.key', 'r') as f:
+                    server_public_key = f.read().strip()
+            except Exception as e:
+                logger.warning(f"Не удалось получить ключи WireGuard: {str(e)}")
+            
+            execute_and_commit('''
+            INSERT INTO servers 
+                (geolocation_id, endpoint, port, public_key, private_key, address, status, last_check, created_at)
+            VALUES
+                (%s, %s, %s, %s, %s, %s, 'active', NOW(), NOW())
+            ''', (geo_id, server_endpoint, server_port, server_public_key, server_private_key, server_address),
+            message="Добавлен первый сервер")
     
-    # 12. Обновляем существующие конфигурации, привязывая их к первому серверу
-    cursor.execute('''
+    # Обновляем существующие конфигурации, привязывая их к первому серверу
+    execute_and_commit('''
     UPDATE configurations c
     SET server_id = s.id, geolocation_id = s.geolocation_id
     FROM servers s
     WHERE c.server_id IS NULL AND s.id = (SELECT MIN(id) FROM servers)
     ''')
     
-    conn.commit()
-    conn.close()
-    logger.info("База данных инициализирована")
+    logger.info("База данных инициализирована успешно")
 
 def get_db_connection():
     """Получение соединения с базой данных PostgreSQL."""
@@ -494,7 +515,103 @@ def measure_server_metrics(server_id, endpoint):
 #-------------------------
 # Основные API эндпоинты
 #-------------------------
+# Новые API-эндпоинты для добавления в db_manager.py
 
+# @app.route('/servers/all', methods=['GET'])
+# def get_all_servers():
+#     """Получает список всех серверов."""
+#     try:
+#         conn = get_db_connection()
+#         cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+#         cursor.execute(
+#             """
+#             SELECT s.*, sl.city, sl.country, sl.latitude, sl.longitude 
+#             FROM servers s
+#             LEFT JOIN server_locations sl ON s.id = sl.server_id
+#             ORDER BY s.id
+#             """
+#         )
+        
+#         servers = cursor.fetchall()
+#         conn.close()
+        
+#         return jsonify({"servers": servers}), 200
+#     except Exception as e:
+#         logger.error(f"Ошибка при получении списка серверов: {str(e)}")
+#         return jsonify({"error": str(e)}), 500
+
+@app.route('/servers/register', methods=['POST'])
+def register_server():
+    """Регистрирует новый сервер в базе данных."""
+    data = request.json
+    
+    required_fields = ['geolocation_id', 'endpoint', 'port', 'public_key', 'address']
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": "Отсутствуют обязательные поля"}), 400
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Проверяем, существует ли уже сервер с таким endpoint и портом
+        cursor.execute(
+            """
+            SELECT id FROM servers WHERE endpoint = %s AND port = %s
+            """,
+            (data.get('endpoint'), data.get('port'))
+        )
+        
+        existing_server = cursor.fetchone()
+        if existing_server:
+            conn.close()
+            return jsonify({"error": "Сервер с таким endpoint и портом уже существует", "server_id": existing_server[0]}), 409
+        
+        # Вставляем запись в таблицу servers
+        cursor.execute(
+            """
+            INSERT INTO servers
+            (geolocation_id, endpoint, port, public_key, private_key, address, status, last_check, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, 'active', NOW(), NOW())
+            RETURNING id
+            """,
+            (
+                data.get('geolocation_id'),
+                data.get('endpoint'),
+                data.get('port'),
+                data.get('public_key'),
+                data.get('private_key', 'private_key_placeholder'),
+                data.get('address')
+            )
+        )
+        
+        server_id = cursor.fetchone()[0]
+        
+        # Если предоставлены координаты, вставляем запись в server_locations
+        if 'latitude' in data and 'longitude' in data:
+            cursor.execute(
+                """
+                INSERT INTO server_locations
+                (server_id, latitude, longitude, city, country, updated_at)
+                VALUES (%s, %s, %s, %s, %s, NOW())
+                """,
+                (
+                    server_id,
+                    data.get('latitude'),
+                    data.get('longitude'),
+                    data.get('city'),
+                    data.get('country')
+                )
+            )
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "server_id": server_id}), 201
+    except Exception as e:
+        logger.error(f"Ошибка при регистрации сервера: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+        
 @app.route('/config', methods=['POST'])
 def create_config():
     """Сохранение новой конфигурации WireGuard в базе данных."""
@@ -701,6 +818,133 @@ def extend_config():
         logger.error(f"Ошибка при продлении конфигурации: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/payments/history/<int:user_id>', methods=['GET'])
+def get_payment_history(user_id):
+    """Получение истории платежей пользователя."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute(
+            """
+            SELECT p.*, c.expiry_time, c.public_key 
+            FROM payments p
+            JOIN configurations c ON p.config_id = c.id
+            WHERE p.user_id = %s
+            ORDER BY p.created_at DESC
+            """,
+            (user_id,)
+        )
+        
+        payments = cursor.fetchall()
+        
+        # Преобразуем timestamp в строки для JSON-сериализации
+        for payment in payments:
+            payment['created_at'] = payment['created_at'].isoformat()
+            payment['expiry_time'] = payment['expiry_time'].isoformat()
+        
+        conn.close()
+        
+        return jsonify({"payments": payments}), 200
+    except Exception as e:
+        logger.error(f"Ошибка при получении истории платежей: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+                
+@app.route('/servers/all', methods=['GET'])
+def get_all_servers():
+    """Получает список всех серверов."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute(
+            """
+            SELECT s.*, sl.city, sl.country, sl.latitude, sl.longitude 
+            FROM servers s
+            LEFT JOIN server_locations sl ON s.id = sl.server_id
+            ORDER BY s.id
+            """
+        )
+        
+        servers = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({"servers": servers}), 200
+    except Exception as e:
+        logger.error(f"Ошибка при получении списка серверов: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+# @app.route('/servers/register', methods=['POST'])
+# def register_server():
+#     """Регистрирует новый сервер в базе данных."""
+#     data = request.json
+    
+#     required_fields = ['geolocation_id', 'endpoint', 'port', 'public_key', 'address']
+#     if not all(field in data for field in required_fields):
+#         return jsonify({"error": "Отсутствуют обязательные поля"}), 400
+    
+#     try:
+#         conn = get_db_connection()
+#         cursor = conn.cursor()
+        
+#         # Проверяем, существует ли уже сервер с таким endpoint и портом
+#         cursor.execute(
+#             """
+#             SELECT id FROM servers WHERE endpoint = %s AND port = %s
+#             """,
+#             (data.get('endpoint'), data.get('port'))
+#         )
+        
+#         existing_server = cursor.fetchone()
+#         if existing_server:
+#             conn.close()
+#             return jsonify({"error": "Сервер с таким endpoint и портом уже существует", "server_id": existing_server[0]}), 409
+        
+#         # Вставляем запись в таблицу servers
+#         cursor.execute(
+#             """
+#             INSERT INTO servers
+#             (geolocation_id, endpoint, port, public_key, private_key, address, status, last_check, created_at)
+#             VALUES (%s, %s, %s, %s, %s, %s, 'active', NOW(), NOW())
+#             RETURNING id
+#             """,
+#             (
+#                 data.get('geolocation_id'),
+#                 data.get('endpoint'),
+#                 data.get('port'),
+#                 data.get('public_key'),
+#                 data.get('private_key', 'private_key_placeholder'),
+#                 data.get('address')
+#             )
+#         )
+        
+#         server_id = cursor.fetchone()[0]
+        
+#         # Если предоставлены координаты, вставляем запись в server_locations
+#         if 'latitude' in data and 'longitude' in data:
+#             cursor.execute(
+#                 """
+#                 INSERT INTO server_locations
+#                 (server_id, latitude, longitude, city, country, updated_at)
+#                 VALUES (%s, %s, %s, %s, %s, NOW())
+#                 """,
+#                 (
+#                     server_id,
+#                     data.get('latitude'),
+#                     data.get('longitude'),
+#                     data.get('city'),
+#                     data.get('country')
+#                 )
+#             )
+        
+#         conn.commit()
+#         conn.close()
+        
+#         return jsonify({"status": "success", "server_id": server_id}), 201
+#     except Exception as e:
+#         logger.error(f"Ошибка при регистрации сервера: {str(e)}")
+#         return jsonify({"error": str(e)}), 500
+        
 @app.route('/configs/change_geolocation', methods=['POST'])
 def change_config_geolocation():
     """Изменение геолокации для активной конфигурации."""
