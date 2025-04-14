@@ -27,6 +27,9 @@ async def get_config_status(message: types.Message):
             remaining_days = remaining_time.days
             remaining_hours = remaining_time.seconds // 3600
             
+            # Получаем информацию о геолокации
+            geolocation_name = config.get("geolocation_name", "Неизвестно")
+            
             # Статус конфигурации
             status_text = (
                 f"📊 <b>Статус вашей конфигурации WireGuard</b>\n\n"
@@ -34,6 +37,7 @@ async def get_config_status(message: types.Message):
                 f"▫️ Создана: <b>{created_at}</b>\n"
                 f"▫️ Действует до: <b>{expiry_formatted}</b>\n"
                 f"▫️ Осталось: <b>{remaining_days} дн. {remaining_hours} ч.</b>\n"
+                f"▫️ Геолокация: <b>{geolocation_name}</b>"
             )
             
             # Формируем клавиатуру
@@ -79,9 +83,11 @@ async def status_callback(callback_query: types.CallbackQuery):
         
         if config and config.get("active", False):
             # Парсим и форматируем данные о конфигурации
-            created_at = datetime.fromisoformat(config.get("created_at")).strftime("%d.%m.%Y %H:%M:%S")
             expiry_time = datetime.fromisoformat(config.get("expiry_time"))
             expiry_formatted = expiry_time.strftime("%d.%m.%Y %H:%M:%S")
+            
+            # Получаем информацию о геолокации
+            geolocation_name = config.get("geolocation_name", "Неизвестно")
             
             # Рассчитываем оставшееся время
             now = datetime.now()
@@ -93,8 +99,9 @@ async def status_callback(callback_query: types.CallbackQuery):
                 user_id,
                 f"📊 <b>Статус вашей конфигурации</b>\n\n"
                 f"▫️ Активна: <b>Да</b>\n"
-                f"▫️ Срок действия: до <b>{expiry_formatted}</b>\n"
-                f"▫️ Осталось: <b>{remaining_days} дн. {remaining_hours} ч.</b>\n",
+                f"▫️ Действует до: <b>{expiry_formatted}</b>\n"
+                f"▫️ Осталось: <b>{remaining_days} дн. {remaining_hours} ч.</b>\n"
+                f"▫️ Геолокация: <b>{geolocation_name}</b>",
                 parse_mode=ParseMode.HTML
             )
         else:
