@@ -12,6 +12,7 @@ from . import help
 from . import recreate
 from . import stars_info
 from . import config
+from . import geolocation  # Добавляем импорт геолокаций
 from . import unknown
 from . import callback_handlers
 
@@ -31,6 +32,7 @@ def register_all_handlers(dp: Dispatcher):
     status.register_handlers_status(dp)
     config.register_handlers_config(dp)
     recreate.register_handlers_recreate(dp)
+    geolocation.register_handlers_geolocation(dp)  # Регистрируем обработчики геолокаций
     
     # 4. Регистрируем обработчики информационных команд
     start.register_handlers_start(dp)

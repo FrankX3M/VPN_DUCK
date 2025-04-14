@@ -10,6 +10,149 @@ from keyboards.keyboards import get_create_confirm_keyboard, get_active_config_k
 from utils.bd import get_user_config, create_new_config, get_config_from_wireguard
 from utils.qr import generate_config_qr
 
+# поддержка выбора геолокации во время создания конфигурации
+async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMContext):
+    """Подтверждение создания новой конфигурации с возможностью выбора геолокации."""
+    logger.info(f"Вызван обработчик confirm_create_config с данными: {callback_query.data}")
+    
+    await bot.answer_callback_query(callback_query.id)
+    user_id = callback_query.from_user.id
+    
+    # Сообщаем пользователю о начале процесса создания
+    await bot.edit_message_text(
+        "🔄 <b>Создание конфигурации...</b>\n\n"
+        "Пожалуйста, подождите. Это может занять несколько секунд.",
+        chat_id=callback_query.message.chat.id,
+        message_id=callback_query.message.message_id,
+        parse_mode=ParseMode.HTML
+    )
+    
+    try:
+        # Получаем доступные геолокации
+        geolocations = await get_available_geolocations()
+        default_geolocation_id = None
+        
+        # Выбираем геолокацию по умолчанию (например, первую из списка)
+        if geolocations:
+            default_geolocation_id = geolocations[0].get('id')
+        
+        # Создаем новую конфигурацию с указанием геолокации
+        config_data = await create_new_config(user_id, geolocation_id=default_geolocation_id)
+        
+        if "error" in config_data:
+            await bot.edit_message_text(
+                f"❌ <b>Ошибка!</b>\n\n{config_data['error']}",
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id,
+                parse_mode=ParseMode.HTML
+            )
+            await state.finish()
+            return
+        
+        config_text = config_data.get("config_text")
+        
+        if not config_text:
+            await bot.edit_message_text(
+                "❌ <b>Ошибка при создании конфигурации</b>\n\n"
+                "Пожалуйста, попробуйте позже.",
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id,
+                parse_mode=ParseMode.HTML
+            )
+            await state.finish()
+            return
+        
+        # Получаем данные о сроке действия и геолокации из базы данных
+        db_data = await get_user_config(user_id)
+        
+        expiry_text = ""
+        geo_text = ""
+        
+        if db_data:
+            # Информация о сроке действия
+            expiry_time = db_data.get("expiry_time")
+            if expiry_time:
+                expiry_dt = datetime.fromisoformat(expiry_time)
+                expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
+                expiry_text = f"▫️ Срок действия: до <b>{expiry_formatted}</b>\n"
+            
+            # Информация о геолокации
+            geo_name = db_data.get("geolocation_name", "Неизвестно")
+            geo_text = f"▫️ Геолокация: <b>{geo_name}</b>\n"
+        
+        # Создаем файл конфигурации
+        config_file = BytesIO(config_text.encode('utf-8'))
+        config_file.name = f"vpn_duck_{user_id}.conf"
+        
+        # Генерируем QR-код
+        qr_buffer = await generate_config_qr(config_text)
+        
+        # Обновляем сообщение об успешном создании
+        await bot.edit_message_text(
+            f"✅ <b>Конфигурация успешно создана!</b>\n\n"
+            f"{expiry_text}"
+            f"{geo_text}\n"
+            f"Файл конфигурации и QR-код будут отправлены отдельными сообщениями.",
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            parse_mode=ParseMode.HTML
+        )
+        
+        if qr_buffer:
+            # Отправляем QR-код
+            await bot.send_photo(
+                user_id,
+                qr_buffer,
+                caption="🔑 <b>QR-код вашей конфигурации WireGuard</b>\n\n"
+                        "Отсканируйте этот код в приложении WireGuard для быстрой настройки.",
+                parse_mode=ParseMode.HTML
+            )
+        
+        # Отправляем файл конфигурации
+        await bot.send_document(
+            user_id,
+            config_file,
+            caption="📋 <b>Файл конфигурации WireGuard</b>\n\n"
+                    "Импортируйте этот файл в приложение WireGuard для настройки соединения.",
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Отправляем инструкции и кнопки для выбора геолокации и продления
+        keyboard = InlineKeyboardMarkup(row_width=2)
+        keyboard.add(
+            InlineKeyboardButton("⏰ Продлить конфигурацию", callback_data="start_extend"),
+            InlineKeyboardButton("🌍 Изменить геолокацию", callback_data="choose_geo")
+        )
+        
+        instructions_text = (
+            "📱 <b>Как использовать конфигурацию:</b>\n\n"
+            "1️⃣ Установите приложение WireGuard на ваше устройство\n"
+            "2️⃣ Откройте приложение и нажмите кнопку '+'\n"
+            "3️⃣ Выберите 'Сканировать QR-код' или 'Импорт из файла'\n"
+            "4️⃣ После импорта нажмите на добавленную конфигурацию для подключения\n\n"
+            "Готово! Теперь ваше соединение защищено VPN Duck 🦆\n\n"
+            "Вы можете изменить геолокацию вашего VPN в любое время, что позволит оптимизировать скорость и доступность сервисов."
+        )
+        
+        await bot.send_message(
+            user_id,
+            instructions_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=keyboard
+        )
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка: {str(e)}", exc_info=True)
+        await bot.edit_message_text(
+            "❌ <b>Произошла ошибка</b>\n\n"
+            "Пожалуйста, попробуйте позже.",
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            parse_mode=ParseMode.HTML
+        )
+    
+    # Сбрасываем состояние
+    await state.finish()
+
 # Прямой обработчик для подтверждения создания конфигурации
 async def direct_confirm_create(callback_query: types.CallbackQuery):
     """Прямой обработчик подтверждения создания конфигурации."""
