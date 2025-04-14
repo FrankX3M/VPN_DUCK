@@ -90,6 +90,28 @@ services:
       - STARTUP_DELAY=30  # Задержка запуска в секундах
     volumes:
       - ./metrics-collector:/app
+  
+  # бесшовная миграция пользователей
+  migration-service:
+    build: 
+      context: ./migration-service
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      - database-service
+      - wireguard-service
+    environment:
+      - DATABASE_SERVICE_URL=http://database-service:5002
+      - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
+      - CHECK_INTERVAL=300  # Интервал проверки серверов (5 минут)
+      - MIGRATION_THRESHOLD=3  # Количество сбоев до миграции
+      - PING_COUNT=5  # Количество пингов для проверки
+      - PING_TIMEOUT=3  # Таймаут пинга в секундах
+      - PACKET_LOSS_THRESHOLD=50.0  # Порог потери пакетов (%)
+      - LATENCY_THRESHOLD=300.0  # Порог задержки (мс)
+      - STARTUP_DELAY=30  # Задержка запуска (секунды)
+    volumes:
+      - ./migration-service:/app
 
   # Заменяем устаревший метод cron на новый сервис metrics-collector
   # cleanup-cron:
