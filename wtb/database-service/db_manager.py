@@ -511,7 +511,218 @@ def measure_server_metrics(server_id, endpoint):
     except Exception as e:
         logger.error(f"Ошибка при измерении метрик сервера {server_id}: {str(e)}")
         return None
+@app.route('/geolocations', methods=['POST'])
+def add_geolocation():
+    """Добавляет новую геолокацию."""
+    data = request.json
+    
+    required_fields = ['code', 'name']
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": "Отсутствуют обязательные поля"}), 400
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Проверяем, существует ли уже геолокация с таким кодом
+        cursor.execute(
+            """
+            SELECT id FROM geolocations WHERE code = %s
+            """,
+            (data.get('code'),)
+        )
+        
+        existing_geo = cursor.fetchone()
+        if existing_geo:
+            conn.close()
+            return jsonify({"error": "Геолокация с таким кодом уже существует", "geolocation_id": existing_geo[0]}), 409
+        
+        # Вставляем запись в таблицу geolocations
+        cursor.execute(
+            """
+            INSERT INTO geolocations
+            (code, name, description, available, created_at)
+            VALUES (%s, %s, %s, %s, NOW())
+            RETURNING id
+            """,
+            (
+                data.get('code'),
+                data.get('name'),
+                data.get('description', ''),
+                data.get('available', True)
+            )
+        )
+        
+        geolocation_id = cursor.fetchone()[0]
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "geolocation_id": geolocation_id}), 201
+    except Exception as e:
+        logger.error(f"Ошибка при добавлении геолокации: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
+@app.route('/geolocations/<int:geo_id>', methods=['PUT'])
+def update_geolocation(geo_id):
+    """Обновляет данные геолокации."""
+    data = request.json
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Проверяем, существует ли геолокация с таким ID
+        cursor.execute(
+            """
+            SELECT id FROM geolocations WHERE id = %s
+            """,
+            (geo_id,)
+        )
+        
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({"error": "Геолокация с таким ID не найдена"}), 404
+        
+        # Проверяем, не пытаемся ли мы обновить код на уже существующий
+        if 'code' in data:
+            cursor.execute(
+                """
+                SELECT id FROM geolocations WHERE code = %s AND id != %s
+                """,
+                (data.get('code'), geo_id)
+            )
+            
+            if cursor.fetchone():
+                conn.close()
+                return jsonify({"error": "Геолокация с таким кодом уже существует"}), 409
+        
+        # Формируем запрос на обновление
+        update_fields = []
+        params = []
+        
+        if 'code' in data:
+            update_fields.append("code = %s")
+            params.append(data.get('code'))
+            
+        if 'name' in data:
+            update_fields.append("name = %s")
+            params.append(data.get('name'))
+            
+        if 'description' in data:
+            update_fields.append("description = %s")
+            params.append(data.get('description'))
+            
+        if 'available' in data:
+            update_fields.append("available = %s")
+            params.append(data.get('available'))
+        
+        # Если нет полей для обновления, возвращаем ошибку
+        if not update_fields:
+            conn.close()
+            return jsonify({"error": "Не указаны поля для обновления"}), 400
+        
+        # Добавляем ID геолокации в список параметров
+        params.append(geo_id)
+        
+        # Формируем и выполняем запрос на обновление
+        update_query = f"""
+            UPDATE geolocations
+            SET {", ".join(update_fields)}
+            WHERE id = %s
+            RETURNING id
+        """
+        
+        cursor.execute(update_query, params)
+        updated_geo_id = cursor.fetchone()[0]
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "geolocation_id": updated_geo_id}), 200
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении геолокации: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/geolocations/<int:geo_id>', methods=['DELETE'])
+def delete_geolocation(geo_id):
+    """Удаляет геолокацию."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Проверяем, существует ли геолокация с таким ID
+        cursor.execute(
+            """
+            SELECT id FROM geolocations WHERE id = %s
+            """,
+            (geo_id,)
+        )
+        
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({"error": "Геолокация с таким ID не найдена"}), 404
+        
+        # Проверяем, есть ли серверы, использующие эту геолокацию
+        cursor.execute(
+            """
+            SELECT COUNT(*) FROM servers WHERE geolocation_id = %s
+            """,
+            (geo_id,)
+        )
+        
+        servers_count = cursor.fetchone()[0]
+        if servers_count > 0:
+            conn.close()
+            return jsonify({"error": f"Невозможно удалить геолокацию, т.к. она используется {servers_count} серверами"}), 400
+        
+        # Выполняем удаление
+        cursor.execute(
+            """
+            DELETE FROM geolocations WHERE id = %s
+            """,
+            (geo_id,)
+        )
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        logger.error(f"Ошибка при удалении геолокации: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/geolocations/<int:geo_id>', methods=['GET'])
+def get_geolocation(geo_id):
+    """Получает детальную информацию о геолокации."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute(
+            """
+            SELECT g.*, 
+                   (SELECT COUNT(*) FROM servers s WHERE s.geolocation_id = g.id) as servers_count,
+                   (SELECT COUNT(*) FROM servers s WHERE s.geolocation_id = g.id AND s.status = 'active') as active_servers_count
+            FROM geolocations g
+            WHERE g.id = %s
+            """,
+            (geo_id,)
+        )
+        
+        geolocation = cursor.fetchone()
+        
+        if not geolocation:
+            conn.close()
+            return jsonify({"error": "Геолокация не найдена"}), 404
+        
+        conn.close()
+        
+        return jsonify(geolocation), 200
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации о геолокации: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+        
 #-------------------------
 # Основные API эндпоинты
 #-------------------------

@@ -148,55 +148,166 @@ def api_add_server():
         logger.error(f"Ошибка при добавлении сервера: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/servers/<int:server_id>', methods=['DELETE'])
-@login_required
-def api_delete_server(server_id):
-    """API для удаления сервера."""
+# Изменения в функции api_delete_server
+
+@app.route('/remove/<path:public_key>', methods=['DELETE'])
+def remove_config(public_key):
+    """Удаляет конфигурацию WireGuard по публичному ключу."""
     try:
-        # Получаем информацию о сервере, чтобы узнать публичный ключ
-        server_response = requests.get(f"{DATABASE_SERVICE_URL}/servers/{server_id}", timeout=10)
+        logger.info(f"Попытка удаления пира с публичным ключом: {public_key}")
         
-        if server_response.status_code != 200:
-            return jsonify({"status": "error", "message": "Сервер не найден"}), 404
+        # Удаляем клиента из конфигурации сервера
+        remove_peer_command = [
+            "wg", "set", "wg0", 
+            "peer", public_key,
+            "remove"
+        ]
         
-        server_data = server_response.json()
-        public_key = server_data.get("public_key")
+        # Запускаем процесс и логируем результат
+        process = subprocess.run(remove_peer_command, capture_output=True, text=True)
         
-        # Удаляем сервер из WireGuard конфигурации
-        if public_key:
-            wg_response = requests.delete(f"{WIREGUARD_SERVICE_URL}/remove/{public_key}", timeout=10)
-            if wg_response.status_code != 200:
-                logger.warning(f"Ошибка при удалении пира из WireGuard: {wg_response.status_code}")
+        if process.returncode != 0:
+            logger.error(f"Ошибка при выполнении команды: {process.stderr}")
+            return jsonify({"error": process.stderr}), 500
         
-        # Обновляем статус сервера в базе данных (помечаем как неактивный)
-        status_response = requests.post(
-            f"{DATABASE_SERVICE_URL}/servers/{server_id}/status",
-            json={"status": "inactive"},
+        # Сохраняем конфигурацию сервера
+        save_process = subprocess.run(["wg-quick", "save", "wg0"], capture_output=True, text=True)
+        
+        if save_process.returncode != 0:
+            logger.error(f"Ошибка при сохранении конфигурации: {save_process.stderr}")
+            return jsonify({"error": save_process.stderr}), 500
+        
+        logger.info(f"Пир с публичным ключом {public_key} успешно удален")
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        logger.error(f"Error removing configuration: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+# Добавляем эндпоинты для работы с геолокациями
+
+# Измененные имена функций с геолокациями, чтобы избежать конфликтов
+
+@app.route('/geolocations', methods=['GET'])
+@login_required
+def geolocations_page():  # Переименовано из geolocations
+    """Страница управления геолокациями."""
+    return render_template('geolocations.html')
+
+@app.route('/api/geolocations', methods=['POST'])
+@login_required
+def api_create_geolocation():  # Переименовано из api_add_geolocation
+    """API для добавления новой геолокации."""
+    try:
+        data = request.json
+        
+        # Проверяем обязательные поля
+        required_fields = ['code', 'name']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"status": "error", "message": f"Поле {field} обязательно"}), 400
+        
+        # Отправляем запрос на добавление геолокации
+        response = requests.post(
+            f"{DATABASE_SERVICE_URL}/geolocations",
+            json=data,
+            timeout=15
+        )
+        
+        if response.status_code in [200, 201]:
+            result = response.json()
+            return jsonify({"status": "success", "geolocation_id": result.get("geolocation_id")}), 201
+        else:
+            # Проверяем, есть ли информация об ошибке в ответе
+            error_message = "Ошибка при создании геолокации"
+            try:
+                error_data = response.json()
+                if "error" in error_data:
+                    error_message = error_data.get("error")
+            except:
+                pass
+            
+            return jsonify({"status": "error", "message": error_message}), response.status_code
+    except Exception as e:
+        logger.error(f"Ошибка при добавлении геолокации: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/geolocations/<int:geo_id>', methods=['PUT'])
+@login_required
+def api_edit_geolocation(geo_id):  # Переименовано из api_update_geolocation
+    """API для обновления данных геолокации."""
+    try:
+        data = request.json
+        
+        # Отправляем запрос на обновление геолокации
+        response = requests.put(
+            f"{DATABASE_SERVICE_URL}/geolocations/{geo_id}",
+            json=data,
+            timeout=15
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify({"status": "success", "geolocation_id": result.get("geolocation_id")}), 200
+        else:
+            # Проверяем, есть ли информация об ошибке в ответе
+            error_message = "Ошибка при обновлении геолокации"
+            try:
+                error_data = response.json()
+                if "error" in error_data:
+                    error_message = error_data.get("error")
+            except:
+                pass
+            
+            return jsonify({"status": "error", "message": error_message}), response.status_code
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении геолокации: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/geolocations/<int:geo_id>', methods=['DELETE'])
+@login_required
+def api_remove_geolocation(geo_id):  # Переименовано из api_delete_geolocation
+    """API для удаления геолокации."""
+    try:
+        # Отправляем запрос на удаление геолокации
+        response = requests.delete(
+            f"{DATABASE_SERVICE_URL}/geolocations/{geo_id}",
+            timeout=15
+        )
+        
+        if response.status_code == 200:
+            return jsonify({"status": "success", "message": "Геолокация успешно удалена"}), 200
+        else:
+            # Проверяем, есть ли информация об ошибке в ответе
+            error_message = "Ошибка при удалении геолокации"
+            try:
+                error_data = response.json()
+                if "error" in error_data:
+                    error_message = error_data.get("error")
+            except:
+                pass
+            
+            return jsonify({"status": "error", "message": error_message}), response.status_code
+    except Exception as e:
+        logger.error(f"Ошибка при удалении геолокации: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/geolocations/<int:geo_id>', methods=['GET'])
+@login_required
+def api_fetch_geolocation(geo_id):  # Переименовано из api_get_geolocation
+    """API для получения детальной информации о геолокации."""
+    try:
+        response = requests.get(
+            f"{DATABASE_SERVICE_URL}/geolocations/{geo_id}",
             timeout=10
         )
         
-        if status_response.status_code != 200:
-            return jsonify({"status": "error", "message": "Ошибка при обновлении статуса сервера"}), 500
-        
-        return jsonify({"status": "success", "message": "Сервер успешно удален"})
-    except Exception as e:
-        logger.error(f"Ошибка при удалении сервера: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/api/geolocations', methods=['GET'])
-@login_required
-def api_get_geolocations():
-    """API для получения списка геолокаций."""
-    try:
-        response = requests.get(f"{DATABASE_SERVICE_URL}/geolocations", timeout=10)
-        
         if response.status_code == 200:
-            geolocations = response.json().get("geolocations", [])
-            return jsonify({"status": "success", "geolocations": geolocations})
+            geolocation = response.json()
+            return jsonify({"status": "success", "geolocation": geolocation})
         else:
             return jsonify({"status": "error", "message": f"Ошибка API: {response.status_code}"}), 500
     except Exception as e:
-        logger.error(f"Ошибка при получении списка геолокаций: {str(e)}")
+        logger.error(f"Ошибка при получении информации о геолокации: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/server_metrics/<int:server_id>', methods=['GET'])

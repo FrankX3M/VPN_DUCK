@@ -1,0 +1,525 @@
+{% extends "base.html" %}
+
+{% block title %}Управление геолокациями - VPN Duck{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Переменные для хранения данных
+    let geolocationsData = [];
+    let deleteGeoId = null;
+    
+    // Инициализация страницы
+    initPage();
+    
+    // Функция инициализации страницы
+    function initPage() {
+        // Загрузка данных
+        loadGeolocations();
+        
+        // Обработчики событий
+        setupEventListeners();
+    }
+    
+    // Функция настройки обработчиков событий
+    function setupEventListeners() {
+        // Кнопка обновления списка геолокаций
+        document.getElementById('refreshGeolocations').addEventListener('click', function() {
+            loadGeolocations();
+        });
+        
+        // Кнопка добавления геолокации
+        document.getElementById('addGeolocationBtn').addEventListener('click', function() {
+            addGeolocation();
+        });
+        
+        // Кнопка обновления геолокации
+        document.getElementById('updateGeolocationBtn').addEventListener('click', function() {
+            const geoId = document.getElementById('edit_geo_id').value;
+            updateGeolocation(geoId);
+        });
+    }
+    
+    // Функция загрузки списка геолокаций
+    function loadGeolocations() {
+        fetch('/api/geolocations')
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                geolocationsData = data.geolocations;
+                updateGeolocationsTable(data.geolocations);
+            } else {
+                showAlert(`Ошибка: ${data.message}`, 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Ошибка соединения с сервером', 'danger');
+        });
+    }
+    
+    // Функция обновления таблицы геолокаций
+    function updateGeolocationsTable(geolocations) {
+        const tableBody = document.querySelector('#geolocationsTable tbody');
+        tableBody.innerHTML = '';
+        
+        if (geolocations.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="7" class="text-center">Нет доступных геолокаций</td></tr>';
+            return;
+        }
+        
+        geolocations.forEach(geo => {
+            const row = document.createElement('tr');
+            
+            // Определяем доступность геолокации
+            const isAvailable = geo.available;
+            const availabilityClass = isAvailable ? 'success' : 'danger';
+            const availabilityText = isAvailable ? 'Доступна' : 'Недоступна';
+            
+            row.innerHTML = `
+                <td>${geo.id}</td>
+                <td>${geo.code}</td>
+                <td>${geo.name}</td>
+                <td>${geo.description || ''}</td>
+                <td>
+                    <span class="badge bg-primary">${geo.active_servers_count || 0} активных</span>
+                    <span class="badge bg-secondary">${geo.servers_count || 0} всего</span>
+                </td>
+                <td><span class="badge bg-${availabilityClass}">${availabilityText}</span></td>
+                <td class="action-buttons">
+                    <button class="btn btn-sm btn-primary edit-geo-btn me-1" data-geo-id="${geo.id}" title="Редактировать геолокацию">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger delete-geo-btn" data-geo-id="${geo.id}" data-geo-name="${geo.name}" title="Удалить геолокацию">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            `;
+            
+            tableBody.appendChild(row);
+        });
+        
+        // Добавляем обработчики для кнопок в таблице
+        document.querySelectorAll('.edit-geo-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const geoId = this.dataset.geoId;
+                const geo = geolocationsData.find(g => g.id == geoId);
+                if (geo) {
+                    openEditModal(geo);
+                }
+            });
+        });
+        
+        document.querySelectorAll('.delete-geo-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const geoId = this.dataset.geoId;
+                const geoName = this.dataset.geoName;
+                openDeleteModal(geoId, geoName);
+            });
+        });
+    }
+    
+    // Функция добавления новой геолокации
+    function addGeolocation() {
+        // Получаем данные из формы
+        const code = document.getElementById('code').value;
+        const name = document.getElementById('name').value;
+        const description = document.getElementById('description').value;
+        const available = document.getElementById('available').checked;
+        
+        // Проверяем обязательные поля
+        if (!code || !name) {
+            showAlert('Заполните все обязательные поля', 'warning');
+            return;
+        }
+        
+        // Формируем данные для запроса
+        const data = {
+            code: code,
+            name: name,
+            description: description,
+            available: available
+        };
+        
+        // Отключаем кнопку на время запроса
+        const addButton = document.getElementById('addGeolocationBtn');
+        addButton.disabled = true;
+        addButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Добавление...';
+        
+        // Отправляем запрос на добавление геолокации
+        fetch('/api/geolocations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.status === 'success') {
+                // Сбрасываем форму
+                document.getElementById('addGeolocationForm').reset();
+                
+                // Закрываем модальное окно
+                const modal = bootstrap.Modal.getInstance(document.getElementById('addGeolocationModal'));
+                modal.hide();
+                
+                // Показываем сообщение об успехе
+                showAlert('Геолокация успешно добавлена', 'success');
+                
+                // Обновляем список геолокаций
+                loadGeolocations();
+            } else {
+                showAlert(`Ошибка: ${result.message}`, 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Ошибка соединения с сервером', 'danger');
+        })
+        .finally(() => {
+            // Возвращаем кнопку в исходное состояние
+            addButton.disabled = false;
+            addButton.innerHTML = 'Добавить геолокацию';
+        });
+    }
+    
+    // Функция открытия модального окна редактирования геолокации
+    function openEditModal(geo) {
+        // Заполняем форму данными геолокации
+        document.getElementById('edit_geo_id').value = geo.id;
+        document.getElementById('edit_code').value = geo.code;
+        document.getElementById('edit_name').value = geo.name;
+        document.getElementById('edit_description').value = geo.description || '';
+        document.getElementById('edit_available').checked = geo.available;
+        
+        // Открываем модальное окно
+        const editModal = new bootstrap.Modal(document.getElementById('editGeolocationModal'));
+        editModal.show();
+    }
+    
+    // Функция обновления данных геолокации
+    function updateGeolocation(geoId) {
+        // Получаем данные из формы
+        const code = document.getElementById('edit_code').value;
+        const name = document.getElementById('edit_name').value;
+        const description = document.getElementById('edit_description').value;
+        const available = document.getElementById('edit_available').checked;
+        
+        // Проверяем обязательные поля
+        if (!code || !name) {
+            showAlert('Заполните все обязательные поля', 'warning');
+            return;
+        }
+        
+        // Формируем данные для запроса
+        const data = {
+            code: code,
+            name: name,
+            description: description,
+            available: available
+        };
+        
+        // Отключаем кнопку на время запроса
+        const updateButton = document.getElementById('updateGeolocationBtn');
+        updateButton.disabled = true;
+        updateButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Обновление...';
+        
+        // Отправляем запрос на обновление геолокации
+        fetch(`/api/geolocations/${geoId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.status === 'success') {
+                // Закрываем модальное окно
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editGeolocationModal'));
+                modal.hide();
+                
+                // Показываем сообщение об успехе
+                showAlert('Геолокация успешно обновлена', 'success');
+                
+                // Обновляем список геолокаций
+                loadGeolocations();
+            } else {
+                showAlert(`Ошибка: ${result.message}`, 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Ошибка соединения с сервером', 'danger');
+        })
+        .finally(() => {
+            // Возвращаем кнопку в исходное состояние
+            updateButton.disabled = false;
+            updateButton.innerHTML = 'Обновить геолокацию';
+        });
+    }
+    
+    // Функция открытия модального окна удаления геолокации
+    function openDeleteModal(geoId, geoName) {
+        deleteGeoId = geoId;
+        document.getElementById('deleteGeolocationName').textContent = `"${geoName}" (ID: ${geoId})`;
+        
+        // Получаем подробные данные о геолокации
+        fetch(`/api/geolocations/${geoId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const geo = data.geolocation;
+                if (geo.servers_count > 0) {
+                    document.getElementById('deleteGeoWarning').textContent = 
+                        `Внимание! Эта геолокация используется ${geo.servers_count} серверами. 
+                        Удаление может быть невозможно, пока все серверы не будут перенесены или удалены.`;
+                } else {
+                    document.getElementById('deleteGeoWarning').textContent = '';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('deleteGeoWarning').textContent = 'Не удалось получить информацию о геолокации';
+        });
+        
+        // Обработчик кнопки подтверждения удаления
+        document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+            if (!deleteGeoId) return;
+            
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Удаление...';
+            
+            // Отправляем запрос на удаление геолокации
+            deleteGeolocation(deleteGeoId, this);
+        }, { once: true });
+        
+        // Открываем модальное окно
+        const deleteModal = new bootstrap.Modal(document.getElementById('deleteGeolocationModal'));
+        deleteModal.show();
+    }
+    
+    // Функция удаления геолокации
+    function deleteGeolocation(geoId, button) {
+        fetch(`/api/geolocations/${geoId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.status === 'success') {
+                // Закрываем модальное окно
+                const modal = bootstrap.Modal.getInstance(document.getElementById('deleteGeolocationModal'));
+                modal.hide();
+                
+                // Показываем сообщение об успехе
+                showAlert('Геолокация успешно удалена', 'success');
+                
+                // Обновляем список геолокаций
+                loadGeolocations();
+            } else {
+                showAlert(`Ошибка: ${result.message}`, 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Ошибка соединения с сервером', 'danger');
+        })
+        .finally(() => {
+            // Возвращаем кнопку в исходное состояние
+            button.disabled = false;
+            button.innerHTML = 'Удалить геолокацию';
+            
+            // Сбрасываем ID удаляемой геолокации
+            deleteGeoId = null;
+        });
+    }
+    
+    // Функция для отображения уведомлений
+    function showAlert(message, type) {
+        const alertsContainer = document.querySelector('.flash-messages');
+        if (!alertsContainer) {
+            console.error('Alerts container not found');
+            return;
+        }
+        
+        const alertHTML = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+        
+        alertsContainer.innerHTML += alertHTML;
+        
+        // Автоматически скрываем уведомление через 5 секунд
+        setTimeout(() => {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(alert => {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            });
+        }, 5000);
+    }
+});
+</script>
+{% endblock %} %}
+
+{% block head_extra %}
+<style>
+    .action-buttons {
+        white-space: nowrap;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row align-items-center mb-4">
+        <div class="col">
+            <h1>Управление геолокациями</h1>
+            <p class="text-muted">Добавление, редактирование и удаление геолокаций VPN Duck</p>
+        </div>
+        <div class="col-auto">
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addGeolocationModal">
+                <i class="bi bi-plus-circle"></i> Добавить геолокацию
+            </button>
+            <button class="btn btn-primary ms-2" id="refreshGeolocations">
+                <i class="bi bi-arrow-clockwise"></i> Обновить
+            </button>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Список геолокаций</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped" id="geolocationsTable">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Код</th>
+                                    <th>Название</th>
+                                    <th>Описание</th>
+                                    <th>Серверы</th>
+                                    <th>Статус</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="7" class="text-center">Загрузка данных...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно добавления геолокации -->
+<div class="modal fade" id="addGeolocationModal" tabindex="-1" aria-labelledby="addGeolocationModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addGeolocationModalLabel">Добавление новой геолокации</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addGeolocationForm">
+                    <div class="mb-3">
+                        <label for="code" class="form-label">Код геолокации</label>
+                        <input type="text" class="form-control" id="code" required maxlength="10">
+                        <div class="form-text">Краткий код (например, ru, us, eu)</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Название</label>
+                        <input type="text" class="form-control" id="name" required>
+                        <div class="form-text">Полное название геолокации</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Описание</label>
+                        <textarea class="form-control" id="description" rows="3"></textarea>
+                        <div class="form-text">Дополнительная информация о геолокации</div>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="available" checked>
+                        <label class="form-check-label" for="available">Доступна</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="addGeolocationBtn">Добавить геолокацию</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования геолокации -->
+<div class="modal fade" id="editGeolocationModal" tabindex="-1" aria-labelledby="editGeolocationModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editGeolocationModalLabel">Редактирование геолокации</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editGeolocationForm">
+                    <input type="hidden" id="edit_geo_id">
+                    <div class="mb-3">
+                        <label for="edit_code" class="form-label">Код геолокации</label>
+                        <input type="text" class="form-control" id="edit_code" required maxlength="10">
+                        <div class="form-text">Краткий код (например, ru, us, eu)</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_name" class="form-label">Название</label>
+                        <input type="text" class="form-control" id="edit_name" required>
+                        <div class="form-text">Полное название геолокации</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_description" class="form-label">Описание</label>
+                        <textarea class="form-control" id="edit_description" rows="3"></textarea>
+                        <div class="form-text">Дополнительная информация о геолокации</div>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="edit_available">
+                        <label class="form-check-label" for="edit_available">Доступна</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="updateGeolocationBtn">Обновить геолокацию</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно подтверждения удаления -->
+<div class="modal fade" id="deleteGeolocationModal" tabindex="-1" aria-labelledby="deleteGeolocationModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteGeolocationModalLabel">Подтверждение удаления</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Вы действительно хотите удалить геолокацию <strong id="deleteGeolocationName"></strong>?</p>
+                <p id="deleteGeoWarning" class="text-danger"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Удалить геолокацию</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock}
