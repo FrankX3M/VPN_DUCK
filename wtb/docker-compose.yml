@@ -84,9 +84,9 @@ services:
     environment:
       - DATABASE_SERVICE_URL=http://database-service:5002
       - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
-      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-development_secret_key}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY}
     ports:
       - "5003:5003"
     volumes:
