@@ -74,7 +74,25 @@ services:
     volumes:
       - pgadmin-data:/var/lib/pgadmin
 
-  # Новый сервис для сбора метрик серверов
+  # Новый сервис для администрирования и мониторинга
+  admin-panel:
+    build: ./admin-panel
+    restart: always
+    depends_on:
+      - database-service
+      - wireguard-service
+    environment:
+      - DATABASE_SERVICE_URL=http://database-service:5002
+      - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-development_secret_key}
+    ports:
+      - "5003:5003"
+    volumes:
+      - ./admin-panel:/app
+
+  # сервис для сбора метрик серверов
   metrics-collector:
     build: ./metrics-collector
     restart: always
@@ -112,17 +130,6 @@ services:
       - STARTUP_DELAY=30  # Задержка запуска (секунды)
     volumes:
       - ./migration-service:/app
-
-  # Заменяем устаревший метод cron на новый сервис metrics-collector
-  # cleanup-cron:
-  #   image: alpine
-  #   restart: always
-  #   depends_on:
-  #     - database-service
-  #   command: >
-  #     sh -c "apk add --no-cache curl &&
-  #            echo '0 * * * * curl -X POST http://database-service:5002/cleanup_expired' > /etc/crontabs/root &&
-  #            crond -f -d 8"
 
 volumes:
   postgres-data:
