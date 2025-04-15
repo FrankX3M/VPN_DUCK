@@ -1333,7 +1333,159 @@ def update_server(server_id):
     except Exception as e:
         logger.error(f"Ошибка при обновлении сервера: {str(e)}")
         return jsonify({"error": str(e)}), 500
+# Добавьте этот код в db_manager.py в раздел API-эндпоинтов
 
+@app.route('/servers/<int:server_id>', methods=['PUT'])
+def update_server(server_id):
+    """API для обновления данных сервера."""
+    data = request.json
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Проверяем, существует ли сервер с таким ID
+        cursor.execute(
+            """
+            SELECT id FROM servers WHERE id = %s
+            """,
+            (server_id,)
+        )
+        
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({"error": "Сервер с таким ID не найден"}), 404
+        
+        # Формируем запрос на обновление
+        update_fields = []
+        params = []
+        
+        if 'geolocation_id' in data:
+            update_fields.append("geolocation_id = %s")
+            params.append(data['geolocation_id'])
+            
+        if 'endpoint' in data:
+            update_fields.append("endpoint = %s")
+            params.append(data['endpoint'])
+            
+        if 'port' in data:
+            update_fields.append("port = %s")
+            params.append(data['port'])
+            
+        if 'address' in data:
+            update_fields.append("address = %s")
+            params.append(data['address'])
+            
+        if 'status' in data:
+            update_fields.append("status = %s")
+            params.append(data['status'])
+            
+        if 'public_key' in data:
+            update_fields.append("public_key = %s")
+            params.append(data['public_key'])
+            
+        if 'private_key' in data:
+            update_fields.append("private_key = %s")
+            params.append(data['private_key'])
+            
+        if 'load_factor' in data:
+            update_fields.append("load_factor = %s")
+            params.append(data['load_factor'])
+            
+        if 'metrics_rating' in data:
+            update_fields.append("metrics_rating = %s")
+            params.append(data['metrics_rating'])
+        
+        # Если нет полей для обновления, возвращаем ошибку
+        if not update_fields:
+            conn.close()
+            return jsonify({"error": "Не указаны поля для обновления"}), 400
+        
+        # Добавляем ID сервера в список параметров
+        params.append(server_id)
+        
+        # Формируем и выполняем запрос на обновление
+        update_query = f"""
+            UPDATE servers
+            SET {", ".join(update_fields)}, last_check = NOW()
+            WHERE id = %s
+            RETURNING id
+        """
+        
+        cursor.execute(update_query, params)
+        updated_server_id = cursor.fetchone()[0]
+        
+        # Если есть данные о местоположении, обновляем таблицу server_locations
+        if ('latitude' in data and 'longitude' in data) or ('city' in data or 'country' in data):
+            # Проверяем, существует ли запись в server_locations
+            cursor.execute(
+                """
+                SELECT server_id FROM server_locations WHERE server_id = %s
+                """,
+                (server_id,)
+            )
+            
+            location_exists = cursor.fetchone() is not None
+            
+            if location_exists:
+                # Обновляем существующую запись
+                location_update_fields = []
+                location_params = []
+                
+                if 'latitude' in data:
+                    location_update_fields.append("latitude = %s")
+                    location_params.append(data['latitude'])
+                
+                if 'longitude' in data:
+                    location_update_fields.append("longitude = %s")
+                    location_params.append(data['longitude'])
+                
+                if 'city' in data:
+                    location_update_fields.append("city = %s")
+                    location_params.append(data['city'])
+                
+                if 'country' in data:
+                    location_update_fields.append("country = %s")
+                    location_params.append(data['country'])
+                
+                if location_update_fields:
+                    location_update_fields.append("updated_at = NOW()")
+                    location_params.append(server_id)
+                    
+                    location_update_query = f"""
+                        UPDATE server_locations
+                        SET {", ".join(location_update_fields)}
+                        WHERE server_id = %s
+                    """
+                    
+                    cursor.execute(location_update_query, location_params)
+            else:
+                # Создаем новую запись только если есть координаты
+                if 'latitude' in data and 'longitude' in data:
+                    cursor.execute(
+                        """
+                        INSERT INTO server_locations
+                        (server_id, latitude, longitude, city, country, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, NOW())
+                        """,
+                        (
+                            server_id,
+                            data.get('latitude'),
+                            data.get('longitude'),
+                            data.get('city'),
+                            data.get('country')
+                        )
+                    )
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "server_id": updated_server_id}), 200
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении сервера: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+        
 # @app.route('/servers/register', methods=['POST'])
 # def register_server():
 #     """Регистрирует новый сервер в базе данных."""

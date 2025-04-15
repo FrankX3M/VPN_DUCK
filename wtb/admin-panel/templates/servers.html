@@ -262,9 +262,7 @@
             </div>
         </div>
     </div>
-        
-<!----------------------------------------------------редактирование серверов---------------------------------------------------->
-<!-- Добавьте этот код перед закрывающим тегом </div> последнего элемента в servers.html (перед блоком модальных окон) -->
+</div>
 
 <!-- Модальное окно редактирования сервера -->
 <div class="modal fade" id="editServerModal" tabindex="-1" aria-labelledby="editServerModalLabel" aria-hidden="true">
@@ -325,9 +323,67 @@
         </div>
     </div>
 </div>
-<!----------------------------------------------------редактирование серверов---------------------------------------------------->
 
+<!-- Модальное окно редактирования сервера -->
+<div class="modal fade" id="editServerModal" tabindex="-1" aria-labelledby="editServerModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editServerModalLabel">Редактирование сервера</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editServerForm">
+                    <input type="hidden" id="edit_server_id">
+                    <div class="mb-3">
+                        <label for="edit_geolocation_id" class="form-label">Геолокация</label>
+                        <select class="form-select" id="edit_geolocation_id" required>
+                            <option value="" selected disabled>Выберите геолокацию...</option>
+                            <!-- Опции будут добавлены из JavaScript -->
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_endpoint" class="form-label">Endpoint (IP или домен)</label>
+                        <input type="text" class="form-control" id="edit_endpoint" required>
+                        <div class="form-text">Публичный IP-адрес или домен сервера</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_port" class="form-label">Порт</label>
+                        <input type="number" class="form-control" id="edit_port" required min="1" max="65535">
+                        <div class="form-text">UDP-порт для WireGuard (по умолчанию 51820)</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_address" class="form-label">IP-адрес в VPN-сети</label>
+                        <input type="text" class="form-control" id="edit_address" required>
+                        <div class="form-text">Адрес сервера в сети WireGuard</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_status" class="form-label">Статус</label>
+                        <select class="form-select" id="edit_status" required>
+                            <option value="active">Активный</option>
+                            <option value="inactive">Неактивный</option>
+                            <option value="degraded">Деградированный</option>
+                            <option value="maintenance">Обслуживание</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_city" class="form-label">Город (опционально)</label>
+                        <input type="text" class="form-control" id="edit_city">
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_country" class="form-label">Страна (опционально)</label>
+                        <input type="text" class="form-control" id="edit_country">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="updateServerBtn">Обновить сервер</button>
+            </div>
+        </div>
+    </div>
 </div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -432,6 +488,12 @@ document.addEventListener('DOMContentLoaded', function() {
             // Запускаем обновление метрик
             updateMetrics(this);
         });
+        
+        // Обработчик кнопки обновления сервера
+        document.getElementById('updateServerBtn').addEventListener('click', function() {
+            const serverId = document.getElementById('edit_server_id').value;
+            updateServer(serverId);
+        });
     }
     
     // Функция загрузки списка серверов
@@ -479,148 +541,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (servers.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="7" class="text-center">Нет доступных серверов</td></tr>';
             return;
-                // Добавляем кнопку редактирования в список действий
-        let actionsCell = row.querySelector('.action-buttons');
-        if (actionsCell) {
-            // Добавляем кнопку редактирования перед кнопкой удаления
-            const editButton = document.createElement('button');
-            editButton.className = 'btn btn-sm btn-primary edit-server-btn me-1';
-            editButton.dataset.serverId = server.id;
-            editButton.setAttribute('title', 'Редактировать сервер');
-            editButton.innerHTML = '<i class="bi bi-pencil"></i>';
-            
-            // Вставляем кнопку редактирования перед кнопкой удаления
-            const deleteButton = actionsCell.querySelector('.delete-server-btn');
-            if (deleteButton) {
-                actionsCell.insertBefore(editButton, deleteButton);
-            } else {
-                actionsCell.appendChild(editButton);
-            }
-            
-            // Добавляем обработчик события для кнопки редактирования
-            editButton.addEventListener('click', function(e) {
-                e.stopPropagation();
-                openEditModal(server);
-            });
-        }
-
-        // Добавить новые функции в основной скрипт (перед закрытием addEventListener)
-
-        // Функция открытия модального окна редактирования сервера
-        function openEditModal(server) {
-            // Заполняем форму данными сервера
-            document.getElementById('edit_server_id').value = server.id;
-            document.getElementById('edit_endpoint').value = server.endpoint;
-            document.getElementById('edit_port').value = server.port;
-            document.getElementById('edit_address').value = server.address || '';
-            document.getElementById('edit_status').value = server.status;
-            document.getElementById('edit_city').value = server.city || '';
-            document.getElementById('edit_country').value = server.country || '';
-            
-            // Заполняем выпадающий список геолокаций
-            const geoSelect = document.getElementById('edit_geolocation_id');
-            geoSelect.innerHTML = '<option value="" disabled>Выберите геолокацию...</option>';
-            
-            geolocationsData.forEach(geo => {
-                const option = document.createElement('option');
-                option.value = geo.id;
-                option.textContent = geo.name;
-                
-                // Устанавливаем выбранную геолокацию
-                if (geo.id === server.geolocation_id) {
-                    option.selected = true;
-                }
-                
-                geoSelect.appendChild(option);
-            });
-            
-            // Устанавливаем обработчик для кнопки обновления
-            document.getElementById('updateServerBtn').onclick = function() {
-                updateServer(server.id);
-            };
-            
-            // Открываем модальное окно
-            const editModal = new bootstrap.Modal(document.getElementById('editServerModal'));
-            editModal.show();
-        }
-
-        // Функция обновления данных сервера
-        function updateServer(serverId) {
-            // Получаем данные из формы
-            const geolocationId = document.getElementById('edit_geolocation_id').value;
-            const endpoint = document.getElementById('edit_endpoint').value;
-            const port = document.getElementById('edit_port').value;
-            const address = document.getElementById('edit_address').value;
-            const status = document.getElementById('edit_status').value;
-            const city = document.getElementById('edit_city').value;
-            const country = document.getElementById('edit_country').value;
-            
-            // Проверяем обязательные поля
-            if (!geolocationId || !endpoint || !port || !address || !status) {
-                showAlert('Заполните все обязательные поля', 'warning');
-                return;
-            }
-            
-            // Формируем данные для запроса
-            const data = {
-                geolocation_id: parseInt(geolocationId),
-                endpoint,
-                port: parseInt(port),
-                address,
-                status
-            };
-            
-            // Добавляем опциональные поля, если они заполнены
-            if (city) data.city = city;
-            if (country) data.country = country;
-            
-            // Отключаем кнопку на время запроса
-            const updateButton = document.getElementById('updateServerBtn');
-            updateButton.disabled = true;
-            updateButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Обновление...';
-            
-            // Отправляем запрос на обновление сервера
-            fetch(`/api/servers/${serverId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
-            })
-            .then(response => response.json())
-            .then(result => {
-                if (result.status === 'success') {
-                    // Закрываем модальное окно
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('editServerModal'));
-                    modal.hide();
-                    
-                    // Показываем сообщение об успехе
-                    showAlert('Сервер успешно обновлен', 'success');
-                    
-                    // Обновляем список серверов
-                    loadServers();
-                } else {
-                    showAlert(`Ошибка: ${result.message}`, 'danger');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showAlert('Ошибка соединения с сервером', 'danger');
-            })
-            .finally(() => {
-                // Возвращаем кнопку в исходное состояние
-                updateButton.disabled = false;
-                updateButton.innerHTML = 'Обновить сервер';
-            });
-        }
-
-        // Добавить в функцию setupEventListeners новые обработчики событий
-
-        // Обработчик кнопки обновления сервера
-        document.getElementById('updateServerBtn').addEventListener('click', function() {
-            const serverId = document.getElementById('edit_server_id').value;
-            updateServer(serverId);
-        });
         }
         
         servers.forEach(server => {
@@ -649,6 +569,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     <small>Потери: ${packetLoss}</small>
                 </td>
                 <td class="action-buttons">
+                    <button class="btn btn-sm btn-primary edit-server-btn me-1" data-server-id="${server.id}" title="Редактировать сервер">
+                        <i class="bi bi-pencil"></i>
+                    </button>
                     <button class="btn btn-sm btn-info view-metrics-btn" data-server-id="${server.id}" title="Просмотр метрик">
                         <i class="bi bi-graph-up"></i>
                     </button>
@@ -678,47 +601,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 openDeleteModal(serverId, serverEndpoint);
             });
         });
-    }
-    
-    // Функция обновления таблицы геолокаций
-    function updateGeolocationsTable(geolocations) {
-        const tableBody = document.querySelector('#geolocationsTable tbody');
-        tableBody.innerHTML = '';
         
-        if (geolocations.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="4" class="text-center">Нет доступных геолокаций</td></tr>';
-            return;
-        }
-        
-        geolocations.forEach(geo => {
-            const row = document.createElement('tr');
-            
-            // Определяем доступность геолокации
-            const isAvailable = geo.available || (geo.active_servers_count && geo.active_servers_count > 0);
-            const availabilityClass = isAvailable ? 'success' : 'danger';
-            const availabilityText = isAvailable ? 'Доступна' : 'Недоступна';
-            
-            row.innerHTML = `
-                <td>${geo.code}</td>
-                <td>${geo.name}</td>
-                <td>${geo.active_servers_count || 0}</td>
-                <td><span class="badge bg-${availabilityClass}">${availabilityText}</span></td>
-            `;
-            
-            tableBody.appendChild(row);
-        });
-    }
-    
-    // Функция обновления выпадающего списка геолокаций
-    function updateGeolocationsDropdown(geolocations) {
-        const select = document.getElementById('geolocation_id');
-        select.innerHTML = '<option value="" selected disabled>Выберите геолокацию...</option>';
-        
-        geolocations.forEach(geo => {
-            const option = document.createElement('option');
-            option.value = geo.id;
-            option.textContent = geo.name;
-            select.appendChild(option);
+        // Добавляем обработчик для кнопки редактирования
+        document.querySelectorAll('.edit-server-btn').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const serverId = this.dataset.serverId;
+                const server = serversData.find(s => s.id == serverId);
+                if (server) {
+                    openEditModal(server);
+                }
+            });
         });
     }
     
@@ -799,6 +692,76 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // Функция обновления данных сервера
+    function updateServer(serverId) {
+        // Получаем данные из формы
+        const geolocationId = document.getElementById('edit_geolocation_id').value;
+        const endpoint = document.getElementById('edit_endpoint').value;
+        const port = document.getElementById('edit_port').value;
+        const address = document.getElementById('edit_address').value;
+        const status = document.getElementById('edit_status').value;
+        const city = document.getElementById('edit_city').value;
+        const country = document.getElementById('edit_country').value;
+        
+        // Проверяем обязательные поля
+        if (!geolocationId || !endpoint || !port || !address || !status) {
+            showAlert('Заполните все обязательные поля', 'warning');
+            return;
+        }
+        
+        // Формируем данные для запроса
+        const data = {
+            geolocation_id: parseInt(geolocationId),
+            endpoint,
+            port: parseInt(port),
+            address,
+            status
+        };
+        
+        // Добавляем опциональные поля, если они заполнены
+        if (city) data.city = city;
+        if (country) data.country = country;
+        
+        // Отключаем кнопку на время запроса
+        const updateButton = document.getElementById('updateServerBtn');
+        updateButton.disabled = true;
+        updateButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Обновление...';
+        
+        // Отправляем запрос на обновление сервера
+        fetch(`/api/servers/${serverId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.status === 'success') {
+                // Закрываем модальное окно
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editServerModal'));
+                modal.hide();
+                
+                // Показываем сообщение об успехе
+                showAlert('Сервер успешно обновлен', 'success');
+                
+                // Обновляем список серверов
+                loadServers();
+            } else {
+                showAlert(`Ошибка: ${result.message}`, 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Ошибка соединения с сервером', 'danger');
+        })
+        .finally(() => {
+            // Возвращаем кнопку в исходное состояние
+            updateButton.disabled = false;
+            updateButton.innerHTML = 'Обновить сервер';
+        });
+    }
+    
     // Функция открытия модального окна удаления сервера
     function openDeleteModal(serverId, serverName) {
         deleteServerId = serverId;
@@ -867,27 +830,327 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-// Функция перебалансировки серверов
+    
+    // Функция обновления таблицы геолокаций
+    function updateGeolocationsTable(geolocations) {
+        const tableBody = document.querySelector('#geolocationsTable tbody');
+        tableBody.innerHTML = '';
+        
+        if (geolocations.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="4" class="text-center">Нет доступных геолокаций</td></tr>';
+            return;
+        }
+        
+        geolocations.forEach(geo => {
+            const row = document.createElement('tr');
+            
+            // Определяем доступность геолокации
+            const isAvailable = geo.available || (geo.active_servers_count && geo.active_servers_count > 0);
+            const availabilityClass = isAvailable ? 'success' : 'danger';
+            const availabilityText = isAvailable ? 'Доступна' : 'Недоступна';
+            
+            row.innerHTML = `
+                <td>${geo.code}</td>
+                <td>${geo.name}</td>
+                <td>${geo.active_servers_count || 0}</td>
+                <td><span class="badge bg-${availabilityClass}">${availabilityText}</span></td>
+            `;
+            
+            tableBody.appendChild(row);
+        });
+    }
+    
+    // Функция обновления выпадающего списка геолокаций
+    function updateGeolocationsDropdown(geolocations) {
+        const select = document.getElementById('geolocation_id');
+        select.innerHTML = '<option value="" selected disabled>Выберите геолокацию...</option>';
+        
+        geolocations.forEach(geo => {
+            const option = document.createElement('option');
+            option.value = geo.id;
+            option.textContent = geo.name;
+            select.appendChild(option);
+        });
+    }
+    
+    // Функция открытия модального окна редактирования сервера
+    function openEditModal(server) {
+        // Заполняем форму данными сервера
+        document.getElementById('edit_server_id').value = server.id;
+        document.getElementById('edit_endpoint').value = server.endpoint;
+        document.getElementById('edit_port').value = server.port;
+        document.getElementById('edit_address').value = server.address || '';
+        document.getElementById('edit_status').value = server.status;
+        document.getElementById('edit_city').value = server.city || '';
+        document.getElementById('edit_country').value = server.country || '';
+        
+        // Заполняем выпадающий список геолокаций
+        const geoSelect = document.getElementById('edit_geolocation_id');
+        geoSelect.innerHTML = '<option value="" disabled>Выберите геолокацию...</option>';
+        
+        geolocationsData.forEach(geo => {
+            const option = document.createElement('option');
+            option.value = geo.id;
+            option.textContent = geo.name;
+            
+            // Устанавливаем выбранную геолокацию
+            if (geo.id === server.geolocation_id) {
+                option.selected = true;
+            }
+            
+            geoSelect.appendChild(option);
+        });
+        
+        // Устанавливаем обработчик для кнопки обновления
+        document.getElementById('updateServerBtn').onclick = function() {
+            updateServer(server.id);
+        };
+        
+        // Открываем модальное окно
+        const editModal = new bootstrap.Modal(document.getElementById('editServerModal'));
+        editModal.show();
+    }
+    // Функция перебалансировки серверов
     function rebalanceServers(geoId, threshold, button) {
-        fetch('/api/servers/rebalance', {
-            method: 'POST',
+            fetch('/api/servers/rebalance', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    geolocation_id: parseInt(geoId),
+                    threshold: parseInt(threshold)
+                })
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success') {
+                    // Закрываем модальное окно
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('rebalanceModal'));
+                    modal.hide();
+                    
+                    // Показываем сообщение об успехе
+                    showAlert(`Перебалансировка выполнена успешно. Обновлено серверов: ${result.updated_servers}, перемещено пользователей: ${result.migrated_users}`, 'success');
+                    
+                    // Обновляем список серверов
+                    loadServers();
+                } else {
+                    showAlert(`Ошибка: ${result.message}`, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Ошибка соединения с сервером', 'danger');
+            })
+            .finally(() => {
+                // Возвращаем кнопку в исходное состояние
+                button.disabled = false;
+                button.innerHTML = 'Запустить перебалансировку';
+            });
+        }
+        
+        // Функция миграции пользователей
+        function migrateUsers(button) {
+            fetch('/api/servers/migrate_users', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success') {
+                    // Показываем сообщение об успехе
+                    showAlert(`Миграция выполнена успешно. Перемещено пользователей: ${result.migrated}`, 'success');
+                    
+                    // Обновляем список серверов
+                    loadServers();
+                } else {
+                    showAlert(`Ошибка: ${result.message}`, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Ошибка соединения с сервером', 'danger');
+            })
+            .finally(() => {
+                // Возвращаем кнопку в исходное состояние
+                button.disabled = false;
+                button.innerHTML = '<div class="d-flex align-items-center"><i class="bi bi-people-fill me-3 text-warning"></i><div><h6 class="mb-0">Миграция пользователей</h6><small class="text-muted">Перенос пользователей с неактивных серверов</small></div></div>';
+            });
+        }
+        
+        // Функция обновления метрик
+        function updateMetrics(button) {
+            fetch('/api/metrics/analyze', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success') {
+                    // Показываем сообщение об успехе
+                    showAlert(`Анализ метрик выполнен успешно. Обновлено серверов: ${result.updated_servers}`, 'success');
+                    
+                    // Обновляем список серверов
+                    loadServers();
+                } else {
+                    showAlert(`Ошибка: ${result.message}`, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Ошибка соединения с сервером', 'danger');
+            })
+            .finally(() => {
+                // Возвращаем кнопку в исходное состояние
+                button.disabled = false;
+                button.innerHTML = '<div class="d-flex align-items-center"><i class="bi bi-graph-up me-3 text-success"></i><div><h6 class="mb-0">Обновить метрики</h6><small class="text-muted">Анализ всех метрик и обновление рейтингов</small></div></div>';
+            });
+        }
+        
+        // Функция для отображения уведомлений
+        function showAlert(message, type) {
+            const alertsContainer = document.querySelector('.flash-messages');
+            if (!alertsContainer) {
+                console.error('Alerts container not found');
+                return;
+            }
+            
+            const alertHTML = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `;
+            
+            alertsContainer.innerHTML += alertHTML;
+            
+            // Автоматически скрываем уведомление через 5 секунд
+            setTimeout(() => {
+                const alerts = document.querySelectorAll('.alert');
+                alerts.forEach(alert => {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                });
+            }, 5000);
+        }
+    });
+    // Добавить в функцию updateServersTable в скрипте на странице servers.html перед закрытием функции
+
+    // Добавляем кнопку редактирования в список действий
+    let actionsCell = row.querySelector('.action-buttons');
+    if (actionsCell) {
+        // Добавляем кнопку редактирования перед кнопкой удаления
+        const editButton = document.createElement('button');
+        editButton.className = 'btn btn-sm btn-primary edit-server-btn me-1';
+        editButton.dataset.serverId = server.id;
+        editButton.setAttribute('title', 'Редактировать сервер');
+        editButton.innerHTML = '<i class="bi bi-pencil"></i>';
+        
+        // Вставляем кнопку редактирования перед кнопкой удаления
+        const deleteButton = actionsCell.querySelector('.delete-server-btn');
+        if (deleteButton) {
+            actionsCell.insertBefore(editButton, deleteButton);
+        } else {
+            actionsCell.appendChild(editButton);
+        }
+        
+        // Добавляем обработчик события для кнопки редактирования
+        editButton.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openEditModal(server);
+        });
+    }
+
+    // Добавить новые функции в основной скрипт (перед закрытием addEventListener)
+
+    // Функция открытия модального окна редактирования сервера
+    function openEditModal(server) {
+        // Заполняем форму данными сервера
+        document.getElementById('edit_server_id').value = server.id;
+        document.getElementById('edit_endpoint').value = server.endpoint;
+        document.getElementById('edit_port').value = server.port;
+        document.getElementById('edit_address').value = server.address || '';
+        document.getElementById('edit_status').value = server.status;
+        document.getElementById('edit_city').value = server.city || '';
+        document.getElementById('edit_country').value = server.country || '';
+        
+        // Заполняем выпадающий список геолокаций
+        const geoSelect = document.getElementById('edit_geolocation_id');
+        geoSelect.innerHTML = '<option value="" disabled>Выберите геолокацию...</option>';
+        
+        geolocationsData.forEach(geo => {
+            const option = document.createElement('option');
+            option.value = geo.id;
+            option.textContent = geo.name;
+            
+            // Устанавливаем выбранную геолокацию
+            if (geo.id === server.geolocation_id) {
+                option.selected = true;
+            }
+            
+            geoSelect.appendChild(option);
+        });
+        
+        // Устанавливаем обработчик для кнопки обновления
+        document.getElementById('updateServerBtn').onclick = function() {
+            updateServer(server.id);
+        };
+        
+        // Открываем модальное окно
+        const editModal = new bootstrap.Modal(document.getElementById('editServerModal'));
+        editModal.show();
+    }
+
+    // Функция обновления данных сервера
+    function updateServer(serverId) {
+        // Получаем данные из формы
+        const geolocationId = document.getElementById('edit_geolocation_id').value;
+        const endpoint = document.getElementById('edit_endpoint').value;
+        const port = document.getElementById('edit_port').value;
+        const address = document.getElementById('edit_address').value;
+        const status = document.getElementById('edit_status').value;
+        const city = document.getElementById('edit_city').value;
+        const country = document.getElementById('edit_country').value;
+        
+        // Проверяем обязательные поля
+        if (!geolocationId || !endpoint || !port || !address || !status) {
+            showAlert('Заполните все обязательные поля', 'warning');
+            return;
+        }
+        
+        // Формируем данные для запроса
+        const data = {
+            geolocation_id: parseInt(geolocationId),
+            endpoint,
+            port: parseInt(port),
+            address,
+            status
+        };
+        
+        // Добавляем опциональные поля, если они заполнены
+        if (city) data.city = city;
+        if (country) data.country = country;
+        
+        // Отключаем кнопку на время запроса
+        const updateButton = document.getElementById('updateServerBtn');
+        updateButton.disabled = true;
+        updateButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Обновление...';
+        
+        // Отправляем запрос на обновление сервера
+        fetch(`/api/servers/${serverId}`, {
+            method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                geolocation_id: parseInt(geoId),
-                threshold: parseInt(threshold)
-            })
+            body: JSON.stringify(data)
         })
         .then(response => response.json())
         .then(result => {
             if (result.status === 'success') {
                 // Закрываем модальное окно
-                const modal = bootstrap.Modal.getInstance(document.getElementById('rebalanceModal'));
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editServerModal'));
                 modal.hide();
                 
                 // Показываем сообщение об успехе
-                showAlert(`Перебалансировка выполнена успешно. Обновлено серверов: ${result.updated_servers}, перемещено пользователей: ${result.migrated_users}`, 'success');
+                showAlert('Сервер успешно обновлен', 'success');
                 
                 // Обновляем список серверов
                 loadServers();
@@ -901,93 +1164,17 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .finally(() => {
             // Возвращаем кнопку в исходное состояние
-            button.disabled = false;
-            button.innerHTML = 'Запустить перебалансировку';
+            updateButton.disabled = false;
+            updateButton.innerHTML = 'Обновить сервер';
         });
     }
-    
-    // Функция миграции пользователей
-    function migrateUsers(button) {
-        fetch('/api/servers/migrate_users', {
-            method: 'POST'
-        })
-        .then(response => response.json())
-        .then(result => {
-            if (result.status === 'success') {
-                // Показываем сообщение об успехе
-                showAlert(`Миграция выполнена успешно. Перемещено пользователей: ${result.migrated}`, 'success');
-                
-                // Обновляем список серверов
-                loadServers();
-            } else {
-                showAlert(`Ошибка: ${result.message}`, 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showAlert('Ошибка соединения с сервером', 'danger');
-        })
-        .finally(() => {
-            // Возвращаем кнопку в исходное состояние
-            button.disabled = false;
-            button.innerHTML = '<div class="d-flex align-items-center"><i class="bi bi-people-fill me-3 text-warning"></i><div><h6 class="mb-0">Миграция пользователей</h6><small class="text-muted">Перенос пользователей с неактивных серверов</small></div></div>';
-        });
-    }
-    
-    // Функция обновления метрик
-    function updateMetrics(button) {
-        fetch('/api/metrics/analyze', {
-            method: 'POST'
-        })
-        .then(response => response.json())
-        .then(result => {
-            if (result.status === 'success') {
-                // Показываем сообщение об успехе
-                showAlert(`Анализ метрик выполнен успешно. Обновлено серверов: ${result.updated_servers}`, 'success');
-                
-                // Обновляем список серверов
-                loadServers();
-            } else {
-                showAlert(`Ошибка: ${result.message}`, 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showAlert('Ошибка соединения с сервером', 'danger');
-        })
-        .finally(() => {
-            // Возвращаем кнопку в исходное состояние
-            button.disabled = false;
-            button.innerHTML = '<div class="d-flex align-items-center"><i class="bi bi-graph-up me-3 text-success"></i><div><h6 class="mb-0">Обновить метрики</h6><small class="text-muted">Анализ всех метрик и обновление рейтингов</small></div></div>';
-        });
-    }
-    
-    // Функция для отображения уведомлений
-    function showAlert(message, type) {
-        const alertsContainer = document.querySelector('.flash-messages');
-        if (!alertsContainer) {
-            console.error('Alerts container not found');
-            return;
-        }
-        
-        const alertHTML = `
-            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        `;
-        
-        alertsContainer.innerHTML += alertHTML;
-        
-        // Автоматически скрываем уведомление через 5 секунд
-        setTimeout(() => {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(alert => {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
-            });
-        }, 5000);
-    }
-});
-</script>
-{% endblock %}
+
+    // Добавить в функцию setupEventListeners новые обработчики событий
+
+    // Обработчик кнопки обновления сервера
+    document.getElementById('updateServerBtn').addEventListener('click', function() {
+        const serverId = document.getElementById('edit_server_id').value;
+        updateServer(serverId);
+    });
+    </script>
+    {% endblock %}
