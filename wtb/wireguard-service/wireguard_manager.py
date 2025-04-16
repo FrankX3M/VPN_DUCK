@@ -190,26 +190,54 @@ def create_config():
         logger.error(f"Error creating configuration: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/remove/<public_key>', methods=['DELETE'])
-def remove_config(public_key):
+# @app.route('/remove/<public_key>', methods=['DELETE'])
+# def remove_config(public_key):
+#     """Удаляет конфигурацию WireGuard по публичному ключу."""
+#     try:
+#         # Удаляем клиента из конфигурации сервера
+#         remove_peer_command = [
+#             "wg", "set", "wg0", 
+#             "peer", public_key,
+#             "remove"
+#         ]
+        
+#         subprocess.run(remove_peer_command, check=True)
+        
+#         # Сохраняем конфигурацию сервера
+#         subprocess.run(["wg-quick", "save", "wg0"], check=True)
+        
+#         return jsonify({"status": "success"}), 200
+#     except Exception as e:
+#         logger.error(f"Error removing configuration: {str(e)}")
+#         return jsonify({"error": str(e)}), 500
+
+@app.route('/remove', methods=['DELETE'])
+def remove_config():
     """Удаляет конфигурацию WireGuard по публичному ключу."""
     try:
-        # Удаляем клиента из конфигурации сервера
+        data = request.get_json()
+        public_key = data.get("public_key")
+
+        if not public_key:
+            return jsonify({"error": "Public key is required"}), 400
+
+        # Удаление клиента из конфигурации WireGuard
         remove_peer_command = [
-            "wg", "set", "wg0", 
+            "wg", "set", "wg0",
             "peer", public_key,
             "remove"
-        ]
-        
+            ]
         subprocess.run(remove_peer_command, check=True)
-        
-        # Сохраняем конфигурацию сервера
+
+        # Сохранение конфигурации
         subprocess.run(["wg-quick", "save", "wg0"], check=True)
-        
+
         return jsonify({"status": "success"}), 200
+
     except Exception as e:
-        logger.error(f"Error removing configuration: {str(e)}")
+        logger.error(f"Ошибка при удалении конфигурации: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/status', methods=['GET'])
 def get_status():
