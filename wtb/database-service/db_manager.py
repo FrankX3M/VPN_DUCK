@@ -237,52 +237,52 @@ def init_db():
     for query in index_queries:
         execute_and_commit(query)
     
-    # Добавляем начальные данные для геолокаций, если таблица пуста
-    count = execute_and_commit('SELECT COUNT(*) FROM geolocations', commit=False)
-    if count and count[0][0] == 0:
-        execute_and_commit('''
-        INSERT INTO geolocations (code, name, description, available, created_at)
-        VALUES 
-            ('ru', 'Россия', 'Серверы в России', TRUE, NOW()),
-            ('us', 'США', 'Серверы в США', TRUE, NOW()),
-            ('eu', 'Европа', 'Серверы в странах Европы', TRUE, NOW()),
-            ('asia', 'Азия', 'Серверы в странах Азии', TRUE, NOW())
-        ''', message="Добавлены начальные данные для геолокаций")
+    # # Добавляем начальные данные для геолокаций, если таблица пуста
+    # count = execute_and_commit('SELECT COUNT(*) FROM geolocations', commit=False)
+    # if count and count[0][0] == 0:
+    #     execute_and_commit('''
+    #     INSERT INTO geolocations (code, name, description, available, created_at)
+    #     VALUES 
+    #         ('ru', 'Россия', 'Серверы в России', TRUE, NOW()),
+    #         ('us', 'США', 'Серверы в США', TRUE, NOW()),
+    #         ('eu', 'Европа', 'Серверы в странах Европы', TRUE, NOW()),
+    #         ('asia', 'Азия', 'Серверы в странах Азии', TRUE, NOW())
+    #     ''', message="Добавлены начальные данные для геолокаций")
     
-    # Инициализируем данные для первого сервера, если таблица серверов пуста
-    count = execute_and_commit('SELECT COUNT(*) FROM servers', commit=False)
-    if count and count[0][0] == 0:
-        # Получаем geolocation_id для России
-        geo_id_result = execute_and_commit('SELECT id FROM geolocations WHERE code = %s', ('ru',), commit=False)
+    # # Инициализируем данные для первого сервера, если таблица серверов пуста
+    # count = execute_and_commit('SELECT COUNT(*) FROM servers', commit=False)
+    # if count and count[0][0] == 0:
+    #     # Получаем geolocation_id для России
+    #     geo_id_result = execute_and_commit('SELECT id FROM geolocations WHERE code = %s', ('ru',), commit=False)
         
-        if geo_id_result:
-            geo_id = geo_id_result[0][0]
+    #     if geo_id_result:
+    #         geo_id = geo_id_result[0][0]
             
-            # Получаем данные сервера из окружения
-            server_endpoint = os.getenv('SERVER_ENDPOINT', 'your-server-endpoint.com')
-            server_port = int(os.getenv('SERVER_PORT', '51820'))
-            server_address = os.getenv('SERVER_ADDRESS', '10.0.0.1/24')
+    #         # Получаем данные сервера из окружения
+    #         server_endpoint = os.getenv('SERVER_ENDPOINT', 'your-server-endpoint.com')
+    #         server_port = int(os.getenv('SERVER_PORT', '51820'))
+    #         server_address = os.getenv('SERVER_ADDRESS', '10.0.0.1/24')
             
-            # Получаем ключи из WireGuard
-            server_private_key = "dummy_private_key"
-            server_public_key = "dummy_public_key"
+    #         # Получаем ключи из WireGuard
+    #         server_private_key = "dummy_private_key"
+    #         server_public_key = "dummy_public_key"
             
-            try:
-                with open('/etc/wireguard/private.key', 'r') as f:
-                    server_private_key = f.read().strip()
+    #         try:
+    #             with open('/etc/wireguard/private.key', 'r') as f:
+    #                 server_private_key = f.read().strip()
                     
-                with open('/etc/wireguard/public.key', 'r') as f:
-                    server_public_key = f.read().strip()
-            except Exception as e:
-                logger.warning(f"Не удалось получить ключи WireGuard: {str(e)}")
+    #             with open('/etc/wireguard/public.key', 'r') as f:
+    #                 server_public_key = f.read().strip()
+    #         except Exception as e:
+    #             logger.warning(f"Не удалось получить ключи WireGuard: {str(e)}")
             
-            execute_and_commit('''
-            INSERT INTO servers 
-                (geolocation_id, endpoint, port, public_key, private_key, address, status, last_check, created_at)
-            VALUES
-                (%s, %s, %s, %s, %s, %s, 'active', NOW(), NOW())
-            ''', (geo_id, server_endpoint, server_port, server_public_key, server_private_key, server_address),
-            message="Добавлен первый сервер")
+    #         execute_and_commit('''
+    #         INSERT INTO servers 
+    #             (geolocation_id, endpoint, port, public_key, private_key, address, status, last_check, created_at)
+    #         VALUES
+    #             (%s, %s, %s, %s, %s, %s, 'active', NOW(), NOW())
+    #         ''', (geo_id, server_endpoint, server_port, server_public_key, server_private_key, server_address),
+    #         message="Добавлен первый сервер")
     
     # Обновляем существующие конфигурации, привязывая их к первому серверу
     execute_and_commit('''
