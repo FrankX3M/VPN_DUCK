@@ -2326,16 +2326,82 @@ def add_server_metrics():
         logger.error(f"Ошибка при добавлении метрик сервера: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/servers/metrics/analyze', methods=['POST'])
-def analyze_servers_metrics():
-    """Анализирует метрики серверов и обновляет их рейтинги."""
+@app.route('/api/servers/<int:server_id>', methods=['DELETE'])
+# @app.route('/api/servers/<int:server_id>/delete', methods=['POST'])
+def delete_server(server_id):
+    """Полностью удаляет сервер из базы данных."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Получаем средние метрики за последние 24 часа
+        # Проверяем, существует ли сервер с таким ID
         cursor.execute(
             """
+            SELECT id FROM servers WHERE id = %s
+            """,
+            (server_id,)
+        )
+        
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({"error": "Сервер с таким ID не найден"}), 404
+        
+        # Удаляем связанные записи в server_locations
+        cursor.execute(
+            """
+            DELETE FROM server_locations WHERE server_id = %s
+            """,
+            (server_id,)
+        )
+        
+        # Удаляем связанные записи в server_metrics
+        cursor.execute(
+            """
+            DELETE FROM server_metrics WHERE server_id = %s
+            """,
+            (server_id,)
+        )
+        
+        # Удаляем связанные записи в active_connections
+        cursor.execute(
+            """
+            DELETE FROM active_connections WHERE server_id = %s
+            """,
+            (server_id,)
+        )
+        
+        # Удаляем сам сервер
+        cursor.execute(
+            """
+            DELETE FROM servers WHERE id = %s
+            """,
+            (server_id,)
+        )
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        logger.error(f"Ошибка при удалении сервера: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/servers/metrics/analyze', methods=['POST'])
+def analyze_servers_metrics():
+    """Анализирует метрики серверов и обновляет их рейтинги."""
+    try:
+        data = request.json or {}
+        preserve_maintenance = data.get('preserve_maintenance', True)  # По умолчанию сохраняем статус maintenance
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Формируем SQL запрос с учетом флага preserve_maintenance
+        maintenance_check = "WHEN s.status = 'maintenance' THEN 'maintenance'" if preserve_maintenance else ""
+        
+        # Получаем средние метрики за последние 24 часа
+        cursor.execute(
+            f"""
             WITH server_avg_metrics AS (
                 SELECT 
                     server_id,
@@ -2351,6 +2417,7 @@ def analyze_servers_metrics():
             UPDATE servers s
             SET 
                 status = CASE
+                    {maintenance_check}
                     WHEN sam.avg_latency IS NULL THEN 'inactive'
                     WHEN sam.avg_packet_loss > 10 THEN 'degraded'
                     ELSE 'active'

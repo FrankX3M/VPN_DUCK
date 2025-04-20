@@ -175,19 +175,36 @@ def update_server_metrics(metrics):
     
     return False
 
+# def analyze_servers_metrics():
+#     """Анализирует метрики серверов и обновляет их рейтинги."""
+#     try:
+#         response = make_api_request('post', f"{DATABASE_SERVICE_URL}/servers/metrics/analyze")
+#         result = response.json()
+#         updated_servers = result.get("updated_servers", 0)
+#         logger.info(f"Анализ метрик серверов выполнен успешно, обновлено {updated_servers} серверов")
+#         return True
+#     except Exception as e:
+#         logger.error(f"Ошибка при запросе к API для анализа метрик: {str(e)}")
+    
+#     return False
 def analyze_servers_metrics():
     """Анализирует метрики серверов и обновляет их рейтинги."""
     try:
-        response = make_api_request('post', f"{DATABASE_SERVICE_URL}/servers/metrics/analyze")
+        # Создаем собственный запрос на анализ метрик с сохранением статуса maintenance
+        response = make_api_request(
+            'post', 
+            f"{DATABASE_SERVICE_URL}/servers/metrics/analyze",
+            json={"preserve_maintenance": True}  # Добавляем флаг для сохранения статуса maintenance
+        )
+        
         result = response.json()
         updated_servers = result.get("updated_servers", 0)
         logger.info(f"Анализ метрик серверов выполнен успешно, обновлено {updated_servers} серверов")
         return True
     except Exception as e:
         logger.error(f"Ошибка при запросе к API для анализа метрик: {str(e)}")
-    
-    return False
-
+        return False
+        
 def migrate_users_from_inactive_servers():
     """Мигрирует пользователей с неактивных серверов на активные."""
     try:
