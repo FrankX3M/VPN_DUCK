@@ -16,7 +16,10 @@ docker system prune -a --volumes -f
 
 # Остановка и удаление существующих контейнеров
 print_step "Остановка и удаление существующих контейнеров"
-docker compose down --remove-orphans
+# docker compose down --remove-orphans
+
+# жеское удаление с томами
+docker compose down -v
 
 # Сборка новых образов без кэша
 print_step "Сборка новых образов без использования кэша"

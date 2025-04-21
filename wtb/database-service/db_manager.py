@@ -1245,6 +1245,19 @@ def update_server_status(server_id):
         logger.error(f"Ошибка при обновлении статуса сервера: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/configs/update', methods=['POST'])
+def update_config():
+    """Обновление данных конфигурации."""
+    data = request.json
+    
+    # Переадресуем запрос на смену геолокации, если указаны все нужные параметры
+    if all(k in data for k in ['user_id', 'geolocation_id', 'server_id']):
+        return change_config_geolocation()
+    
+    # Здесь можно добавить обработку других типов обновлений
+    
+    return jsonify({"error": "Недостаточно данных для обновления"}), 400
+
 @app.route('/servers/update_status_batch', methods=['POST'])
 def update_servers_status_batch():
     """Обновляет статус нескольких серверов за один запрос."""
@@ -1772,6 +1785,7 @@ def update_server(server_id):
 def change_config_geolocation():
     """Изменение геолокации для активной конфигурации."""
     data = request.json
+    logger.info(f"Получен запрос на изменение геолокации: {data}")
     
     required_fields = ['user_id', 'geolocation_id', 'server_id']
     if not all(field in data for field in required_fields):
@@ -1824,6 +1838,7 @@ def change_config_geolocation():
             )
             
             server = cursor.fetchone()
+            logger.info(f"Запрошены детали сервера ID={server_id}, результат: {server}")
             if not server:
                 conn.close()
                 return jsonify({"error": "Выбранный сервер не найден"}), 404
@@ -1842,7 +1857,8 @@ def change_config_geolocation():
             new_config_text = (
                 f"[Interface]\n"
                 f"# Клиентская конфигурация для VPN Duck\n"
-                f"PrivateKey = <private_key_placeholder>\n"  # В реальном сценарии здесь будет приватный ключ клиента
+                f"PrivateKey = {active_config['public_key']}\n"
+                # f"PrivateKey = <private_key_placeholder>\n"  # В реальном сценарии здесь будет приватный ключ клиента
                 f"Address = {client_ip}\n"
                 f"DNS = 1.1.1.1, 8.8.8.8\n\n"
                 f"[Peer]\n"

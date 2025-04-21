@@ -125,18 +125,77 @@ def generate_client_keys():
     
     return private_key, public_key
 
-def generate_client_config(user_id):
-    """Генерирует конфигурацию клиента WireGuard."""
+# def generate_client_config(user_id):
+#     """Генерирует конфигурацию клиента WireGuard."""
+#     # Генерируем ключи клиента
+#     client_private_key, client_public_key = generate_client_keys()
+    
+#     # Читаем публичный ключ сервера
+#     with open(SERVER_PUBLIC_KEY, "r") as f:
+#         server_public_key = f.read().strip()
+    
+#     # Генерируем уникальный IP-адрес для клиента
+#     # Это простой пример - в продакшне может потребоваться более сложное распределение IP
+#     client_ip = f"10.0.0.{(user_id % 250) + 2}/24"
+    
+#     # Создаем конфигурацию клиента
+#     client_config = (
+#         f"[Interface]\n"
+#         f"PrivateKey = {client_private_key}\n"
+#         f"Address = {client_ip}\n"
+#         f"DNS = 1.1.1.1, 8.8.8.8\n\n"
+#         f"[Peer]\n"
+#         f"PublicKey = {server_public_key}\n"
+#         f"Endpoint = {SERVER_ENDPOINT}:{SERVER_PORT}\n"
+#         f"AllowedIPs = 0.0.0.0/0\n"
+#         f"PersistentKeepalive = 25\n"
+#     )
+    
+#     # Добавляем клиента в конфигурацию сервера
+#     add_peer_command = [
+#         "wg", "set", "wg0", 
+#         "peer", client_public_key,
+#         "allowed-ips", client_ip.split('/')[0] + "/32"
+#     ]
+    
+#     try:
+#         subprocess.run(add_peer_command, check=True)
+        
+#         # Сохраняем конфигурацию сервера
+#         subprocess.run(["wg-quick", "save", "wg0"], check=True)
+        
+#         logger.info(f"Конфигурация клиента создана успешно для пользователя {user_id}")
+#         return client_config, client_public_key
+#     except subprocess.CalledProcessError as e:
+#         logger.error(f"Ошибка при добавлении пира: {e}")
+#         raise Exception(f"Ошибка при добавлении пира: {e}")
+
+def generate_client_config(user_id, server_details=None):
+    """
+    Генерирует конфигурацию клиента WireGuard с возможностью передачи деталей сервера
+    
+    :param user_id: ID пользователя
+    :param server_details: Опциональные детали сервера для более гибкой конфигурации
+    :return: Кортеж (конфигурация клиента, публичный ключ клиента)
+    """
     # Генерируем ключи клиента
     client_private_key, client_public_key = generate_client_keys()
     
-    # Читаем публичный ключ сервера
-    with open(SERVER_PUBLIC_KEY, "r") as f:
-        server_public_key = f.read().strip()
+    # Получаем детали сервера
+    if server_details is None:
+        # Если детали не переданы, используем значения по умолчанию
+        server_public_key = get_server_public_key()  # Функция для получения актуального публичного ключа
+        server_endpoint = os.getenv('SERVER_ENDPOINT', 'default-endpoint')
+        server_port = os.getenv('SERVER_PORT', '51820')
+    else:
+        # Используем переданные детали сервера
+        server_public_key = server_details.get('public_key')
+        server_endpoint = server_details.get('endpoint')
+        server_port = server_details.get('port', '51820')
     
-    # Генерируем уникальный IP-адрес для клиента
-    # Это простой пример - в продакшне может потребоваться более сложное распределение IP
-    client_ip = f"10.0.0.{(user_id % 250) + 2}/24"
+    # Более интеллектуальная генерация IP-адреса
+    # Можно добавить проверку существующих IP в базе данных
+    client_ip = generate_unique_client_ip(user_id)
     
     # Создаем конфигурацию клиента
     client_config = (
@@ -146,29 +205,94 @@ def generate_client_config(user_id):
         f"DNS = 1.1.1.1, 8.8.8.8\n\n"
         f"[Peer]\n"
         f"PublicKey = {server_public_key}\n"
-        f"Endpoint = {SERVER_ENDPOINT}:{SERVER_PORT}\n"
+        f"Endpoint = {server_endpoint}:{server_port}\n"
         f"AllowedIPs = 0.0.0.0/0\n"
         f"PersistentKeepalive = 25\n"
     )
     
-    # Добавляем клиента в конфигурацию сервера
-    add_peer_command = [
-        "wg", "set", "wg0", 
-        "peer", client_public_key,
-        "allowed-ips", client_ip.split('/')[0] + "/32"
-    ]
-    
     try:
+        # Добавляем клиента в конфигурацию сервера
+        add_peer_command = [
+            "wg", "set", "wg0", 
+            "peer", client_public_key,
+            "allowed-ips", client_ip.split('/')[0] + "/32"
+        ]
+        
         subprocess.run(add_peer_command, check=True)
         
         # Сохраняем конфигурацию сервера
         subprocess.run(["wg-quick", "save", "wg0"], check=True)
         
         logger.info(f"Конфигурация клиента создана успешно для пользователя {user_id}")
+        
         return client_config, client_public_key
+    
     except subprocess.CalledProcessError as e:
         logger.error(f"Ошибка при добавлении пира: {e}")
         raise Exception(f"Ошибка при добавлении пира: {e}")
+
+def generate_unique_client_ip(user_id):
+    """
+    Генерирует уникальный IP-адрес для клиента
+    
+    :param user_id: ID пользователя
+    :return: Сгенерированный IP-адрес
+    """
+    # Логика может быть более сложной, с проверкой занятости IP в базе данных
+    return f"10.0.0.{(user_id % 250) + 2}/24"
+
+def get_server_public_key():
+    """
+    Получает актуальный публичный ключ сервера
+    
+    :return: Публичный ключ сервера
+    """
+    try:
+        with open(SERVER_PUBLIC_KEY, "r") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        logger.error("Файл публичного ключа сервера не найден")
+        raise
+
+# def generate_client_config(user_id):
+#     """Генерирует конфигурацию клиента WireGuard."""
+#     logger.info(f"Генерация конфигурации для пользователя {user_id}")
+    
+#     # Генерируем ключи клиента
+#     client_private_key, client_public_key = generate_client_keys()
+    
+#     logger.info(f"Сгенерирован приватный ключ: {client_private_key[:10]}...")
+#     logger.info(f"Сгенерирован публичный ключ: {client_public_key[:10]}...")
+    
+#     # Читаем публичный ключ сервера
+#     try:
+#         with open(SERVER_PUBLIC_KEY, "r") as f:
+#             server_public_key = f.read().strip()
+#         logger.info(f"Публичный ключ сервера: {server_public_key[:10]}...")
+#     except Exception as e:
+#         logger.error(f"Ошибка чтения публичного ключа сервера: {e}")
+#         raise
+    
+#     # Генерируем уникальный IP-адрес для клиента
+#     client_ip = f"10.0.0.{(user_id % 250) + 2}/24"
+#     logger.info(f"Сгенерирован IP-адрес: {client_ip}")
+    
+#     # Создаем конфигурацию клиента
+#     client_config = (
+#         f"[Interface]\n"
+#         f"PrivateKey = {client_private_key}\n"
+#         f"Address = {client_ip}\n"
+#         f"DNS = 1.1.1.1, 8.8.8.8\n\n"
+#         f"[Peer]\n"
+#         f"PublicKey = {server_public_key}\n"
+#         f"Endpoint = {SERVER_ENDPOINT}:{SERVER_PORT}\n"
+#         f"AllowedIPs = 0.0.0.0/0\n"
+#         f"PersistentKeepalive = 25\n"
+#     )
+    
+#     logger.info("Конфигурация клиента сгенерирована успешно")
+    
+#     return client_config, client_public_key
 
 @app.route('/create', methods=['POST'])
 def create_config():

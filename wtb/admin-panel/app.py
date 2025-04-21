@@ -15,24 +15,60 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Параметры подключения к API с динамическим определением хостов
+# def get_service_url(service_name, default_port, env_var_name):
+#     """Определяет URL сервиса с возможностью динамического определения хоста."""
+#     # Сначала проверяем переменную окружения
+#     env_url = os.getenv(env_var_name)
+#     if env_url:
+#         return env_url
+    
+#     # Пытаемся получить IP по имени хоста через DNS
+#     try:
+#         import socket
+#         ip_address = socket.gethostbyname(service_name)
+#         return f"http://{ip_address}:{default_port}"
+#     except Exception as e:
+#         logger.warning(f"Не удалось определить IP для {service_name}: {str(e)}")
+    
+#     # Если DNS не работает, используем имя хоста Docker
+#     return f"http://{service_name}:{default_port}"
+# def get_service_url(service_name, default_port, env_var_name):
+#     """Определяет URL сервиса с приоритетом на DNS-имя сервиса в Docker сети."""
+#     # Сначала проверяем переменную окружения
+#     env_url = os.getenv(env_var_name)
+#     if env_url:
+#         logger.info(f"Используем URL из переменной окружения для {service_name}: {env_url}")
+#         return env_url
+    
+#     # Используем имя сервиса как DNS-имя в Docker сети
+#     service_url = f"http://{service_name}:{default_port}"
+#     logger.info(f"Используем URL на основе имени сервиса для {service_name}: {service_url}")
+#     return service_url
+# def get_service_url(service_name, default_port, env_var_name):
+#     """Определяет URL сервиса с приоритетом на DNS-имя сервиса в Docker сети."""
+#     # Сначала проверяем переменную окружения
+#     env_url = os.getenv(env_var_name)
+#     if env_url:
+#         print(f"Using env URL for {service_name}: {env_url}")
+#         return env_url
+    
+#     # Используем имя сервиса как DNS-имя в Docker сети
+#     service_url = f"http://{service_name}:{default_port}"
+#     print(f"Using service name URL for {service_name}: {service_url}")
+#     return service_url
 def get_service_url(service_name, default_port, env_var_name):
-    """Определяет URL сервиса с возможностью динамического определения хоста."""
+    """Определяет URL сервиса с приоритетом на DNS-имя сервиса в Docker сети."""
     # Сначала проверяем переменную окружения
     env_url = os.getenv(env_var_name)
     if env_url:
+        logger.info(f"Используем URL из переменной окружения для {service_name}: {env_url}")
         return env_url
     
-    # Пытаемся получить IP по имени хоста через DNS
-    try:
-        import socket
-        ip_address = socket.gethostbyname(service_name)
-        return f"http://{ip_address}:{default_port}"
-    except Exception as e:
-        logger.warning(f"Не удалось определить IP для {service_name}: {str(e)}")
+    # Используем имя сервиса как DNS-имя в Docker сети
+    service_url = f"http://{service_name}:{default_port}"
+    logger.info(f"Используем URL на основе имени сервиса для {service_name}: {service_url}")
+    return service_url
     
-    # Если DNS не работает, используем имя хоста Docker
-    return f"http://{service_name}:{default_port}"
-
 # Динамическое определение URL сервисов
 DATABASE_SERVICE_URL = get_service_url("database-service", 5002, 'DATABASE_SERVICE_URL')
 WIREGUARD_SERVICE_URL = get_service_url("wireguard-service", 5001, 'WIREGUARD_SERVICE_URL')
