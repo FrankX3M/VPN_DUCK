@@ -658,6 +658,13 @@ async def recreate_config(user_id):
             if geolocations:
                 geolocation_id = geolocations[0].get('id')
         
+        # Если указана геолокация, проверяем доступность серверов
+        if geolocation_id:
+            servers = await get_servers_for_geolocation(geolocation_id)
+            if not servers:
+                return {"error": "Нет доступных серверов в выбранной геолокации"}
+
+
         if current_config and current_config.get("public_key"):
 
             # Деактивируем текущую конфигурацию в WireGuard

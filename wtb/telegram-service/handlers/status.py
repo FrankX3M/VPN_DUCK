@@ -134,62 +134,62 @@ async def get_config_status(message: types.Message):
         )
 
 # Обработчик для callback кнопки status
-async def status_callback(callback_query: types.CallbackQuery):
-    """Обработка запроса статуса через callback."""
-    # Проверка что колбэк не был уже обработан middleware
-    if getattr(callback_query, '_handled', False):
-        logger.info(f"Колбэк {callback_query.data} уже обработан middleware, пропускаем")
-        return
+# async def status_callback(callback_query: types.CallbackQuery):
+#     """Обработка запроса статуса через callback."""
+#     # Проверка что колбэк не был уже обработан middleware
+#     if getattr(callback_query, '_handled', False):
+#         logger.info(f"Колбэк {callback_query.data} уже обработан middleware, пропускаем")
+#         return
         
-    await bot.answer_callback_query(callback_query.id)
+#     await bot.answer_callback_query(callback_query.id)
     
-    user_id = callback_query.from_user.id
+#     user_id = callback_query.from_user.id
     
-    try:
-        # Запрашиваем данные о конфигурации
-        config = await get_user_config(user_id)
+#     try:
+#         # Запрашиваем данные о конфигурации
+#         config = await get_user_config(user_id)
         
-        if config and config.get("active", False):
-            # Парсим и форматируем данные о конфигурации
-            expiry_time = datetime.fromisoformat(config.get("expiry_time"))
-            expiry_formatted = expiry_time.strftime("%d.%m.%Y %H:%M:%S")
+#         if config and config.get("active", False):
+#             # Парсим и форматируем данные о конфигурации
+#             expiry_time = datetime.fromisoformat(config.get("expiry_time"))
+#             expiry_formatted = expiry_time.strftime("%d.%m.%Y %H:%M:%S")
             
-            # Получаем информацию о геолокации
-            geolocation_name = config.get("geolocation_name", "Неизвестно")
+#             # Получаем информацию о геолокации
+#             geolocation_name = config.get("geolocation_name", "Неизвестно")
             
-            # Рассчитываем оставшееся время
-            now = datetime.now()
-            remaining_time = expiry_time - now
-            remaining_days = remaining_time.days
-            remaining_hours = remaining_time.seconds // 3600
+#             # Рассчитываем оставшееся время
+#             now = datetime.now()
+#             remaining_time = expiry_time - now
+#             remaining_days = remaining_time.days
+#             remaining_hours = remaining_time.seconds // 3600
             
-            await bot.send_message(
-                user_id,
-                f"📊 <b>Статус вашей конфигурации</b>\n\n"
-                f"▫️ Активна: <b>Да</b>\n"
-                f"▫️ Действует до: <b>{expiry_formatted}</b>\n"
-                f"▫️ Осталось: <b>{remaining_days} дн. {remaining_hours} ч.</b>\n"
-                f"▫️ Геолокация: <b>{geolocation_name}</b>",
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await bot.send_message(
-                user_id,
-                "❌ <b>У вас нет активной конфигурации</b>\n\n"
-                "Создайте новую с помощью команды /create.",
-                parse_mode=ParseMode.HTML
-            )
-    except Exception as e:
-        logger.error(f"Ошибка при запросе к API: {str(e)}", exc_info=True)
-        await bot.send_message(
-            user_id,
-            "❌ <b>Ошибка при получении данных о конфигурации</b>\n\n"
-            "Пожалуйста, попробуйте позже.",
-            parse_mode=ParseMode.HTML
-        )
+#             await bot.send_message(
+#                 user_id,
+#                 f"📊 <b>Статус вашей конфигурации</b>\n\n"
+#                 f"▫️ Активна: <b>Да</b>\n"
+#                 f"▫️ Действует до: <b>{expiry_formatted}</b>\n"
+#                 f"▫️ Осталось: <b>{remaining_days} дн. {remaining_hours} ч.</b>\n"
+#                 f"▫️ Геолокация: <b>{geolocation_name}</b>",
+#                 parse_mode=ParseMode.HTML
+#             )
+#         else:
+#             await bot.send_message(
+#                 user_id,
+#                 "❌ <b>У вас нет активной конфигурации</b>\n\n"
+#                 "Создайте новую с помощью команды /create.",
+#                 parse_mode=ParseMode.HTML
+#             )
+#     except Exception as e:
+#         logger.error(f"Ошибка при запросе к API: {str(e)}", exc_info=True)
+#         await bot.send_message(
+#             user_id,
+#             "❌ <b>Ошибка при получении данных о конфигурации</b>\n\n"
+#             "Пожалуйста, попробуйте позже.",
+#             parse_mode=ParseMode.HTML
+#         )
 
 def register_handlers_status(dp: Dispatcher):
     """Регистрирует обработчики для проверки статуса."""
     dp.register_message_handler(get_config_status, commands=['status'])
     dp.register_message_handler(get_config_status, lambda message: message.text == "📊 Статус")
-    dp.register_callback_query_handler(status_callback, lambda c: c.data == "status", state="*")
+    # dp.register_callback_query_handler(status_callback, lambda c: c.data == "status", state="*")
