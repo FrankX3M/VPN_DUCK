@@ -44,6 +44,28 @@ async def process_unknown_callback(callback_query: types.CallbackQuery, state: F
 #         state='*'
 #     )
 
+# def register_handlers_callbacks(dp: Dispatcher):
+#     """Регистрирует обработчики для колбэков."""
+#     # Создаем список известных колбэков и их префиксов
+#     known_callbacks = [
+#         'confirm_create', 'cancel_create', 'create_config', 
+#         'start_extend', 'confirm_recreate', 'cancel_recreate',
+#         'status', 'get_config', 'recreate_config',
+#         'show_stars_info', 'topup_stars', 'cancel_extend',
+#         'choose_geo', 'back_to_main', 'get_all_configs', 'cancel_geo'  # Добавляем новые колбэки
+#     ]
+    
+#     known_prefixes = [
+#         'extend_',  # Для колбэков продления
+#         'geo_'      # Для колбэков геолокаций
+#     ]
+    
+#     # Регистрируем обработчик только для неизвестных колбэков
+#     dp.register_callback_query_handler(
+#         process_unknown_callback, 
+#         lambda c: c.data not in known_callbacks and not any(c.data.startswith(prefix) for prefix in known_prefixes), 
+#         state='*'
+#     )
 def register_handlers_callbacks(dp: Dispatcher):
     """Регистрирует обработчики для колбэков."""
     # Создаем список известных колбэков и их префиксов
@@ -52,7 +74,8 @@ def register_handlers_callbacks(dp: Dispatcher):
         'start_extend', 'confirm_recreate', 'cancel_recreate',
         'status', 'get_config', 'recreate_config',
         'show_stars_info', 'topup_stars', 'cancel_extend',
-        'choose_geo', 'back_to_main', 'get_all_configs', 'cancel_geo'  # Добавляем новые колбэки
+        'choose_geo', 'back_to_main', 'get_all_configs', 'cancel_geo',
+        'direct_create', 'direct_cancel'  # Добавляем прямые колбэки
     ]
     
     known_prefixes = [
@@ -60,9 +83,26 @@ def register_handlers_callbacks(dp: Dispatcher):
         'geo_'      # Для колбэков геолокаций
     ]
     
+    # Функция для проверки, известен ли колбэк
+    def is_callback_known(c):
+        callback_data = c.data
+        # Если колбэк уже обработан middleware, не обрабатываем его повторно
+        if getattr(c, '_handled', False):
+            return False
+            
+        # Проверяем, соответствует ли колбэк известным шаблонам
+        if callback_data in known_callbacks:
+            return True
+            
+        for prefix in known_prefixes:
+            if callback_data.startswith(prefix):
+                return True
+                
+        return False
+    
     # Регистрируем обработчик только для неизвестных колбэков
     dp.register_callback_query_handler(
         process_unknown_callback, 
-        lambda c: c.data not in known_callbacks and not any(c.data.startswith(prefix) for prefix in known_prefixes), 
+        lambda c: not is_callback_known(c), 
         state='*'
     )

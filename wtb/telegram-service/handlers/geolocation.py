@@ -289,6 +289,144 @@ async def callback_choose_geolocation(callback_query: types.CallbackQuery, state
 #     await state.finish()
 
 
+# async def process_geolocation_selection(callback_query: types.CallbackQuery, state: FSMContext):
+#     """Обработка выбора геолокации."""
+#     await bot.answer_callback_query(callback_query.id)
+    
+#     # Получаем выбранную геолокацию
+#     geolocation_id = int(callback_query.data.split('_')[1])
+#     user_id = callback_query.from_user.id
+    
+#     # Получаем данные из состояния
+#     state_data = await state.get_data()
+#     geolocations = state_data.get('geolocations', [])
+    
+#     # Находим название выбранной геолокации
+#     geolocation_name = "Неизвестная геолокация"
+#     for geo in geolocations:
+#         if geo.get('id') == geolocation_id:
+#             geolocation_name = geo.get('name')
+#             break
+    
+#     try:
+#         import asyncio
+        
+#         # Сообщаем пользователю о начале процесса
+#         await bot.edit_message_text(
+#             f"🔄 <b>Анализ и выбор оптимального сервера...</b>\n\n"
+#             f"Геолокация: <b>{geolocation_name}</b>\n\n"
+#             f"Пожалуйста, подождите. Это может занять несколько секунд.",
+#             chat_id=callback_query.message.chat.id,
+#             message_id=callback_query.message.message_id,
+#             parse_mode=ParseMode.HTML
+#         )
+        
+#         # Устанавливаем таймаут для операции
+#         try:
+#             # С использованием timeout
+#             result = await asyncio.wait_for(
+#                 change_config_geolocation(user_id, geolocation_id),
+#                 timeout=30  # 30 секунд максимальное время ожидания
+#             )
+#         except asyncio.TimeoutError:
+#             await bot.edit_message_text(
+#                 "⚠️ <b>Превышено время ожидания</b>\n\n"
+#                 "Сервер слишком долго не отвечает. Пожалуйста, попробуйте позже.",
+#                 chat_id=callback_query.message.chat.id,
+#                 message_id=callback_query.message.message_id,
+#                 parse_mode=ParseMode.HTML
+#             )
+#             await state.finish()
+#             return
+        
+#         if "error" in result:
+#             await bot.edit_message_text(
+#                 f"❌ <b>Ошибка!</b>\n\n{result['error']}",
+#                 chat_id=callback_query.message.chat.id,
+#                 message_id=callback_query.message.message_id,
+#                 parse_mode=ParseMode.HTML
+#             )
+#             await state.finish()
+#             return
+        
+#         # Сообщаем пользователю об успешном обновлении конфигурации
+#         await bot.edit_message_text(
+#             f"✅ <b>Геолокация успешно изменена на</b> <b>{geolocation_name}</b>\n\n"
+#             f"Все ваши устройства будут автоматически переключены на новую геолокацию.\n\n"
+#             f"Если вы используете стандартный клиент WireGuard, вам понадобится обновить конфигурацию. "
+#             f"Новая конфигурация будет отправлена вам сейчас.",
+#             chat_id=callback_query.message.chat.id,
+#             message_id=callback_query.message.message_id,
+#             parse_mode=ParseMode.HTML
+#         )
+        
+#         # Получаем обновленную конфигурацию
+#         config = await get_user_config(user_id)
+        
+#         if config and config.get("config"):
+#             config_text = config.get("config")
+            
+#             # Создаем файл конфигурации
+#             config_file = BytesIO(config_text.encode('utf-8'))
+#             config_file.name = f"vpn_duck_{user_id}.conf"
+            
+#             # Генерируем QR-код
+#             qr_buffer = await generate_config_qr(config_text)
+            
+#             if qr_buffer:
+#                 # Отправляем QR-код
+#                 await bot.send_photo(
+#                     user_id,
+#                     qr_buffer,
+#                     caption=f"🔑 <b>QR-код вашей новой конфигурации WireGuard</b>\n\n"
+#                             f"Геолокация: <b>{geolocation_name}</b>\n\n"
+#                             f"Отсканируйте этот код в приложении WireGuard для быстрой настройки.",
+#                     parse_mode=ParseMode.HTML
+#                 )
+            
+#             # Отправляем файл конфигурации
+#             await bot.send_document(
+#                 user_id,
+#                 config_file,
+#                 caption=f"📋 <b>Файл конфигурации WireGuard</b>\n\n"
+#                         f"Геолокация: <b>{geolocation_name}</b>\n\n"
+#                         f"Импортируйте этот файл в приложение WireGuard для настройки соединения.",
+#                 parse_mode=ParseMode.HTML
+#             )
+            
+#             # Отправляем информацию о мобильном приложении
+#             keyboard = InlineKeyboardMarkup(row_width=1)
+#             keyboard.add(
+#                 InlineKeyboardButton("📊 Проверить статус", callback_data="status")
+#             )
+            
+#             await bot.send_message(
+#                 user_id,
+#                 f"📱 <b>Информация о приложении VPN Duck</b>\n\n"
+#                 f"Для более комфортного использования сервиса вы можете скачать наше приложение, "
+#                 f"которое автоматически переключается между серверами и геолокациями "
+#                 f"без необходимости обновления конфигурации.\n\n"
+#                 f"Название для поиска: <b>VPN Duck</b>",
+#                 parse_mode=ParseMode.HTML,
+#                 reply_markup=keyboard
+#             )
+#         else:
+#             await bot.send_message(
+#                 user_id,
+#                 "⚠️ <b>Не удалось получить обновленную конфигурацию</b>\n\n"
+#                 "Пожалуйста, используйте команду /create для создания новой конфигурации.",
+#                 parse_mode=ParseMode.HTML
+#             )
+#     except Exception as e:
+#         logger.error(f"Ошибка при обновлении геолокации: {str(e)}", exc_info=True)
+#         await bot.send_message(
+#             user_id,
+#             "❌ <b>Произошла ошибка</b>\n\n"
+#             "Пожалуйста, попробуйте позже.",
+#             parse_mode=ParseMode.HTML
+#         )
+    
+#     await state.finish()
 async def process_geolocation_selection(callback_query: types.CallbackQuery, state: FSMContext):
     """Обработка выбора геолокации."""
     await bot.answer_callback_query(callback_query.id)
@@ -307,6 +445,9 @@ async def process_geolocation_selection(callback_query: types.CallbackQuery, sta
         if geo.get('id') == geolocation_id:
             geolocation_name = geo.get('name')
             break
+    
+    # Устанавливаем блокировку в состоянии пользователя для предотвращения параллельных операций
+    await state.update_data(is_changing_geo=True, geo_change_started=time.time())
     
     try:
         import asyncio
@@ -329,6 +470,7 @@ async def process_geolocation_selection(callback_query: types.CallbackQuery, sta
                 timeout=30  # 30 секунд максимальное время ожидания
             )
         except asyncio.TimeoutError:
+            # В случае таймаута
             await bot.edit_message_text(
                 "⚠️ <b>Превышено время ожидания</b>\n\n"
                 "Сервер слишком долго не отвечает. Пожалуйста, попробуйте позже.",
@@ -336,16 +478,23 @@ async def process_geolocation_selection(callback_query: types.CallbackQuery, sta
                 message_id=callback_query.message.message_id,
                 parse_mode=ParseMode.HTML
             )
+            
+            # Снимаем блокировку
+            await state.update_data(is_changing_geo=False)
             await state.finish()
             return
         
         if "error" in result:
+            # В случае ошибки
             await bot.edit_message_text(
                 f"❌ <b>Ошибка!</b>\n\n{result['error']}",
                 chat_id=callback_query.message.chat.id,
                 message_id=callback_query.message.message_id,
                 parse_mode=ParseMode.HTML
             )
+            
+            # Снимаем блокировку
+            await state.update_data(is_changing_geo=False)
             await state.finish()
             return
         
@@ -368,21 +517,25 @@ async def process_geolocation_selection(callback_query: types.CallbackQuery, sta
             
             # Создаем файл конфигурации
             config_file = BytesIO(config_text.encode('utf-8'))
-            config_file.name = f"vpn_duck_{user_id}.conf"
+            config_file.name = f"vpn_duck_{user_id}_{geolocation_name.replace(' ', '_')}.conf"
             
-            # Генерируем QR-код
-            qr_buffer = await generate_config_qr(config_text)
-            
-            if qr_buffer:
-                # Отправляем QR-код
-                await bot.send_photo(
-                    user_id,
-                    qr_buffer,
-                    caption=f"🔑 <b>QR-код вашей новой конфигурации WireGuard</b>\n\n"
-                            f"Геолокация: <b>{geolocation_name}</b>\n\n"
-                            f"Отсканируйте этот код в приложении WireGuard для быстрой настройки.",
-                    parse_mode=ParseMode.HTML
-                )
+            # Проверяем, есть ли у нас QR-код для отправки
+            try:
+                # Генерируем QR-код
+                qr_buffer = await generate_config_qr(config_text)
+                
+                if qr_buffer:
+                    # Отправляем QR-код
+                    await bot.send_photo(
+                        user_id,
+                        qr_buffer,
+                        caption=f"🔑 <b>QR-код вашей новой конфигурации WireGuard</b>\n\n"
+                                f"Геолокация: <b>{geolocation_name}</b>\n\n"
+                                f"Отсканируйте этот код в приложении WireGuard для быстрой настройки.",
+                        parse_mode=ParseMode.HTML
+                    )
+            except Exception as qr_error:
+                logger.error(f"Ошибка при генерации QR-кода: {str(qr_error)}")
             
             # Отправляем файл конфигурации
             await bot.send_document(
@@ -426,8 +579,10 @@ async def process_geolocation_selection(callback_query: types.CallbackQuery, sta
             parse_mode=ParseMode.HTML
         )
     
+    # Снимаем блокировку
+    await state.update_data(is_changing_geo=False)
     await state.finish()
-
+    
 # Обработчик для отмены выбора геолокации
 async def cancel_geolocation_selection(callback_query: types.CallbackQuery, state: FSMContext):
     """Отмена выбора геолокации."""

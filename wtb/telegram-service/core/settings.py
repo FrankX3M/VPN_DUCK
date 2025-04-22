@@ -13,7 +13,7 @@ API_TOKEN = os.getenv('TELEGRAM_TOKEN')
 if not API_TOKEN:
     logger.error("TELEGRAM_TOKEN not found in environment variables!")
     exit(1)
-
+ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', 'ваш_id_чата')
 # URL-ы сервисов - правильные URL-адреса с портами
 WIREGUARD_SERVICE_URL = os.getenv('WIREGUARD_SERVICE_URL', 'http://wireguard-service:5001')
 DATABASE_SERVICE_URL = os.getenv('DATABASE_SERVICE_URL', 'http://database-service:5002')

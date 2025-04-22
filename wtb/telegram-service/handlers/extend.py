@@ -165,7 +165,59 @@ async def process_pre_checkout(pre_checkout_query: types.PreCheckoutQuery, state
         )
 
 # Успешный платёж
+# async def process_successful_payment(message: types.Message, state: FSMContext):
+#     data = await state.get_data()
+#     payment_id = data.get('payment_id')
+#     days = data.get('days')
+#     stars = data.get('stars')
+#     payment_info = message.successful_payment
+#     transaction_id = payment_info.telegram_payment_charge_id
+#     user_id = message.from_user.id
+
+#     try:
+#         result = await extend_config(user_id, days, stars, transaction_id)
+
+#         if "error" in result:
+#             await message.reply(
+#                 f"❌ <b>Ошибка!</b>\n\n{result['error']}",
+#                 parse_mode=ParseMode.HTML
+#             )
+#         else:
+#             config = await get_user_config(user_id)
+
+#             if config and config.get("active", False):
+#                 expiry_time = config.get("expiry_time")
+#                 expiry_dt = datetime.fromisoformat(expiry_time)
+#                 expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
+#                 keyboard = get_status_keyboard()
+
+#                 await message.reply(
+#                     f"✅ <b>Конфигурация успешно продлена!</b>\n\n"
+#                     f"▫️ Продление: <b>{days} дней</b>\n"
+#                     f"▫️ Оплачено: <b>{stars} ⭐</b>\n"
+#                     f"▫️ Действует до: <b>{expiry_formatted}</b>\n\n"
+#                     f"Спасибо за использование нашего сервиса!",
+#                     parse_mode=ParseMode.HTML,
+#                     reply_markup=keyboard
+#                 )
+#             else:
+#                 await message.reply(
+#                     f"✅ <b>Конфигурация успешно продлена на {days} дней!</b>\n\n"
+#                     f"Оплачено: <b>{stars} ⭐</b>\n\n"
+#                     f"Для просмотра обновленной информации используйте команду /status.",
+#                     parse_mode=ParseMode.HTML
+#                 )
+#     except Exception as e:
+#         logger.error(f"Ошибка при обработке платежа: {str(e)}", exc_info=True)
+#         await message.reply(
+#             "❌ <b>Ошибка при обработке платежа</b>\n\n"
+#             "Пожалуйста, свяжитесь с поддержкой для решения проблемы.",
+#             parse_mode=ParseMode.HTML
+#         )
+
+#     await state.finish()
 async def process_successful_payment(message: types.Message, state: FSMContext):
+    """Обработка успешного платежа за продление."""
     data = await state.get_data()
     payment_id = data.get('payment_id')
     days = data.get('days')
@@ -173,50 +225,118 @@ async def process_successful_payment(message: types.Message, state: FSMContext):
     payment_info = message.successful_payment
     transaction_id = payment_info.telegram_payment_charge_id
     user_id = message.from_user.id
+    
+    logger.info(f"Обработка успешного платежа: пользователь {user_id}, {days} дней, {stars} звезд, ID транзакции: {transaction_id}")
 
     try:
+        # Сообщаем пользователю о начале процесса продления
+        processing_message = await message.reply(
+            "🔄 <b>Обработка платежа и продление конфигурации...</b>\n\n"
+            "Пожалуйста, подождите.",
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Выполняем продление
         result = await extend_config(user_id, days, stars, transaction_id)
-
+        
         if "error" in result:
+            logger.error(f"Ошибка при продлении: {result['error']}")
             await message.reply(
-                f"❌ <b>Ошибка!</b>\n\n{result['error']}",
+                f"❌ <b>Ошибка!</b>\n\n{result['error']}\n\n"
+                "Платеж был успешно обработан, но возникла проблема при продлении конфигурации.\n"
+                "Пожалуйста, свяжитесь с поддержкой для решения проблемы.",
+                parse_mode=ParseMode.HTML
+            )
+            
+            # Сохраняем информацию о проблемном платеже для администратора
+            await bot.send_message(
+                chat_id=ADMIN_CHAT_ID,  # Требуется добавить в settings.py
+                text=f"⚠️ <b>Проблемный платеж</b>\n\n"
+                     f"Пользователь: {user_id}\n"
+                     f"Продление: {days} дней\n"
+                     f"Оплачено: {stars} ⭐\n"
+                     f"Транзакция: {transaction_id}\n"
+                     f"Ошибка: {result['error']}",
                 parse_mode=ParseMode.HTML
             )
         else:
+            # Получаем обновленную информацию о конфигурации
             config = await get_user_config(user_id)
-
+            
             if config and config.get("active", False):
-                expiry_time = config.get("expiry_time")
-                expiry_dt = datetime.fromisoformat(expiry_time)
-                expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
-                keyboard = get_status_keyboard()
-
-                await message.reply(
-                    f"✅ <b>Конфигурация успешно продлена!</b>\n\n"
-                    f"▫️ Продление: <b>{days} дней</b>\n"
-                    f"▫️ Оплачено: <b>{stars} ⭐</b>\n"
-                    f"▫️ Действует до: <b>{expiry_formatted}</b>\n\n"
-                    f"Спасибо за использование нашего сервиса!",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=keyboard
-                )
+                try:
+                    expiry_time = config.get("expiry_time")
+                    expiry_dt = datetime.fromisoformat(expiry_time)
+                    expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
+                    
+                    # Рассчитываем оставшееся время
+                    now = datetime.now()
+                    remaining_time = expiry_dt - now
+                    remaining_days = max(0, remaining_time.days)
+                    remaining_hours = max(0, remaining_time.seconds // 3600)
+                    
+                    keyboard = get_status_keyboard()
+                    
+                    await message.reply(
+                        f"✅ <b>Конфигурация успешно продлена!</b>\n\n"
+                        f"▫️ Продление: <b>{days} дней</b>\n"
+                        f"▫️ Оплачено: <b>{stars} ⭐</b>\n"
+                        f"▫️ Действует до: <b>{expiry_formatted}</b>\n"
+                        f"▫️ Осталось: <b>{remaining_days} дн. {remaining_hours} ч.</b>\n\n"
+                        f"Спасибо за использование нашего сервиса!",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=keyboard
+                    )
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Ошибка при обработке даты: {str(e)}")
+                    await message.reply(
+                        f"✅ <b>Конфигурация успешно продлена на {days} дней!</b>\n\n"
+                        f"Оплачено: <b>{stars} ⭐</b>\n\n"
+                        f"Для просмотра обновленной информации используйте команду /status.",
+                        parse_mode=ParseMode.HTML
+                    )
             else:
                 await message.reply(
-                    f"✅ <b>Конфигурация успешно продлена на {days} дней!</b>\n\n"
-                    f"Оплачено: <b>{stars} ⭐</b>\n\n"
-                    f"Для просмотра обновленной информации используйте команду /status.",
+                    f"✅ <b>Платеж успешно обработан!</b>\n\n"
+                    f"Оплачено: <b>{stars} ⭐</b> за <b>{days} дней</b>\n\n"
+                    f"Однако, не удалось найти активную конфигурацию. "
+                    f"Пожалуйста, создайте новую с помощью команды /create.",
                     parse_mode=ParseMode.HTML
                 )
+        
+        # Удаляем сообщение о обработке
+        try:
+            await bot.delete_message(chat_id=processing_message.chat.id, message_id=processing_message.message_id)
+        except Exception as e:
+            logger.error(f"Ошибка при удалении сообщения: {str(e)}")
+            
     except Exception as e:
         logger.error(f"Ошибка при обработке платежа: {str(e)}", exc_info=True)
         await message.reply(
             "❌ <b>Ошибка при обработке платежа</b>\n\n"
-            "Пожалуйста, свяжитесь с поддержкой для решения проблемы.",
+            "Пожалуйста, свяжитесь с поддержкой для решения проблемы. "
+            "Сохраните ID транзакции для подтверждения оплаты.",
             parse_mode=ParseMode.HTML
         )
+        
+        # Сохраняем информацию о проблемном платеже для администратора
+        try:
+            await bot.send_message(
+                chat_id=ADMIN_CHAT_ID,  # Требуется добавить в settings.py
+                text=f"⚠️ <b>Критическая ошибка платежа</b>\n\n"
+                     f"Пользователь: {user_id}\n"
+                     f"Продление: {days} дней\n"
+                     f"Оплачено: {stars} ⭐\n"
+                     f"Транзакция: {transaction_id}\n"
+                     f"Ошибка: {str(e)}",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            logger.error("Не удалось отправить уведомление администратору", exc_info=True)
 
+    # Завершаем состояние FSM
     await state.finish()
-
+    
 # Регистрируем все обработчики продления
 def register_handlers_extend(dp: Dispatcher):
     dp.register_message_handler(extend_config_start, commands=['extend'])

@@ -57,6 +57,32 @@ async def create_config(message: types.Message, state: FSMContext):
         )
 
 # Обработчик для подтверждения создания конфигурации
+# async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMContext):
+#     """Подтверждение создания новой конфигурации."""
+#     logger.info(f"Вызван обработчик confirm_create_config с callback_data: {callback_query.data}")
+#     current_state = await state.get_state()
+#     logger.info(f"Текущее состояние пользователя: {current_state}")
+    
+#     # Добавляем подробное логирование для отладки
+#     user_state_data = await state.get_data()
+#     logger.info(f"Данные состояния пользователя: {user_state_data}")
+    
+#     # Проверяем наличие текущего состояния явно
+#     if current_state is None:
+#         logger.warning(f"Состояние пользователя не установлено. Устанавливаем его вручную.")
+#         await CreateConfigStates.confirming_create.set()
+    
+#     # Остальной код остается без изменений
+#     await bot.answer_callback_query(callback_query.id)
+#     user_id = callback_query.from_user.id
+# async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMContext):
+#     """Подтверждение создания новой конфигурации."""
+#     logger.info(f"Вызван обработчик confirm_create_config с callback_data: {callback_query.data}")
+#     current_state = await state.get_state()
+#     logger.info(f"Текущее состояние пользователя: {current_state}")
+    
+#     await bot.answer_callback_query(callback_query.id)
+#     user_id = callback_query.from_user.id
 async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMContext):
     """Подтверждение создания новой конфигурации."""
     logger.info(f"Вызван обработчик confirm_create_config с callback_data: {callback_query.data}")
@@ -67,23 +93,140 @@ async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMC
     user_state_data = await state.get_data()
     logger.info(f"Данные состояния пользователя: {user_state_data}")
     
-    # Проверяем наличие текущего состояния явно
-    if current_state is None:
-        logger.warning(f"Состояние пользователя не установлено. Устанавливаем его вручную.")
-        await CreateConfigStates.confirming_create.set()
-    
-    # Остальной код остается без изменений
+    # Проверяем корректность состояния перед выполнением операции
+    if current_state is None or current_state != "CreateConfigStates:confirming_create":
+        logger.warning(f"Состояние пользователя не соответствует ожидаемому ('{current_state}' вместо 'CreateConfigStates:confirming_create')")
+        # Не устанавливаем состояние автоматически, а проверяем контекст операции
+        if callback_query.data != 'confirm_create':
+            logger.warning(f"Получен неожиданный callback_data: {callback_query.data}, ожидался 'confirm_create'")
+            await bot.answer_callback_query(callback_query.id, text="Неверная операция. Пожалуйста, повторите запрос.")
+            return
+
     await bot.answer_callback_query(callback_query.id)
     user_id = callback_query.from_user.id
-# async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMContext):
-#     """Подтверждение создания новой конфигурации."""
-#     logger.info(f"Вызван обработчик confirm_create_config с callback_data: {callback_query.data}")
-#     current_state = await state.get_state()
-#     logger.info(f"Текущее состояние пользователя: {current_state}")
     
-#     await bot.answer_callback_query(callback_query.id)
-#     user_id = callback_query.from_user.id
+    # Сообщаем пользователю о начале процесса создания
+    await bot.edit_message_text(
+        "🔄 *Создание конфигурации...*\n\n"
+        "Пожалуйста, подождите. Это может занять несколько секунд.",
+        chat_id=callback_query.message.chat.id,
+        message_id=callback_query.message.message_id,
+        parse_mode=ParseMode.MARKDOWN
+    )
     
+    try:
+        # Создаем новую конфигурацию
+        config_data = await create_new_config(user_id)
+        
+        if "error" in config_data:
+            await bot.edit_message_text(
+                f"❌ *Ошибка!*\n\n{config_data['error']}",
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            await state.finish()
+            return
+        
+        config_text = config_data.get("config_text")
+        
+        if not config_text:
+            await bot.edit_message_text(
+                "❌ *Ошибка при создании конфигурации*\n\n"
+                "Пожалуйста, попробуйте позже.",
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            await state.finish()
+            return
+        
+        # Получаем данные о сроке действия из базы данных
+        db_data = await get_user_config(user_id)
+        
+        expiry_text = ""
+        if db_data:
+            expiry_time = db_data.get("expiry_time")
+            if expiry_time:
+                try:
+                    expiry_dt = datetime.fromisoformat(expiry_time)
+                    expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
+                    expiry_text = f"▫️ Срок действия: до *{expiry_formatted}*\n"
+                except ValueError as e:
+                    logger.error(f"Ошибка парсинга даты: {str(e)}")
+                    expiry_text = "▫️ Срок действия: информация недоступна\n"
+        
+        # Создаем файл конфигурации
+        config_file = BytesIO(config_text.encode('utf-8'))
+        config_file.name = f"vpn_duck_{user_id}.conf"
+        
+        # Генерируем QR-код
+        qr_buffer = await generate_config_qr(config_text)
+        
+        # Обновляем сообщение об успешном создании
+        await bot.edit_message_text(
+            f"✅ *Конфигурация успешно создана!*\n\n"
+            f"{expiry_text}\n"
+            f"Файл конфигурации и QR-код будут отправлены отдельными сообщениями.",
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        if qr_buffer:
+            # Отправляем QR-код
+            await bot.send_photo(
+                user_id,
+                qr_buffer,
+                caption="🔑 *QR-код вашей конфигурации WireGuard*\n\n"
+                        "Отсканируйте этот код в приложении WireGuard для быстрой настройки.",
+                parse_mode=ParseMode.MARKDOWN
+            )
+        
+        # Отправляем файл конфигурации
+        await bot.send_document(
+            user_id,
+            config_file,
+            caption="📋 *Файл конфигурации WireGuard*\n\n"
+                    "Импортируйте этот файл в приложение WireGuard для настройки соединения.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        # Отправляем инструкции
+        instructions_text = (
+            "📱 *Как использовать конфигурацию:*\n\n"
+            "1️⃣ Установите приложение WireGuard на ваше устройство\n"
+            "2️⃣ Откройте приложение и нажмите кнопку '+'\n"
+            "3️⃣ Выберите 'Сканировать QR-код' или 'Импорт из файла'\n"
+            "4️⃣ После импорта нажмите на добавленную конфигурацию для подключения\n\n"
+            "Готово! Теперь ваше соединение защищено VPN Duck 🦆"
+        )
+        
+        keyboard = InlineKeyboardMarkup(row_width=1)
+        keyboard.add(
+            InlineKeyboardButton("⏰ Продлить конфигурацию", callback_data="start_extend")
+        )
+        
+        await bot.send_message(
+            user_id,
+            instructions_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=keyboard
+        )
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка: {str(e)}", exc_info=True)
+        await bot.edit_message_text(
+            "❌ *Произошла ошибка*\n\n"
+            "Пожалуйста, попробуйте позже.",
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            parse_mode=ParseMode.MARKDOWN
+        )
+    
+    # Сбрасываем состояние
+    await state.finish()
+
+
     # Сообщаем пользователю о начале процесса создания
     await bot.edit_message_text(
         "🔄 *Создание конфигурации...*\n\n"

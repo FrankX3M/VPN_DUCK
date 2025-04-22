@@ -11,6 +11,8 @@ async def send_help(message: types.Message):
         "▫️ /create - Создать новую конфигурацию WireGuard\n"
         "▫️ /status - Проверить статус вашей конфигурации\n"
         "▫️ /extend - Продлить срок действия конфигурации\n"
+        "▫️ /geolocation - Изменить геолокацию VPN\n"
+        "▫️ /allconfigs - Получить все конфигурации\n"
         "▫️ /payments - Посмотреть историю платежей\n"
         "▫️ /stars_info - Информация о Telegram Stars\n"
         "▫️ /help - Показать это сообщение\n\n"
@@ -26,7 +28,7 @@ async def send_help(message: types.Message):
         "Если у вас возникли вопросы или проблемы, свяжитесь с поддержкой."
     )
     
-    # Используем HTML форматирование вместо Markdown
+    # Используем HTML форматирование
     await message.reply(help_text, parse_mode=ParseMode.HTML)
 
 def register_handlers_help(dp: Dispatcher):
