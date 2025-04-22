@@ -4,6 +4,7 @@ import subprocess
 import logging
 import shutil
 from flask import Flask, request, jsonify
+import requests
 
 app = Flask(__name__)
 
@@ -124,52 +125,7 @@ def generate_client_keys():
     public_key = public_key_result.stdout.decode().strip()
     
     return private_key, public_key
-
-# def generate_client_config(user_id):
-#     """Генерирует конфигурацию клиента WireGuard."""
-#     # Генерируем ключи клиента
-#     client_private_key, client_public_key = generate_client_keys()
     
-#     # Читаем публичный ключ сервера
-#     with open(SERVER_PUBLIC_KEY, "r") as f:
-#         server_public_key = f.read().strip()
-    
-#     # Генерируем уникальный IP-адрес для клиента
-#     # Это простой пример - в продакшне может потребоваться более сложное распределение IP
-#     client_ip = f"10.0.0.{(user_id % 250) + 2}/24"
-    
-#     # Создаем конфигурацию клиента
-#     client_config = (
-#         f"[Interface]\n"
-#         f"PrivateKey = {client_private_key}\n"
-#         f"Address = {client_ip}\n"
-#         f"DNS = 1.1.1.1, 8.8.8.8\n\n"
-#         f"[Peer]\n"
-#         f"PublicKey = {server_public_key}\n"
-#         f"Endpoint = {SERVER_ENDPOINT}:{SERVER_PORT}\n"
-#         f"AllowedIPs = 0.0.0.0/0\n"
-#         f"PersistentKeepalive = 25\n"
-#     )
-    
-#     # Добавляем клиента в конфигурацию сервера
-#     add_peer_command = [
-#         "wg", "set", "wg0", 
-#         "peer", client_public_key,
-#         "allowed-ips", client_ip.split('/')[0] + "/32"
-#     ]
-    
-#     try:
-#         subprocess.run(add_peer_command, check=True)
-        
-#         # Сохраняем конфигурацию сервера
-#         subprocess.run(["wg-quick", "save", "wg0"], check=True)
-        
-#         logger.info(f"Конфигурация клиента создана успешно для пользователя {user_id}")
-#         return client_config, client_public_key
-#     except subprocess.CalledProcessError as e:
-#         logger.error(f"Ошибка при добавлении пира: {e}")
-#         raise Exception(f"Ошибка при добавлении пира: {e}")
-
 def generate_client_config(user_id, server_details=None):
     """
     Генерирует конфигурацию клиента WireGuard с возможностью передачи деталей сервера
@@ -184,18 +140,19 @@ def generate_client_config(user_id, server_details=None):
     # Получаем детали сервера
     if server_details is None:
         # Если детали не переданы, используем значения по умолчанию
-        server_public_key = get_server_public_key()  # Функция для получения актуального публичного ключа
-        server_endpoint = os.getenv('SERVER_ENDPOINT', 'default-endpoint')
+        server_public_key = get_server_public_key()
+        server_endpoint = os.getenv('SERVER_ENDPOINT', '194.67.206.159')
         server_port = os.getenv('SERVER_PORT', '51820')
     else:
         # Используем переданные детали сервера
-        server_public_key = server_details.get('public_key')
-        server_endpoint = server_details.get('endpoint')
-        server_port = server_details.get('port', '51820')
+        server_public_key = server_details.get('public_key', get_server_public_key())
+        server_endpoint = server_details.get('endpoint', os.getenv('SERVER_ENDPOINT', '194.67.206.159'))
+        server_port = server_details.get('port', os.getenv('SERVER_PORT', '51820'))
     
     # Более интеллектуальная генерация IP-адреса
-    # Можно добавить проверку существующих IP в базе данных
     client_ip = generate_unique_client_ip(user_id)
+    
+    logger.info(f"Создание конфигурации для пользователя {user_id}, сервер: {server_endpoint}:{server_port}")
     
     # Создаем конфигурацию клиента
     client_config = (
@@ -254,86 +211,72 @@ def get_server_public_key():
         logger.error("Файл публичного ключа сервера не найден")
         raise
 
-# def generate_client_config(user_id):
-#     """Генерирует конфигурацию клиента WireGuard."""
-#     logger.info(f"Генерация конфигурации для пользователя {user_id}")
+def get_server_for_geolocation(geolocation_id):
+    """
+    Возвращает детали сервера для указанной геолокации через API базы данных.
+    """
+    if not geolocation_id:
+        return get_default_server()
     
-#     # Генерируем ключи клиента
-#     client_private_key, client_public_key = generate_client_keys()
+    try:
+        # URL базы данных и API-эндпоинт для получения серверов геолокации
+        db_url = os.getenv("DATABASE_SERVICE_URL", "http://database-service:5002")
+        response = requests.get(f"{db_url}/servers/geolocation/{geolocation_id}", timeout=5)
+        
+        if response.status_code == 200:
+            servers_data = response.json()
+            servers = servers_data.get("servers", [])
+            
+            if servers:
+                # Выбираем первый доступный сервер
+                server = servers[0]
+                
+                return {
+                    "public_key": get_server_public_key(),
+                    "endpoint": server.get("endpoint"),
+                    "port": server.get("port", "51820"),
+                    "server_id": server.get("id")
+                }
+        
+        # Если не удалось получить сервер, используем по умолчанию
+        logger.warning(f"Не удалось получить сервер для геолокации {geolocation_id}, используем по умолчанию")
+        return get_default_server()
     
-#     logger.info(f"Сгенерирован приватный ключ: {client_private_key[:10]}...")
-#     logger.info(f"Сгенерирован публичный ключ: {client_public_key[:10]}...")
-    
-#     # Читаем публичный ключ сервера
-#     try:
-#         with open(SERVER_PUBLIC_KEY, "r") as f:
-#             server_public_key = f.read().strip()
-#         logger.info(f"Публичный ключ сервера: {server_public_key[:10]}...")
-#     except Exception as e:
-#         logger.error(f"Ошибка чтения публичного ключа сервера: {e}")
-#         raise
-    
-#     # Генерируем уникальный IP-адрес для клиента
-#     client_ip = f"10.0.0.{(user_id % 250) + 2}/24"
-#     logger.info(f"Сгенерирован IP-адрес: {client_ip}")
-    
-#     # Создаем конфигурацию клиента
-#     client_config = (
-#         f"[Interface]\n"
-#         f"PrivateKey = {client_private_key}\n"
-#         f"Address = {client_ip}\n"
-#         f"DNS = 1.1.1.1, 8.8.8.8\n\n"
-#         f"[Peer]\n"
-#         f"PublicKey = {server_public_key}\n"
-#         f"Endpoint = {SERVER_ENDPOINT}:{SERVER_PORT}\n"
-#         f"AllowedIPs = 0.0.0.0/0\n"
-#         f"PersistentKeepalive = 25\n"
-#     )
-    
-#     logger.info("Конфигурация клиента сгенерирована успешно")
-    
-#     return client_config, client_public_key
+    except Exception as e:
+        logger.error(f"Ошибка при получении сервера для геолокации {geolocation_id}: {str(e)}")
+        return get_default_server()
 
 @app.route('/create', methods=['POST'])
 def create_config():
-    """Создает новую конфигурацию WireGuard для пользователя."""
     data = request.json
     user_id = data.get('user_id')
+    geolocation_id = data.get('geolocation_id')
+    
+    logger.info(f"Отправляем запрос на создание с данными: {data}")
     
     if not user_id:
         return jsonify({"error": "User ID is required"}), 400
     
     try:
-        client_config, client_public_key = generate_client_config(user_id)
+        # Получаем информацию о сервере для геолокации
+        server_details = get_server_for_geolocation(geolocation_id)
+        logger.info(f"Извлечен geolocation_id: {geolocation_id}")
+        logger.info(f"Выбрана геолокация: {server_details.get('endpoint')} (ID: {geolocation_id})")
         
+        # Создаем конфигурацию
+        client_config, client_public_key = generate_client_config(user_id, server_details)
+        logger.info(f"Конфигурация получена успешно. Public key: {client_public_key}, Server ID: {server_details.get('server_id')}, Geolocation ID: {geolocation_id}")
+        
+        # Возвращаем результат
         return jsonify({
             "config": client_config,
-            "public_key": client_public_key
+            "public_key": client_public_key,
+            "server_id": server_details.get("server_id"),
+            "geolocation_id": geolocation_id
         }), 201
     except Exception as e:
         logger.error(f"Error creating configuration: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
-# @app.route('/remove/<public_key>', methods=['DELETE'])
-# def remove_config(public_key):
-#     """Удаляет конфигурацию WireGuard по публичному ключу."""
-#     try:
-#         # Удаляем клиента из конфигурации сервера
-#         remove_peer_command = [
-#             "wg", "set", "wg0", 
-#             "peer", public_key,
-#             "remove"
-#         ]
-        
-#         subprocess.run(remove_peer_command, check=True)
-        
-#         # Сохраняем конфигурацию сервера
-#         subprocess.run(["wg-quick", "save", "wg0"], check=True)
-        
-#         return jsonify({"status": "success"}), 200
-#     except Exception as e:
-#         logger.error(f"Error removing configuration: {str(e)}")
-#         return jsonify({"error": str(e)}), 500
 
 @app.route('/remove', methods=['DELETE'])
 def remove_config():
