@@ -7,7 +7,7 @@ import logging
 import uuid
 import asyncio
 import time
-
+from keyboards.keyboards import get_active_config_keyboard, get_create_config_keyboard
 from utils.bd import get_user_config, create_new_config, get_config_from_wireguard
 from utils.qr import generate_config_qr
 
@@ -118,6 +118,96 @@ class CallbackMiddleware(BaseMiddleware):
         if tracking_key and tracking_key in self.processing_callbacks:
             del self.processing_callbacks[tracking_key]
     
+    def get_active_config_keyboard(self):
+        """Возвращает клавиатуру для активной конфигурации."""
+        return get_active_config_keyboard()
+    
+    def get_create_config_keyboard(self):
+        """Возвращает клавиатуру для создания конфигурации."""
+        return get_create_config_keyboard()
+    
+    async def _handle_status(self, callback_query: types.CallbackQuery):
+        """Обработчик проверки статуса (расширенный с клавиатурой)."""
+        self.logger.info("Middleware: обрабатываем колбэк status")
+
+        await self.bot.answer_callback_query(callback_query.id)
+        user_id = callback_query.from_user.id
+
+        try:
+            get_config_task = asyncio.create_task(get_user_config(user_id))
+            try:
+                config = await asyncio.wait_for(get_config_task, timeout=10)
+            except asyncio.TimeoutError:
+                await self.bot.send_message(
+                    user_id,
+                    "⚠️ <b>Превышено время ожидания при получении статуса</b>\n\n"
+                    "Пожалуйста, попробуйте позже.",
+                    parse_mode=ParseMode.HTML
+                )
+                return True
+
+            if config and config.get("active", False):
+                try:
+                    created_at = datetime.fromisoformat(config.get("created_at")).strftime("%d.%m.%Y %H:%M:%S")
+                except (ValueError, TypeError):
+                    created_at = "Неизвестно"
+
+                try:
+                    expiry_time = datetime.fromisoformat(config.get("expiry_time"))
+                    expiry_formatted = expiry_time.strftime("%d.%m.%Y %H:%M:%S")
+
+                    now = datetime.now()
+                    remaining_time = expiry_time - now
+                    remaining_days = max(0, remaining_time.days)
+                    remaining_hours = max(0, remaining_time.seconds // 3600)
+                except (ValueError, TypeError):
+                    self.logger.error(f"Ошибка при парсинге даты: {config.get('expiry_time')}")
+                    expiry_formatted = "неизвестно"
+                    remaining_days = 0
+                    remaining_hours = 0
+
+                geolocation_name = config.get("geolocation_name", "Неизвестно")
+
+                status_text = (
+                    f"📊 <b>Статус вашей конфигурации WireGuard</b>\n\n"
+                    f"▫️ Активна: <b>Да</b>\n"
+                    f"▫️ Создана: <b>{created_at}</b>\n"
+                    f"▫️ Действует до: <b>{expiry_formatted}</b>\n"
+                    f"▫️ Осталось: <b>{remaining_days} дн. {remaining_hours} ч.</b>\n"
+                    f"▫️ Геолокация: <b>{geolocation_name}</b>"
+                )
+
+                keyboard = self.get_active_config_keyboard()
+
+                await self.bot.send_message(
+                    user_id,
+                    status_text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=keyboard
+                )
+            else:
+                keyboard = self.get_create_config_keyboard()
+
+                await self.bot.send_message(
+                    user_id,
+                    "❌ <b>У вас нет активной конфигурации</b>\n\n"
+                    "Создайте новую с помощью команды /create или кнопки ниже.",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=keyboard
+                )
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Middleware: ошибка при получении данных о конфигурации: {str(e)}", exc_info=True)
+            await self.bot.send_message(
+                user_id,
+                "❌ <b>Ошибка при получении данных о конфигурации</b>\n\n"
+                "Пожалуйста, попробуйте позже.",
+                parse_mode=ParseMode.HTML
+            )
+            return True
+            
     async def _handle_direct_create(self, callback_query: types.CallbackQuery):
         """Обработчик создания конфигурации."""
         self.logger.info("Middleware: обрабатываем колбэк direct_create")
@@ -375,76 +465,6 @@ class CallbackMiddleware(BaseMiddleware):
             await self.bot.send_message(
                 user_id,
                 "❌ <b>Ошибка при получении конфигурации</b>\n\n"
-                "Пожалуйста, попробуйте позже.",
-                parse_mode=ParseMode.HTML
-            )
-            
-            return True
-    
-    async def _handle_status(self, callback_query: types.CallbackQuery):
-        """Обработчик проверки статуса."""
-        self.logger.info("Middleware: обрабатываем колбэк status")
-        
-        await self.bot.answer_callback_query(callback_query.id)
-        user_id = callback_query.from_user.id
-        
-        try:
-            # Запрашиваем данные о конфигурации с таймаутом
-            get_config_task = asyncio.create_task(get_user_config(user_id))
-            try:
-                config = await asyncio.wait_for(get_config_task, timeout=10)
-            except asyncio.TimeoutError:
-                await self.bot.send_message(
-                    user_id,
-                    "⚠️ <b>Превышено время ожидания при получении статуса</b>\n\n"
-                    "Пожалуйста, попробуйте позже.",
-                    parse_mode=ParseMode.HTML
-                )
-                return True
-            
-            if config and config.get("active", False):
-                # Безопасное извлечение и форматирование дат
-                try:
-                    expiry_time = datetime.fromisoformat(config.get("expiry_time"))
-                    expiry_formatted = expiry_time.strftime("%d.%m.%Y %H:%M:%S")
-                    
-                    # Расчет оставшегося времени
-                    now = datetime.now()
-                    remaining_time = expiry_time - now
-                    remaining_days = max(0, remaining_time.days)
-                    remaining_hours = max(0, remaining_time.seconds // 3600)
-                except (ValueError, TypeError):
-                    self.logger.error(f"Ошибка при парсинге даты: {config.get('expiry_time')}")
-                    expiry_formatted = "неизвестно"
-                    remaining_days = 0
-                    remaining_hours = 0
-                
-                # Получаем информацию о геолокации
-                geolocation_name = config.get("geolocation_name", "Неизвестно")
-                
-                await self.bot.send_message(
-                    user_id,
-                    f"📊 <b>Статус вашей конфигурации</b>\n\n"
-                    f"▫️ Активна: <b>Да</b>\n"
-                    f"▫️ Действует до: <b>{expiry_formatted}</b>\n"
-                    f"▫️ Осталось: <b>{remaining_days} дн. {remaining_hours} ч.</b>\n"
-                    f"▫️ Геолокация: <b>{geolocation_name}</b>",
-                    parse_mode=ParseMode.HTML
-                )
-            else:
-                await self.bot.send_message(
-                    user_id,
-                    "❌ <b>У вас нет активной конфигурации</b>\n\n"
-                    "Создайте новую с помощью команды /create.",
-                    parse_mode=ParseMode.HTML
-                )
-                
-            return True
-        except Exception as e:
-            self.logger.error(f"Middleware: ошибка при получении данных о конфигурации: {str(e)}", exc_info=True)
-            await self.bot.send_message(
-                user_id,
-                "❌ <b>Ошибка при получении данных о конфигурации</b>\n\n"
                 "Пожалуйста, попробуйте позже.",
                 parse_mode=ParseMode.HTML
             )
