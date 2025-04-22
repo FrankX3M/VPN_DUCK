@@ -2,6 +2,7 @@ import logging
 import requests
 import json
 import aiohttp
+import asyncio
 from datetime import datetime, timedelta
 from core.settings import DATABASE_SERVICE_URL, WIREGUARD_SERVICE_URL, logger
 
@@ -637,42 +638,43 @@ async def create_new_config(user_id, geolocation_id=None):
         return {"error": f"Ошибка при создании конфигурации: {str(e)}. Пожалуйста, попробуйте позже."}
 
 # Функция для пересоздания конфигурации
-
-async def recreate_config(user_id):
-    """Пересоздает конфигурацию WireGuard с сохранением геолокации."""
+async def recreate_config(user_id, geolocation_id=None):
+    """
+    Пересоздает конфигурацию WireGuard с сохранением или изменением геолокации.
+    
+    Args:
+        user_id (int): ID пользователя
+        geolocation_id (int, optional): ID геолокации. Если не указан, 
+                                        будет использована текущая локация.
+        
+    Returns:
+        dict: Словарь с данными конфигурации или информацией об ошибке
+    """
     try:
-        logger.info(f"Пересоздание конфигурации для пользователя {user_id}")
+        logger.info(f"Пересоздание конфигурации для пользователя {user_id} с геолокацией {geolocation_id}")
         
         # Получаем текущую конфигурацию
         current_config = await get_user_config(user_id)
         
-        if not current_config:
-            logger.warning(f"Не найдена конфигурация для пользователя {user_id}")
-            return {"error": "Не найдена активная конфигурация"}
+        # Если геолокация не указана, используем текущую из конфигурации
+        if not geolocation_id and current_config:
+            geolocation_id = current_config.get("geolocation_id")
+            logger.info(f"Используем текущую геолокацию: {geolocation_id}")
         
-        # Сохраняем геолокацию пользователя
-        geolocation_id = current_config.get("geolocation_id")
-        # Если геолокация не указана или отсутствует, получаем доступные геолокации
+        # Если геолокация всё ещё не определена, получаем доступные геолокации
         if not geolocation_id:
             geolocations = await get_available_geolocations()
             if geolocations:
                 geolocation_id = geolocations[0].get('id')
+                logger.info(f"Используем первую доступную геолокацию: {geolocation_id}")
         
-        # Если указана геолокация, проверяем доступность серверов
-        if geolocation_id:
-            servers = await get_servers_for_geolocation(geolocation_id)
-            if not servers:
-                return {"error": "Нет доступных серверов в выбранной геолокации"}
-
-
+        # Деактивируем текущую конфигурацию, если она есть
         if current_config and current_config.get("public_key"):
-
-            # Деактивируем текущую конфигурацию в WireGuard
             public_key = current_config.get("public_key")
             logger.info(f"Деактивация текущей конфигурации с public_key: {public_key}")
             
             try:
-                logger.info(f"Отправляем запрос на удаление: {WIREGUARD_SERVICE_URL}/remove/{public_key}")
+                import requests
                 deactivate_response = requests.delete(
                     f"{WIREGUARD_SERVICE_URL}/remove/{public_key}", 
                     timeout=10
@@ -682,12 +684,192 @@ async def recreate_config(user_id):
                 logger.error(f"Ошибка при деактивации: {str(e)}")
                 # Продолжаем, даже если деактивация не удалась
         
-        # Создаем новую конфигурацию с сохранением геолокации
+        # Создаем новую конфигурацию с указанной геолокацией
         logger.info(f"Создаем новую конфигурацию для пользователя с геолокацией {geolocation_id}")
-        return await create_new_config(user_id, geolocation_id)
+        
+        # Формируем данные для запроса
+        request_data = {"user_id": user_id}
+        if geolocation_id:
+            request_data["geolocation_id"] = geolocation_id
+        
+        # Отправляем запрос на создание новой конфигурации
+        wg_response = requests.post(
+            f"{WIREGUARD_SERVICE_URL}/create",
+            json=request_data,
+            timeout=30
+        )
+        
+        logger.info(f"Ответ API wireguard-service: код {wg_response.status_code}")
+        
+        if wg_response.status_code == 201:
+            try:
+                wg_data = wg_response.json()
+                config_text = wg_data.get("config")
+                public_key = wg_data.get("public_key")
+                server_id = wg_data.get("server_id")
+                
+                logger.info(f"Конфигурация получена успешно. Public key: {public_key}, Server ID: {server_id}")
+                
+                # Рассчитываем дату истечения (7 дней от текущей даты)
+                expiry_time = (datetime.now() + timedelta(days=7)).isoformat()
+                
+                # Сохраняем в базе данных через database-service
+                logger.info(f"Сохраняем в БД. URL: {DATABASE_SERVICE_URL}/config")
+                
+                db_data = {
+                    "user_id": user_id,
+                    "config": config_text,
+                    "public_key": public_key,
+                    "expiry_time": expiry_time,
+                    "active": True
+                }
+                
+                # Добавляем информацию о геолокации и сервере
+                if geolocation_id:
+                    db_data["geolocation_id"] = geolocation_id
+                if server_id:
+                    db_data["server_id"] = server_id
+                
+                db_response = requests.post(
+                    f"{DATABASE_SERVICE_URL}/config",
+                    json=db_data,
+                    timeout=20
+                )
+                
+                logger.info(f"Ответ API database-service: код {db_response.status_code}")
+                
+                if db_response.status_code in [200, 201]:
+                    # Возвращаем успешный результат
+                    logger.info("Конфигурация успешно создана и сохранена в БД")
+                    return {
+                        "config_text": config_text,
+                        "public_key": public_key,
+                        "server_id": server_id,
+                        "geolocation_id": geolocation_id
+                    }
+                else:
+                    # Логируем ошибку сохранения в БД
+                    try:
+                        error_data = db_response.json()
+                        if "error" in error_data:
+                            error_message = error_data.get("error")
+                        else:
+                            error_message = f"Ошибка сохранения в БД: код {db_response.status_code}"
+                    except:
+                        error_message = f"Ошибка сохранения в БД: код {db_response.status_code}"
+                    
+                    logger.error(error_message)
+                    return {"error": error_message}
+            except Exception as e:
+                logger.error(f"Ошибка при обработке ответа wireguard-service: {str(e)}", exc_info=True)
+                return {"error": f"Ошибка при обработке ответа сервера: {str(e)}"}
+        
+        # В случае ошибки от wireguard-service
+        try:
+            error_data = wg_response.json()
+            if "error" in error_data:
+                error_message = error_data.get("error")
+            else:
+                error_message = f"Ошибка при создании конфигурации: код {wg_response.status_code}"
+        except:
+            error_message = f"Ошибка при создании конфигурации: код {wg_response.status_code}"
+        
+        logger.error(error_message)
+        return {"error": error_message}
+        
     except Exception as e:
-        logger.error(f"Ошибка при запросе к API: {str(e)}")
+        logger.error(f"Ошибка при пересоздании конфигурации: {str(e)}", exc_info=True)
         return {"error": f"Ошибка при пересоздании конфигурации: {str(e)}. Пожалуйста, попробуйте позже."}
+
+async def get_servers_for_geolocation(geolocation_id):
+    """
+    Получает список серверов для указанной геолокации.
+    
+    Args:
+        geolocation_id: ID геолокации
+        
+    Returns:
+        list: Список серверов для данной геолокации
+    """
+    try:
+        logger.info(f"Получение серверов для геолокации {geolocation_id}")
+        
+        import aiohttp
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{DATABASE_SERVICE_URL}/servers/geolocation/{geolocation_id}",
+                timeout=10
+            ) as response:
+                logger.info(f"Ответ API получения серверов: код {response.status}")
+                
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get("servers", [])
+                
+                # Если серверы не найдены, возвращаем пустой список
+                if response.status == 404:
+                    logger.warning(f"Серверы для геолокации {geolocation_id} не найдены")
+                    return []
+                
+                # Подробный вывод информации об ошибке
+                logger.error(f"Ошибка API при получении серверов: {response.status}, тело: {await response.text()}")
+                return []
+                
+    except Exception as e:
+        logger.error(f"Ошибка при получении серверов для геолокации: {str(e)}", exc_info=True)
+        return []
+
+# Добавим функцию для получения текущей локации пользователя
+async def get_user_location(user_id):
+    """
+    Получает текущую геолокацию пользователя.
+    
+    Args:
+        user_id (int): ID пользователя
+        
+    Returns:
+        str or None: Геолокация пользователя или None, если не найдена
+    """
+    try:
+        config = await get_user_config(user_id)
+        if config and "location" in config:
+            return config["location"]
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка при получении локации пользователя: {str(e)}", exc_info=True)
+        return None
+
+# Добавим функцию для обновления локации пользователя
+async def update_user_location(user_id, location):
+    """
+    Обновляет геолокацию пользователя.
+    
+    Args:
+        user_id (int): ID пользователя
+        location (str): Новая геолокация
+        
+    Returns:
+        bool: True, если обновление прошло успешно, иначе False
+    """
+    try:
+        result = await db.configs.update_one(
+            {"user_id": user_id},
+            {"$set": {"location": location}}
+        )
+        
+        if result.matched_count == 0:
+            # Если запись не найдена, создаем новую с минимальными данными
+            await db.configs.insert_one({
+                "user_id": user_id,
+                "location": location,
+                "active": False
+            })
+        
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении локации пользователя: {str(e)}", exc_info=True)
+        return False
         
 # Функция для получения конфигурации из WireGuard сервиса
 async def get_config_from_wireguard(user_id):

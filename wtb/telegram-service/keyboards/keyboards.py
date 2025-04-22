@@ -67,13 +67,41 @@ def get_create_confirm_keyboard():
     return keyboard
 
 # Клавиатура для пересоздания конфигурации
-def get_recreate_confirm_keyboard():
-    """Возвращает клавиатуру для подтверждения пересоздания конфигурации."""
+# def get_recreate_confirm_keyboard():
+#     """Возвращает клавиатуру для подтверждения пересоздания конфигурации."""
+#     keyboard = InlineKeyboardMarkup(row_width=2)
+#     keyboard.add(
+#         InlineKeyboardButton("✅ Подтвердить", callback_data="confirm_recreate"),
+#         InlineKeyboardButton("❌ Отменить", callback_data="cancel_recreate")
+#     )
+#     return keyboard
+def get_recreate_confirm_keyboard(location=None):
+    """
+    Возвращает клавиатуру для подтверждения пересоздания конфигурации.
+    
+    Args:
+        location (str, optional): Текущая локация, если известна
+        
+    Returns:
+        InlineKeyboardMarkup: Клавиатура с кнопками подтверждения и отмены
+    """
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
         InlineKeyboardButton("✅ Подтвердить", callback_data="confirm_recreate"),
         InlineKeyboardButton("❌ Отменить", callback_data="cancel_recreate")
     )
+    
+    # Если локация указана, добавляем кнопку для её изменения
+    if location:
+        keyboard.add(
+            InlineKeyboardButton("🌍 Изменить геолокацию", callback_data="recreate_choose_geo")
+        )
+    else:
+        # Если локация не указана, добавляем кнопку для выбора
+        keyboard.add(
+            InlineKeyboardButton("🌍 Выбрать геолокацию", callback_data="recreate_choose_geo")
+        )
+    
     return keyboard
 
 # Клавиатура для активной конфигурации
@@ -90,6 +118,31 @@ def get_active_config_keyboard():
     )
     return keyboard
 
+# класиатура геолокаций
+def get_location_keyboard():
+    """
+    Создает клавиатуру для выбора локации сервера.
+    
+    Returns:
+        InlineKeyboardMarkup: Клавиатура с доступными локациями
+    """
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    
+    # Добавляем доступные локации
+    keyboard.add(
+        InlineKeyboardButton("🇷🇺 Россия", callback_data="location_recreate:russia"),
+        InlineKeyboardButton("🇳🇱 Нидерланды", callback_data="location_recreate:netherlands")
+    )
+    keyboard.add(
+        InlineKeyboardButton("🇩🇪 Германия", callback_data="location_recreate:germany"),
+        InlineKeyboardButton("🇸🇬 Сингапур", callback_data="location_recreate:singapore")
+    )
+    keyboard.add(
+        InlineKeyboardButton("❌ Отменить", callback_data="cancel_recreate")
+    )
+    
+    return keyboard
+
 # Клавиатура для создания новой конфигурации
 def get_create_config_keyboard():
     """Возвращает клавиатуру для создания новой конфигурации."""
@@ -103,3 +156,4 @@ def get_status_keyboard():
     keyboard = InlineKeyboardMarkup(row_width=1)
     keyboard.add(InlineKeyboardButton("📊 Проверить статус", callback_data="status"))
     return keyboard
+

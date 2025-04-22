@@ -10,6 +10,8 @@ from keyboards.keyboards import get_create_confirm_keyboard, get_active_config_k
 from utils.bd import get_user_config, create_new_config, get_config_from_wireguard
 from utils.qr import generate_config_qr
 
+from keyboards.keyboards import get_geolocation_keyboard
+
 # поддержка выбора геолокации во время создания конфигурации
 async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMContext):
     """Подтверждение создания новой конфигурации с возможностью выбора геолокации."""
