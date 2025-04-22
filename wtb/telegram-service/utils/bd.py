@@ -652,8 +652,14 @@ async def recreate_config(user_id):
         
         # Сохраняем геолокацию пользователя
         geolocation_id = current_config.get("geolocation_id")
+        # Если геолокация не указана или отсутствует, получаем доступные геолокации
+        if not geolocation_id:
+            geolocations = await get_available_geolocations()
+            if geolocations:
+                geolocation_id = geolocations[0].get('id')
         
         if current_config and current_config.get("public_key"):
+
             # Деактивируем текущую конфигурацию в WireGuard
             public_key = current_config.get("public_key")
             logger.info(f"Деактивация текущей конфигурации с public_key: {public_key}")

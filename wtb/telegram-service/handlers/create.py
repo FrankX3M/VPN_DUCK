@@ -30,7 +30,21 @@ async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMC
     try:
         # Получаем доступные геолокации
         geolocations = await get_available_geolocations()
-        default_geolocation_id = None
+        if geolocations:
+            # Формируем клавиатуру с геолокациями
+            keyboard = get_geolocation_keyboard(geolocations)
+            
+            await message.reply(
+                "🌍 <b>Выберите геолокацию для вашего VPN</b>\n\n"
+                "От выбранной геолокации зависит скорость соединения и доступность некоторых сервисов.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard
+            )
+            
+            # Переходим в состояние выбора геолокации
+            await GeoLocationStates.selecting_geolocation.set()
+        else:
+            default_geolocation_id = None
         
         # Выбираем геолокацию по умолчанию (например, первую из списка)
         if geolocations:
