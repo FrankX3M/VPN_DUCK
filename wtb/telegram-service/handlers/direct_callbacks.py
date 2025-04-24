@@ -2,7 +2,7 @@ from aiogram import types, Dispatcher
 from aiogram.types import ParseMode, InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime
 from io import BytesIO
-
+import asyncio
 from core.settings import bot, logger
 from utils.bd import get_user_config, create_new_config, get_config_from_wireguard, are_servers_available 
 from utils.qr import generate_config_qr
@@ -25,17 +25,20 @@ async def direct_create_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
     
     # Проверяем наличие доступных серверов
-    servers_available = await are_servers_available()
-    if not servers_available:
-        await bot.edit_message_text(
-            "⚠️ <b>Создание конфигурации невозможно</b>\n\n"
-            "В данный момент нет доступных серверов. "
-            "Пожалуйста, добавьте серверы через административную панель или попробуйте позже.",
-            chat_id=callback_query.message.chat.id,
-            message_id=callback_query.message.message_id,
-            parse_mode=ParseMode.HTML
-        )
-        return
+    # logger.info("Проверяем наличие доступных серверов")
+    # servers_available = await are_servers_available()
+    # logger.info(f"Результат проверки доступных серверов: {servers_available}")
+    # if not servers_available:
+    #     await bot.edit_message_text(
+    #         "⚠️ <b>Создание конфигурации невозможно</b>\n\n"
+    #         "В данный момент нет доступных серверов. "
+    #         "Пожалуйста, добавьте серверы через административную панель или попробуйте позже.",
+    #         chat_id=callback_query.message.chat.id,
+    #         message_id=callback_query.message.message_id,
+    #         parse_mode=ParseMode.HTML
+    #     )
+    #     return
+    servers_available = True
     
     # Сообщаем пользователю о начале процесса создания
     await bot.edit_message_text(

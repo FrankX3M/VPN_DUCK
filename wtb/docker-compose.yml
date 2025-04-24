@@ -18,6 +18,8 @@ services:
     # Убираем privileged: true
     volumes:
       - /root/wireguard-configs:/app/configs
+    cap_add:
+      - NET_ADMIN
     ports:
       - "5001:5001"
       # Убираем - "51820:51820/udp"

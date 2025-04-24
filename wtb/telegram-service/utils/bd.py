@@ -5,7 +5,8 @@ import aiohttp
 import asyncio
 from datetime import datetime, timedelta
 from core.settings import DATABASE_SERVICE_URL, WIREGUARD_SERVICE_URL, logger
-
+import aiohttp
+from core.settings import WIREGUARD_SERVICE_URL, logger
 # В начале файла добавить:
 from functools import lru_cache
 import time
