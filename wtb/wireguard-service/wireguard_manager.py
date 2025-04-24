@@ -112,6 +112,19 @@ def init_wireguard():
         except Exception as e2:
             logger.error(f"Повторная ошибка при запуске WireGuard: {str(e2)}")
 
+def get_default_server():
+    """
+    Возвращает параметры сервера по умолчанию.
+    
+    :return: Словарь с параметрами сервера по умолчанию
+    """
+    return {
+        "public_key": get_server_public_key(),
+        "endpoint": os.getenv('SERVER_ENDPOINT', '194.67.206.159'),
+        "port": os.getenv('SERVER_PORT', '51820'),
+        "server_id": None
+    }
+
 def generate_client_keys():
     """Генерирует приватный и публичный ключи для клиента."""
     private_key_result = subprocess.run(["wg", "genkey"], stdout=subprocess.PIPE)

@@ -189,3 +189,11 @@ def register_handlers_config(dp: Dispatcher):
     # Регистрируем с низким приоритетом, чтобы middleware мог обработать сначала
     # dp.register_callback_query_handler(get_config_file, lambda c: c.data == "get_config", state="*")
     pass
+# def register_handlers_config(dp: Dispatcher):
+#     """Регистрирует обработчики для получения конфигурации."""
+#     # Прямой обработчик для колбэка get_config
+#     dp.register_callback_query_handler(
+#         get_config_file, 
+#         lambda c: c.data == "get_config", 
+#         state="*"
+#     )

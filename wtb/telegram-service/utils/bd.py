@@ -637,152 +637,44 @@ async def create_new_config(user_id, geolocation_id=None):
         logger.error(f"Общая ошибка при создании конфигурации: {str(e)}")
         return {"error": f"Ошибка при создании конфигурации: {str(e)}. Пожалуйста, попробуйте позже."}
 
+async def are_servers_available():
+    """Проверяет наличие доступных серверов."""
+    try:
+        # Получаем список серверов с wireguard-service
+        import aiohttp
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{WIREGUARD_SERVICE_URL}/servers", 
+                timeout=10
+            ) as response:
+                if response.status != 200:
+                    logger.error(f"Ошибка при получении списка серверов: {response.status}")
+                    return False
+                
+                servers_data = await response.json()
+                servers = servers_data.get("servers", [])
+                
+                # Проверяем наличие активных серверов
+                active_servers = [s for s in servers if s.get("active", False)]
+                
+                if not active_servers:
+                    logger.info("Нет активных серверов")
+                    return False
+                
+                logger.info(f"Доступно {len(active_servers)} активных серверов")
+                return True
+                
+    except Exception as e:
+        logger.error(f"Ошибка при проверке доступных серверов: {str(e)}")
+        # В случае ошибки возвращаем False, чтобы предотвратить создание конфигурации
+        return False
+
 # Функция для пересоздания конфигурации
-# async def recreate_config(user_id, geolocation_id=None):
-#     """
-#     Пересоздает конфигурацию WireGuard с сохранением или изменением геолокации.
-    
-#     Args:
-#         user_id (int): ID пользователя
-#         geolocation_id (int, optional): ID геолокации. Если не указан, 
-#                                         будет использована текущая локация.
-        
-#     Returns:
-#         dict: Словарь с данными конфигурации или информацией об ошибке
-#     """
-#     try:
-#         logger.info(f"Пересоздание конфигурации для пользователя {user_id} с геолокацией {geolocation_id}")
-        
-#         # Получаем текущую конфигурацию
-#         current_config = await get_user_config(user_id)
-        
-#         # Если геолокация не указана, используем текущую из конфигурации
-#         if not geolocation_id and current_config:
-#             geolocation_id = current_config.get("geolocation_id")
-#             logger.info(f"Используем текущую геолокацию: {geolocation_id}")
-        
-#         # Если геолокация всё ещё не определена, получаем доступные геолокации
-#         if not geolocation_id:
-#             geolocations = await get_available_geolocations()
-#             if geolocations:
-#                 geolocation_id = geolocations[0].get('id')
-#                 logger.info(f"Используем первую доступную геолокацию: {geolocation_id}")
-        
-#         # Деактивируем текущую конфигурацию, если она есть
-#         if current_config and current_config.get("public_key"):
-#             public_key = current_config.get("public_key")
-#             logger.info(f"Деактивация текущей конфигурации с public_key: {public_key}")
-            
-#             try:
-#                 import requests
-#                 deactivate_response = requests.delete(
-#                     f"{WIREGUARD_SERVICE_URL}/remove/{public_key}", 
-#                     timeout=10
-#                 )
-#                 logger.info(f"Ответ API на деактивацию: код {deactivate_response.status_code}")
-#             except Exception as e:
-#                 logger.error(f"Ошибка при деактивации: {str(e)}")
-#                 # Продолжаем, даже если деактивация не удалась
-        
-#         # Создаем новую конфигурацию с указанной геолокацией
-#         logger.info(f"Создаем новую конфигурацию для пользователя с геолокацией {geolocation_id}")
-        
-#         # Формируем данные для запроса
-#         request_data = {"user_id": user_id}
-#         if geolocation_id:
-#             request_data["geolocation_id"] = geolocation_id
-        
-#         # Отправляем запрос на создание новой конфигурации
-#         wg_response = requests.post(
-#             f"{WIREGUARD_SERVICE_URL}/create",
-#             json=request_data,
-#             timeout=30
-#         )
-        
-#         logger.info(f"Ответ API wireguard-service: код {wg_response.status_code}")
-        
-#         if wg_response.status_code == 201:
-#             try:
-#                 wg_data = wg_response.json()
-#                 config_text = wg_data.get("config")
-#                 public_key = wg_data.get("public_key")
-#                 server_id = wg_data.get("server_id")
-                
-#                 logger.info(f"Конфигурация получена успешно. Public key: {public_key}, Server ID: {server_id}")
-                
-#                 # Рассчитываем дату истечения (7 дней от текущей даты)
-#                 expiry_time = (datetime.now() + timedelta(days=7)).isoformat()
-                
-#                 # Сохраняем в базе данных через database-service
-#                 logger.info(f"Сохраняем в БД. URL: {DATABASE_SERVICE_URL}/config")
-                
-#                 db_data = {
-#                     "user_id": user_id,
-#                     "config": config_text,
-#                     "public_key": public_key,
-#                     "expiry_time": expiry_time,
-#                     "active": True
-#                 }
-                
-#                 # Добавляем информацию о геолокации и сервере
-#                 if geolocation_id:
-#                     db_data["geolocation_id"] = geolocation_id
-#                 if server_id:
-#                     db_data["server_id"] = server_id
-                
-#                 db_response = requests.post(
-#                     f"{DATABASE_SERVICE_URL}/config",
-#                     json=db_data,
-#                     timeout=20
-#                 )
-                
-#                 logger.info(f"Ответ API database-service: код {db_response.status_code}")
-                
-#                 if db_response.status_code in [200, 201]:
-#                     # Возвращаем успешный результат
-#                     logger.info("Конфигурация успешно создана и сохранена в БД")
-#                     return {
-#                         "config_text": config_text,
-#                         "public_key": public_key,
-#                         "server_id": server_id,
-#                         "geolocation_id": geolocation_id
-#                     }
-#                 else:
-#                     # Логируем ошибку сохранения в БД
-#                     try:
-#                         error_data = db_response.json()
-#                         if "error" in error_data:
-#                             error_message = error_data.get("error")
-#                         else:
-#                             error_message = f"Ошибка сохранения в БД: код {db_response.status_code}"
-#                     except:
-#                         error_message = f"Ошибка сохранения в БД: код {db_response.status_code}"
-                    
-#                     logger.error(error_message)
-#                     return {"error": error_message}
-#             except Exception as e:
-#                 logger.error(f"Ошибка при обработке ответа wireguard-service: {str(e)}", exc_info=True)
-#                 return {"error": f"Ошибка при обработке ответа сервера: {str(e)}"}
-        
-#         # В случае ошибки от wireguard-service
-#         try:
-#             error_data = wg_response.json()
-#             if "error" in error_data:
-#                 error_message = error_data.get("error")
-#             else:
-#                 error_message = f"Ошибка при создании конфигурации: код {wg_response.status_code}"
-#         except:
-#             error_message = f"Ошибка при создании конфигурации: код {wg_response.status_code}"
-        
-#         logger.error(error_message)
-#         return {"error": error_message}
-        
-#     except Exception as e:
-#         logger.error(f"Ошибка при пересоздании конфигурации: {str(e)}", exc_info=True)
-#         return {"error": f"Ошибка при пересоздании конфигурации: {str(e)}. Пожалуйста, попробуйте позже."}
 async def recreate_config(user_id, geolocation_id=None):
     """
     Пересоздает конфигурацию WireGuard с сохранением или изменением геолокации.
+    Сохраняет текущий срок действия конфигурации, если она активна.
     
     Args:
         user_id (int): ID пользователя
@@ -798,6 +690,28 @@ async def recreate_config(user_id, geolocation_id=None):
         # Получаем текущую конфигурацию
         current_config = await get_user_config(user_id)
         logger.info(f"Текущая конфигурация пользователя: {current_config}")
+        
+        # Определяем срок действия для новой конфигурации
+        current_expiry = None
+        if current_config and current_config.get("expiry_time"):
+            try:
+                # Парсим текущее время истечения
+                current_expiry = datetime.fromisoformat(current_config.get("expiry_time"))
+                now = datetime.now()
+                
+                # Проверяем, не истек ли срок действия
+                if current_expiry > now:
+                    logger.info(f"Сохраняем текущий срок действия: {current_expiry.isoformat()}")
+                    expiry_time = current_expiry.isoformat()
+                else:
+                    logger.info("Срок действия уже истек, устанавливаем стандартный период")
+                    expiry_time = (datetime.now() + timedelta(days=7)).isoformat()
+            except (ValueError, TypeError) as e:
+                logger.error(f"Ошибка при парсинге даты: {str(e)}")
+                expiry_time = (datetime.now() + timedelta(days=7)).isoformat()
+        else:
+            logger.info("Нет активной конфигурации, устанавливаем стандартный период")
+            expiry_time = (datetime.now() + timedelta(days=7)).isoformat()
         
         # Если геолокация не указана, используем текущую из конфигурации
         if not geolocation_id and current_config:
@@ -856,9 +770,6 @@ async def recreate_config(user_id, geolocation_id=None):
                 
                 logger.info(f"Конфигурация получена успешно. Public key: {public_key}, Server ID: {server_id}, Geolocation ID: {server_geolocation_id}")
                 
-                # Рассчитываем дату истечения (7 дней от текущей даты)
-                expiry_time = (datetime.now() + timedelta(days=7)).isoformat()
-                
                 # Сохраняем в базе данных через database-service
                 logger.info(f"Сохраняем в БД. URL: {DATABASE_SERVICE_URL}/config")
                 
@@ -866,7 +777,7 @@ async def recreate_config(user_id, geolocation_id=None):
                     "user_id": user_id,
                     "config": config_text,
                     "public_key": public_key,
-                    "expiry_time": expiry_time,
+                    "expiry_time": expiry_time,  # Используем сохраненное или новое время истечения
                     "active": True
                 }
                 
@@ -897,7 +808,8 @@ async def recreate_config(user_id, geolocation_id=None):
                         "config_text": config_text,
                         "public_key": public_key,
                         "server_id": server_id,
-                        "geolocation_id": server_geolocation_id or geolocation_id
+                        "geolocation_id": server_geolocation_id or geolocation_id,
+                        "expiry_time": expiry_time
                     }
                     logger.info(f"Возвращаем результат: {result_data}")
                     return result_data
@@ -934,6 +846,7 @@ async def recreate_config(user_id, geolocation_id=None):
     except Exception as e:
         logger.error(f"Ошибка при пересоздании конфигурации: {str(e)}", exc_info=True)
         return {"error": f"Ошибка при пересоздании конфигурации: {str(e)}. Пожалуйста, попробуйте позже."}
+        
 
 async def get_servers_for_geolocation(geolocation_id):
     """

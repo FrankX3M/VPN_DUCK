@@ -57,24 +57,24 @@ def get_extend_keyboard():
     return keyboard
 
 # Клавиатура для подтверждения создания
-def get_create_confirm_keyboard():
-    """Возвращает клавиатуру для подтверждения создания конфигурации."""
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    keyboard.add(
-        InlineKeyboardButton("✅ Подтвердить", callback_data="direct_create"),
-        InlineKeyboardButton("❌ Отменить", callback_data="direct_cancel")
-    )
-    return keyboard
-
-# Клавиатура для пересоздания конфигурации
-# def get_recreate_confirm_keyboard():
-#     """Возвращает клавиатуру для подтверждения пересоздания конфигурации."""
+# def get_create_confirm_keyboard():
+#     """Возвращает клавиатуру для подтверждения создания конфигурации."""
 #     keyboard = InlineKeyboardMarkup(row_width=2)
 #     keyboard.add(
-#         InlineKeyboardButton("✅ Подтвердить", callback_data="confirm_recreate"),
-#         InlineKeyboardButton("❌ Отменить", callback_data="cancel_recreate")
+#         InlineKeyboardButton("✅ Подтвердить", callback_data="direct_create"),
+#         InlineKeyboardButton("❌ Отменить", callback_data="direct_cancel")
 #     )
 #     return keyboard
+
+# Клавиатура для пересоздания конфигурации
+def get_recreate_confirm_keyboard():
+    """Возвращает клавиатуру для подтверждения пересоздания конфигурации."""
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    keyboard.add(
+        InlineKeyboardButton("✅ Подтвердить", callback_data="confirm_recreate"),
+        InlineKeyboardButton("❌ Отменить", callback_data="cancel_recreate")
+    )
+    return keyboard
 def get_recreate_confirm_keyboard(location=None):
     """
     Возвращает клавиатуру для подтверждения пересоздания конфигурации.
@@ -104,6 +104,16 @@ def get_recreate_confirm_keyboard(location=None):
     
     return keyboard
 
+# Клавиатура для подтверждения создания
+def get_create_confirm_keyboard():
+    """Возвращает клавиатуру для подтверждения создания конфигурации."""
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    keyboard.add(
+        InlineKeyboardButton("✅ Подтвердить", callback_data="direct_create"),
+        InlineKeyboardButton("❌ Отменить", callback_data="direct_cancel")
+        )
+    return keyboard
+
 # Клавиатура для активной конфигурации
 def get_active_config_keyboard():
     """Возвращает клавиатуру для активной конфигурации."""
@@ -118,7 +128,7 @@ def get_active_config_keyboard():
     )
     return keyboard
 
-# класиатура геолокаций
+#класиатура геолокаций
 def get_location_keyboard():
     """
     Создает клавиатуру для выбора локации сервера.
