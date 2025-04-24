@@ -3,31 +3,31 @@ services:
     build: ./telegram-service
     restart: always
     depends_on:
-      # - wireguard-service
+      - wireguard-service
       - database-service
     env_file:
       - .env
     environment:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
-      # - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
+      - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
       - DATABASE_SERVICE_URL=http://database-service:5002
 
-  # wireguard-service:
-  #   build: ./wireguard-service
-  #   restart: always
-  #   # Убираем privileged: true
-  #   volumes:
-  #     - /root/wireguard-configs:/app/configs
-  #   cap_add:
-  #     - NET_ADMIN
-  #   ports:
-  #     - "5001:5001"
-  #     # Убираем - "51820:51820/udp"
-  #   environment:
-  #     - REMOTE_ONLY=true  # Новая переменная
-  #     - SERVER_ENDPOINT=${SERVER_ENDPOINT}
-  #     - SERVER_PORT=${SERVER_PORT}
-  #     - SERVER_ADDRESS=${SERVER_ADDRESS}
+  wireguard-service:
+    build: ./wireguard-service
+    restart: always
+    # Убираем privileged: true
+    volumes:
+      - /root/wireguard-configs:/app/configs
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "5001:5001"
+      # Убираем - "51820:51820/udp"
+    environment:
+      - REMOTE_ONLY=true  # Новая переменная
+      - SERVER_ENDPOINT=${SERVER_ENDPOINT}
+      - SERVER_PORT=${SERVER_PORT}
+      - SERVER_ADDRESS=${SERVER_ADDRESS}
 
   database-service:
     build: ./database-service
@@ -40,7 +40,7 @@ services:
       - DB_NAME=wireguard
       - DB_USER=postgres
       - DB_PASS=${POSTGRES_PASSWORD}
-      # - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
+      - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
     ports:
       - "5002:5002"
     command: ["./wait-for-postgres.sh", "postgres", "python", "db_manager.py"]
@@ -82,10 +82,10 @@ services:
     restart: always
     depends_on:
       - database-service
-      # - wireguard-service
+      - wireguard-service
     environment:
       - DATABASE_SERVICE_URL=http://database-service:5002
-      # - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
+      - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
       - ADMIN_USERNAME=${ADMIN_USERNAME}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY}
@@ -100,10 +100,10 @@ services:
     restart: always
     depends_on:
       - database-service
-      # - wireguard-service
+      - wireguard-service
     environment:
       - DATABASE_SERVICE_URL=http://database-service:5002
-      # - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
+      - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
       - COLLECTION_INTERVAL=900  # 15 минут
       - MAINTENANCE_INTERVAL=3600  # 1 час
       - PING_COUNT=10
@@ -119,10 +119,10 @@ services:
     restart: always
     depends_on:
       - database-service
-      # - wireguard-service
+      - wireguard-service
     environment:
       - DATABASE_SERVICE_URL=http://database-service:5002
-      # - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
+      - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
       - CHECK_INTERVAL=300  # Интервал проверки серверов (5 минут)
       - MIGRATION_THRESHOLD=3  # Количество сбоев до миграции
       - PING_COUNT=5  # Количество пингов для проверки
