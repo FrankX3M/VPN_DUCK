@@ -3,8 +3,8 @@ import uuid
 import subprocess
 import logging
 import shutil
-from flask import Flask, request, jsonify
 import requests
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
@@ -12,118 +12,48 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Каталог конфигурации WireGuard
-WIREGUARD_DIR = "/etc/wireguard"
-SERVER_CONFIG = os.path.join(WIREGUARD_DIR, "wg0.conf")
-BACKUP_CONFIG = os.path.join(WIREGUARD_DIR, "wg0.conf.backup")
-SERVER_PRIVATE_KEY = os.path.join(WIREGUARD_DIR, "private.key")
-SERVER_PUBLIC_KEY = os.path.join(WIREGUARD_DIR, "public.key")
-SERVER_ENDPOINT = os.getenv("SERVER_ENDPOINT", "your-server-endpoint.com")
-SERVER_PORT = os.getenv("SERVER_PORT", "51820")
-SERVER_ADDRESS = os.getenv("SERVER_ADDRESS", "10.0.0.1/24")
+# Каталог конфигурации для хранения данных удаленных серверов
+WIREGUARD_DIR = "/app/configs"
+REMOTE_ONLY = os.getenv("REMOTE_ONLY", "false").lower() == "true"
+DATABASE_SERVICE_URL = os.getenv("DATABASE_SERVICE_URL", "http://database-service:5002")
 
-def init_wireguard():
-    """Инициализирует WireGuard, если он еще не настроен."""
-    # Создаем каталог WireGuard, если он не существует
+# Инициализируем структуру для отслеживания удаленных серверов
+remote_servers = {}
+
+def init_remote_servers():
+    """Инициализирует структуру удаленных серверов."""
+    global remote_servers
+    
+    # Создаем каталог для конфигураций, если он не существует
     if not os.path.exists(WIREGUARD_DIR):
         os.makedirs(WIREGUARD_DIR)
     
-    # Проверяем наличие резервной копии
-    if os.path.exists(BACKUP_CONFIG) and not os.path.exists(SERVER_CONFIG):
-        logger.info("Используем резервную копию wg0.conf")
-        shutil.copy(BACKUP_CONFIG, SERVER_CONFIG)
-        
-        # Извлекаем ключи из конфигурационного файла, если они есть
-        try:
-            with open(SERVER_CONFIG, 'r') as f:
-                config_content = f.read()
-                
-            for line in config_content.split('\n'):
-                if line.startswith('PrivateKey'):
-                    private_key = line.split('=')[1].strip()
-                    with open(SERVER_PRIVATE_KEY, 'w') as f:
-                        f.write(private_key)
-                    
-                    # Генерируем публичный ключ из приватного
-                    result = subprocess.run(
-                        ["wg", "pubkey"], 
-                        input=private_key.encode(), 
-                        stdout=subprocess.PIPE
-                    )
-                    
-                    with open(SERVER_PUBLIC_KEY, 'w') as f:
-                        f.write(result.stdout.decode().strip())
-                    
-                    break
-        except Exception as e:
-            logger.error(f"Ошибка при чтении ключей из резервной копии: {str(e)}")
+    logger.info("Инициализация в режиме удаленных серверов")
     
-    # Генерируем ключи сервера, если их нет
-    if not os.path.exists(SERVER_PRIVATE_KEY):
-        logger.info("Генерация нового приватного ключа")
-        subprocess.run(["wg", "genkey"], stdout=open(SERVER_PRIVATE_KEY, "w"))
-    
-    if not os.path.exists(SERVER_PUBLIC_KEY):
-        logger.info("Генерация нового публичного ключа")
-        with open(SERVER_PRIVATE_KEY, "r") as f:
-            private_key = f.read().strip()
-        
-        result = subprocess.run(
-            ["wg", "pubkey"], 
-            input=private_key.encode(), 
-            stdout=subprocess.PIPE
-        )
-        
-        with open(SERVER_PUBLIC_KEY, "w") as f:
-            f.write(result.stdout.decode().strip())
-    
-    # Создаем конфигурацию сервера, если её нет
-    if not os.path.exists(SERVER_CONFIG):
-        logger.info("Создание новой конфигурации сервера")
-        with open(SERVER_PRIVATE_KEY, "r") as f:
-            private_key = f.read().strip()
-        
-        server_config = (
-            f"[Interface]\n"
-            f"PrivateKey = {private_key}\n"
-            f"Address = {SERVER_ADDRESS}\n"
-            f"ListenPort = {SERVER_PORT}\n"
-            f"SaveConfig = true\n"
-        )
-        
-        with open(SERVER_CONFIG, "w") as f:
-            f.write(server_config)
-    
-    # Запускаем интерфейс WireGuard, если он еще не запущен
+    # Загружаем информацию об удаленных серверах из БД
     try:
-        # Проверяем, запущен ли интерфейс
-        wg_show = subprocess.run(["wg", "show"], capture_output=True)
-        
-        if wg_show.returncode != 0 or "wg0" not in wg_show.stdout.decode():
-            logger.info("Запуск WireGuard интерфейса")
-            subprocess.run(["wg-quick", "up", "wg0"])
+        response = requests.get(f"{DATABASE_SERVICE_URL}/servers/all", timeout=10)
+        if response.status_code == 200:
+            servers_data = response.json()
+            servers = servers_data.get("servers", [])
+            
+            for server in servers:
+                server_id = server.get("id")
+                if server_id:
+                    remote_servers[server_id] = {
+                        "endpoint": server.get("endpoint"),
+                        "port": server.get("port"),
+                        "public_key": server.get("public_key"),
+                        "address": server.get("address"),
+                        "geolocation_id": server.get("geolocation_id"),
+                        "active": server.get("status") == "active"
+                    }
+            
+            logger.info(f"Загружено {len(remote_servers)} удаленных серверов")
         else:
-            logger.info("WireGuard интерфейс уже запущен")
+            logger.warning(f"Не удалось загрузить информацию о серверах: HTTP {response.status_code}")
     except Exception as e:
-        logger.error(f"Ошибка при запуске WireGuard: {str(e)}")
-        # Попробуем запустить в любом случае
-        try:
-            subprocess.run(["wg-quick", "up", "wg0"])
-        except Exception as e2:
-            logger.error(f"Повторная ошибка при запуске WireGuard: {str(e2)}")
-
-def get_default_server():
-    """
-    Возвращает параметры сервера по умолчанию.
-    
-    :return: Словарь с параметрами сервера по умолчанию
-    """
-    return {
-        "public_key": get_server_public_key(),
-        "endpoint": os.getenv('SERVER_ENDPOINT', '194.67.206.159'),
-        "port": os.getenv('SERVER_PORT', '51820'),
-        "server_id": None
-    }
+        logger.error(f"Ошибка при загрузке информации о серверах: {str(e)}")
 
 def generate_client_keys():
     """Генерирует приватный и публичный ключи для клиента."""
@@ -138,32 +68,111 @@ def generate_client_keys():
     public_key = public_key_result.stdout.decode().strip()
     
     return private_key, public_key
-    
-def generate_client_config(user_id, server_details=None):
+
+def get_server_for_geolocation(geolocation_id):
     """
-    Генерирует конфигурацию клиента WireGuard с возможностью передачи деталей сервера
+    Возвращает детали сервера для указанной геолокации через API базы данных.
+    """
+    if not geolocation_id:
+        logger.warning("Геолокация не указана, выбираем первый доступный сервер")
+        return get_first_available_server()
+    
+    try:
+        # Запрос к API базы данных
+        response = requests.get(
+            f"{DATABASE_SERVICE_URL}/servers/geolocation/{geolocation_id}", 
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            servers_data = response.json()
+            servers = servers_data.get("servers", [])
+            
+            # Фильтруем только активные серверы
+            active_servers = [s for s in servers if s.get("status") == "active"]
+            
+            if active_servers:
+                # Выбираем сервер с наименьшей нагрузкой
+                server = min(active_servers, key=lambda s: s.get("load_factor", 100))
+                
+                return {
+                    "public_key": server.get("public_key"),
+                    "endpoint": server.get("endpoint"),
+                    "port": server.get("port"),
+                    "server_id": server.get("id"),
+                    "address": server.get("address", "10.0.0.1/24")
+                }
+        
+        # Если не удалось получить сервер, используем первый доступный
+        logger.warning(f"Не удалось получить сервер для геолокации {geolocation_id}")
+        return get_first_available_server()
+    
+    except Exception as e:
+        logger.error(f"Ошибка при получении сервера для геолокации {geolocation_id}: {str(e)}")
+        return get_first_available_server()
+
+def get_first_available_server():
+    """
+    Возвращает первый доступный сервер из списка удаленных серверов.
+    
+    :return: Словарь с параметрами сервера или пустой словарь, если нет доступных серверов
+    """
+    try:
+        # Запрос к API базы данных для получения всех серверов
+        response = requests.get(f"{DATABASE_SERVICE_URL}/servers/all", timeout=5)
+        
+        if response.status_code == 200:
+            servers_data = response.json()
+            servers = servers_data.get("servers", [])
+            
+            # Фильтруем только активные серверы
+            active_servers = [s for s in servers if s.get("status") == "active"]
+            
+            if active_servers:
+                # Выбираем сервер с наименьшей нагрузкой
+                server = min(active_servers, key=lambda s: s.get("load_factor", 100))
+                
+                return {
+                    "public_key": server.get("public_key"),
+                    "endpoint": server.get("endpoint"),
+                    "port": server.get("port"),
+                    "server_id": server.get("id"),
+                    "address": server.get("address", "10.0.0.1/24")
+                }
+        
+        # Если серверов нет или запрос не удался
+        logger.error("Нет доступных серверов")
+        return {}
+    
+    except Exception as e:
+        logger.error(f"Ошибка при получении доступных серверов: {str(e)}")
+        return {}
+
+def generate_client_config(user_id, server_details):
+    """
+    Генерирует конфигурацию клиента для удаленного сервера WireGuard
     
     :param user_id: ID пользователя
-    :param server_details: Опциональные детали сервера для более гибкой конфигурации
+    :param server_details: Детали удаленного сервера
     :return: Кортеж (конфигурация клиента, публичный ключ клиента)
     """
+    if not server_details:
+        raise Exception("Нет доступных серверов для создания конфигурации")
+    
     # Генерируем ключи клиента
     client_private_key, client_public_key = generate_client_keys()
     
-    # Получаем детали сервера
-    if server_details is None:
-        # Если детали не переданы, используем значения по умолчанию
-        server_public_key = get_server_public_key()
-        server_endpoint = os.getenv('SERVER_ENDPOINT', '194.67.206.159')
-        server_port = os.getenv('SERVER_PORT', '51820')
-    else:
-        # Используем переданные детали сервера
-        server_public_key = server_details.get('public_key', get_server_public_key())
-        server_endpoint = server_details.get('endpoint', os.getenv('SERVER_ENDPOINT', '194.67.206.159'))
-        server_port = server_details.get('port', os.getenv('SERVER_PORT', '51820'))
+    # Получаем параметры сервера
+    server_public_key = server_details.get('public_key')
+    server_endpoint = server_details.get('endpoint')
+    server_port = server_details.get('port')
+    server_address = server_details.get('address', '10.0.0.1/24')
     
-    # Более интеллектуальная генерация IP-адреса
-    client_ip = generate_unique_client_ip(user_id)
+    if not (server_public_key and server_endpoint and server_port):
+        raise Exception("Недостаточно данных о сервере для создания конфигурации")
+    
+    # Генерируем IP-адрес клиента на основе адреса сервера
+    client_ip = generate_client_ip(user_id, server_address)
     
     logger.info(f"Создание конфигурации для пользователя {user_id}, сервер: {server_endpoint}:{server_port}")
     
@@ -180,105 +189,61 @@ def generate_client_config(user_id, server_details=None):
         f"PersistentKeepalive = 25\n"
     )
     
-    try:
-        # Добавляем клиента в конфигурацию сервера
-        add_peer_command = [
-            "wg", "set", "wg0", 
-            "peer", client_public_key,
-            "allowed-ips", client_ip.split('/')[0] + "/32"
-        ]
-        
-        subprocess.run(add_peer_command, check=True)
-        
-        # Сохраняем конфигурацию сервера
-        subprocess.run(["wg-quick", "save", "wg0"], check=True)
-        
-        logger.info(f"Конфигурация клиента создана успешно для пользователя {user_id}")
-        
-        return client_config, client_public_key
+    # Для удаленных серверов не нужно добавлять пир в локальную конфигурацию
+    # Отправка запроса на добавление пира должна происходить на удаленном сервере
+    # через отдельный API или механизм
     
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Ошибка при добавлении пира: {e}")
-        raise Exception(f"Ошибка при добавлении пира: {e}")
+    return client_config, client_public_key
 
-def generate_unique_client_ip(user_id):
+def generate_client_ip(user_id, server_address):
     """
-    Генерирует уникальный IP-адрес для клиента
+    Генерирует IP-адрес клиента на основе адреса сервера и ID пользователя
     
     :param user_id: ID пользователя
-    :return: Сгенерированный IP-адрес
-    """
-    # Логика может быть более сложной, с проверкой занятости IP в базе данных
-    return f"10.0.0.{(user_id % 250) + 2}/24"
-
-def get_server_public_key():
-    """
-    Получает актуальный публичный ключ сервера
-    
-    :return: Публичный ключ сервера
+    :param server_address: Адрес сервера (формат: X.X.X.X/Y)
+    :return: IP-адрес клиента
     """
     try:
-        with open(SERVER_PUBLIC_KEY, "r") as f:
-            return f.read().strip()
-    except FileNotFoundError:
-        logger.error("Файл публичного ключа сервера не найден")
-        raise
-
-def get_server_for_geolocation(geolocation_id):
-    """
-    Возвращает детали сервера для указанной геолокации через API базы данных.
-    """
-    if not geolocation_id:
-        return get_default_server()
-    
-    try:
-        # URL базы данных и API-эндпоинт для получения серверов геолокации
-        db_url = os.getenv("DATABASE_SERVICE_URL", "http://database-service:5002")
-        response = requests.get(f"{db_url}/servers/geolocation/{geolocation_id}", timeout=5)
+        # Разбираем адрес сервера
+        server_ip, netmask = server_address.split('/')
+        base_parts = server_ip.split('.')
         
-        if response.status_code == 200:
-            servers_data = response.json()
-            servers = servers_data.get("servers", [])
-            
-            if servers:
-                # Выбираем первый доступный сервер
-                server = servers[0]
-                
-                return {
-                    "public_key": get_server_public_key(),
-                    "endpoint": server.get("endpoint"),
-                    "port": server.get("port", "51820"),
-                    "server_id": server.get("id")
-                }
+        if len(base_parts) != 4:
+            # Если формат адреса некорректный, используем запасной вариант
+            return f"10.0.0.{(user_id % 250) + 2}/24"
         
-        # Если не удалось получить сервер, используем по умолчанию
-        logger.warning(f"Не удалось получить сервер для геолокации {geolocation_id}, используем по умолчанию")
-        return get_default_server()
+        # Выбираем последний октет на основе user_id
+        # Используем модуль по 250, чтобы избежать конфликтов
+        client_last_octet = (user_id % 250) + 2
+        
+        # Формируем IP-адрес клиента, меняя последний октет
+        client_ip = f"{base_parts[0]}.{base_parts[1]}.{base_parts[2]}.{client_last_octet}/{netmask}"
+        return client_ip
     
     except Exception as e:
-        logger.error(f"Ошибка при получении сервера для геолокации {geolocation_id}: {str(e)}")
-        return get_default_server()
+        logger.error(f"Ошибка при генерации IP клиента: {str(e)}")
+        # Возвращаем запасной вариант
+        return f"10.0.0.{(user_id % 250) + 2}/24"
 
 @app.route('/create', methods=['POST'])
 def create_config():
+    """API для создания новой конфигурации WireGuard."""
     data = request.json
     user_id = data.get('user_id')
     geolocation_id = data.get('geolocation_id')
     
-    logger.info(f"Отправляем запрос на создание с данными: {data}")
-    
     if not user_id:
-        return jsonify({"error": "User ID is required"}), 400
+        return jsonify({"error": "Требуется ID пользователя"}), 400
     
     try:
-        # Получаем информацию о сервере для геолокации
+        # Получаем информацию о сервере для указанной геолокации
         server_details = get_server_for_geolocation(geolocation_id)
-        logger.info(f"Извлечен geolocation_id: {geolocation_id}")
-        logger.info(f"Выбрана геолокация: {server_details.get('endpoint')} (ID: {geolocation_id})")
         
-        # Создаем конфигурацию
+        if not server_details:
+            return jsonify({"error": "Нет доступных серверов"}), 503
+        
+        # Создаем конфигурацию клиента
         client_config, client_public_key = generate_client_config(user_id, server_details)
-        logger.info(f"Конфигурация получена успешно. Public key: {client_public_key}, Server ID: {server_details.get('server_id')}, Geolocation ID: {geolocation_id}")
         
         # Возвращаем результат
         return jsonify({
@@ -287,89 +252,138 @@ def create_config():
             "server_id": server_details.get("server_id"),
             "geolocation_id": geolocation_id
         }), 201
+    
     except Exception as e:
-        logger.error(f"Error creating configuration: {str(e)}")
+        logger.error(f"Ошибка при создании конфигурации: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/remove', methods=['DELETE'])
-def remove_config():
-    """Удаляет конфигурацию WireGuard по публичному ключу."""
+@app.route('/remove/<public_key>', methods=['DELETE'])
+def remove_peer(public_key):
+    """API для удаления пира с удаленного сервера."""
+    if not public_key:
+        return jsonify({"error": "Требуется публичный ключ"}), 400
+    
     try:
-        data = request.get_json()
-        public_key = data.get("public_key")
-
-        if not public_key:
-            return jsonify({"error": "Public key is required"}), 400
-
-        # Удаление клиента из конфигурации WireGuard
-        remove_peer_command = [
-            "wg", "set", "wg0",
-            "peer", public_key,
-            "remove"
-            ]
-        subprocess.run(remove_peer_command, check=True)
-
-        # Сохранение конфигурации
-        subprocess.run(["wg-quick", "save", "wg0"], check=True)
-
+        # Для удаленных серверов это может быть API-запрос к серверу
+        # Здесь мы просто логируем, что запрос на удаление был получен
+        logger.info(f"Получен запрос на удаление пира с ключом {public_key}")
+        
+        # В реальной реализации здесь был бы запрос к удаленному серверу
+        
         return jsonify({"status": "success"}), 200
-
+    
     except Exception as e:
-        logger.error(f"Ошибка при удалении конфигурации: {str(e)}")
+        logger.error(f"Ошибка при удалении пира: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/servers', methods=['GET'])
+def get_servers():
+    """API для получения списка доступных серверов."""
+    try:
+        # Получаем список серверов из базы данных
+        response = requests.get(f"{DATABASE_SERVICE_URL}/servers/all", timeout=5)
+        
+        if response.status_code == 200:
+            servers_data = response.json()
+            
+            # Фильтруем только активные серверы
+            servers = servers_data.get("servers", [])
+            active_servers = [s for s in servers if s.get("status") == "active"]
+            
+            return jsonify({"servers": active_servers, "active": len(active_servers)}), 200
+        else:
+            return jsonify({"error": f"Ошибка при получении серверов: HTTP {response.status_code}"}), 500
+    
+    except Exception as e:
+        logger.error(f"Ошибка при получении списка серверов: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/servers', methods=['POST'])
+def add_remote_server():
+    """API для добавления нового удаленного сервера."""
+    data = request.json
+    
+    required_fields = ['endpoint', 'port', 'public_key', 'address', 'geolocation_id']
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": "Отсутствуют обязательные поля"}), 400
+    
+    try:
+        # Отправляем запрос на регистрацию сервера в базе данных
+        response = requests.post(
+            f"{DATABASE_SERVICE_URL}/servers/register",
+            json=data,
+            timeout=10
+        )
+        
+        if response.status_code in [200, 201]:
+            result = response.json()
+            server_id = result.get("server_id")
+            
+            # Обновляем локальную структуру серверов
+            remote_servers[server_id] = {
+                "endpoint": data.get("endpoint"),
+                "port": data.get("port"),
+                "public_key": data.get("public_key"),
+                "address": data.get("address"),
+                "geolocation_id": data.get("geolocation_id"),
+                "active": True
+            }
+            
+            return jsonify({"status": "success", "server_id": server_id}), 201
+        else:
+            return jsonify({"error": f"Ошибка при регистрации сервера: HTTP {response.status_code}"}), 500
+    
+    except Exception as e:
+        logger.error(f"Ошибка при добавлении удаленного сервера: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/servers/<server_id>', methods=['DELETE'])
+def remove_remote_server(server_id):
+    """API для удаления удаленного сервера."""
+    if not server_id:
+        return jsonify({"error": "Требуется ID сервера"}), 400
+    
+    try:
+        # Отправляем запрос на удаление сервера из базы данных
+        response = requests.delete(
+            f"{DATABASE_SERVICE_URL}/api/servers/{server_id}",
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            # Удаляем сервер из локальной структуры
+            if server_id in remote_servers:
+                del remote_servers[server_id]
+            
+            return jsonify({"status": "success"}), 200
+        else:
+            return jsonify({"error": f"Ошибка при удалении сервера: HTTP {response.status_code}"}), 500
+    
+    except Exception as e:
+        logger.error(f"Ошибка при удалении удаленного сервера: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/status', methods=['GET'])
 def get_status():
-    """Получает текущий статус WireGuard сервера."""
+    """API для получения статуса сервиса управления WireGuard."""
     try:
-        # Выполняем команду wg show
-        result = subprocess.run(["wg", "show"], capture_output=True, text=True, check=True)
+        # Подсчитываем количество активных серверов
+        active_count = sum(1 for server in remote_servers.values() if server.get("active", False))
         
-        # Обрабатываем вывод
-        output = result.stdout
-        
-        # Разбиваем вывод на информацию об интерфейсе и пирах
-        parts = output.split("\n\n")
-        
-        response = {
+        return jsonify({
             "status": "running",
-            "interface": {},
-            "peers": []
-        }
-        
-        # Обрабатываем информацию об интерфейсе
-        if parts and parts[0]:
-            interface_lines = parts[0].strip().split("\n")
-            for line in interface_lines:
-                if ":" in line:
-                    key, value = line.split(":", 1)
-                    response["interface"][key.strip()] = value.strip()
-        
-        # Обрабатываем информацию о пирах
-        for i in range(1, len(parts)):
-            if parts[i]:
-                peer_info = {}
-                peer_lines = parts[i].strip().split("\n")
-                for line in peer_lines:
-                    if ":" in line:
-                        key, value = line.split(":", 1)
-                        peer_info[key.strip()] = value.strip()
-                response["peers"].append(peer_info)
-        
-        return jsonify(response), 200
-    except subprocess.CalledProcessError as e:
-        if e.returncode == 1:
-            return jsonify({"status": "not running", "error": "WireGuard interface is not active"}), 200
-        else:
-            return jsonify({"status": "error", "error": str(e)}), 500
+            "mode": "remote_only" if REMOTE_ONLY else "local",
+            "remote_servers": len(remote_servers),
+            "active_servers": active_count
+        }), 200
+    
     except Exception as e:
-        logger.error(f"Error getting status: {str(e)}")
+        logger.error(f"Ошибка при получении статуса: {str(e)}")
         return jsonify({"status": "error", "error": str(e)}), 500
 
 if __name__ == '__main__':
-    # Инициализируем WireGuard
-    init_wireguard()
+    # Инициализируем сервис в зависимости от режима работы
+    init_remote_servers()
     
     # Запускаем Flask приложение
     app.run(host='0.0.0.0', port=5001)

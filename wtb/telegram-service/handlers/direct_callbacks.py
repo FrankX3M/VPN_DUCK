@@ -4,7 +4,7 @@ from datetime import datetime
 from io import BytesIO
 
 from core.settings import bot, logger
-from utils.bd import get_user_config, create_new_config, get_config_from_wireguard
+from utils.bd import get_user_config, create_new_config, get_config_from_wireguard, are_servers_available 
 from utils.qr import generate_config_qr
 
 # Прямой обработчик для создания конфигурации
@@ -19,12 +19,23 @@ async def direct_create_handler(callback_query: types.CallbackQuery):
     
     # Помечаем колбэк как обработанный
     callback_query._handled = True
-    
-    # В случае если ни одна проверка не сработала, продолжаем обычную обработку
-    logger.info("Обрабатываем колбэк в прямом обработчике")
+
     await bot.answer_callback_query(callback_query.id)
     
     user_id = callback_query.from_user.id
+    
+    # Проверяем наличие доступных серверов
+    servers_available = await are_servers_available()
+    if not servers_available:
+        await bot.edit_message_text(
+            "⚠️ <b>Создание конфигурации невозможно</b>\n\n"
+            "В данный момент нет доступных серверов. "
+            "Пожалуйста, добавьте серверы через административную панель или попробуйте позже.",
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            parse_mode=ParseMode.HTML
+        )
+        return
     
     # Сообщаем пользователю о начале процесса создания
     await bot.edit_message_text(
@@ -36,8 +47,20 @@ async def direct_create_handler(callback_query: types.CallbackQuery):
     )
     
     try:
-        # Создаем новую конфигурацию
-        config_data = await create_new_config(user_id)
+        # Создаем новую конфигурацию с таймаутом
+        create_task = asyncio.create_task(create_new_config(user_id))
+        
+        try:
+            config_data = await asyncio.wait_for(create_task, timeout=30)
+        except asyncio.TimeoutError:
+            await bot.edit_message_text(
+                "⚠️ <b>Превышено время ожидания</b>\n\n"
+                "Сервер слишком долго не отвечает. Пожалуйста, попробуйте позже.",
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id,
+                parse_mode=ParseMode.HTML
+            )
+            return
         
         if "error" in config_data:
             await bot.edit_message_text(
@@ -60,31 +83,60 @@ async def direct_create_handler(callback_query: types.CallbackQuery):
             )
             return
         
-        # Получаем данные о сроке действия из базы данных
-        db_data = await get_user_config(user_id)
+        # Получаем данные о сроке действия и геолокации из базы данных
+        get_config_task = asyncio.create_task(get_user_config(user_id))
+        
+        try:
+            db_data = await asyncio.wait_for(get_config_task, timeout=10)
+        except asyncio.TimeoutError:
+            db_data = None
+            logger.warning(f"Таймаут при получении данных конфигурации для пользователя {user_id}")
         
         expiry_text = ""
+        geo_text = ""
+        
         if db_data:
+            # Информация о сроке действия
             expiry_time = db_data.get("expiry_time")
             if expiry_time:
-                expiry_dt = datetime.fromisoformat(expiry_time)
-                expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
-                expiry_text = f"▫️ Срок действия: до <b>{expiry_formatted}</b>\n"
+                try:
+                    expiry_dt = datetime.fromisoformat(expiry_time)
+                    expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
+                    expiry_text = f"▫️ Срок действия: до <b>{expiry_formatted}</b>\n"
+                except ValueError:
+                    pass
+            
+            # Информация о геолокации
+            geo_name = db_data.get("geolocation_name", "")
+            if geo_name:
+                geo_text = f"▫️ Геолокация: <b>{geo_name}</b>\n"
         
         # Создаем файл конфигурации
         config_file = BytesIO(config_text.encode('utf-8'))
         config_file.name = f"vpn_duck_{user_id}.conf"
         
-        # Генерируем QR-код
-        qr_buffer = await generate_config_qr(config_text)
+        # Генерируем QR-код с таймаутом
+        qr_task = asyncio.create_task(generate_config_qr(config_text))
+        
+        try:
+            qr_buffer = await asyncio.wait_for(qr_task, timeout=10)
+        except asyncio.TimeoutError:
+            qr_buffer = None
+            logger.warning(f"Таймаут при генерации QR-кода для пользователя {user_id}")
         
         # Обновляем сообщение об успешном создании
+        success_message = f"✅ <b>Конфигурация успешно создана!</b>\n\n"
+        
+        if geo_text:
+            success_message += geo_text
+        
+        if expiry_text:
+            success_message += expiry_text
+        
+        success_message += "\nФайл конфигурации и QR-код будут отправлены отдельными сообщениями."
+        
         await bot.edit_message_text(
-            f"✅ <b>Конфигурация успешно создана!</b>\n\n"
-            f"{expiry_text}\n"
-            f"⚠️ <b>Внимание:</b> В данный момент настроенных серверов нет. "
-            f"Сервис находится в тестовом режиме.\n\n"
-            f"Файл конфигурации и QR-код будут отправлены отдельными сообщениями.",
+            success_message,
             chat_id=callback_query.message.chat.id,
             message_id=callback_query.message.message_id,
             parse_mode=ParseMode.HTML
@@ -92,20 +144,32 @@ async def direct_create_handler(callback_query: types.CallbackQuery):
         
         if qr_buffer:
             # Отправляем QR-код
+            caption = "🔑 <b>QR-код вашей конфигурации WireGuard</b>\n\n"
+            
+            if geo_text:
+                caption += geo_text.strip() + "\n\n"
+                
+            caption += "Отсканируйте этот код в приложении WireGuard для быстрой настройки."
+            
             await bot.send_photo(
                 user_id,
                 qr_buffer,
-                caption="🔑 <b>QR-код вашей конфигурации WireGuard</b>\n\n"
-                        "Отсканируйте этот код в приложении WireGuard для быстрой настройки.",
+                caption=caption,
                 parse_mode=ParseMode.HTML
             )
         
         # Отправляем файл конфигурации
+        caption = "📋 <b>Файл конфигурации WireGuard</b>\n\n"
+        
+        if geo_text:
+            caption += geo_text.strip() + "\n\n"
+            
+        caption += "Импортируйте этот файл в приложение WireGuard для настройки соединения."
+        
         await bot.send_document(
             user_id,
             config_file,
-            caption="📋 <b>Файл конфигурации WireGuard</b>\n\n"
-                    "Импортируйте этот файл в приложение WireGuard для настройки соединения.",
+            caption=caption,
             parse_mode=ParseMode.HTML
         )
         
@@ -116,14 +180,13 @@ async def direct_create_handler(callback_query: types.CallbackQuery):
             "2️⃣ Откройте приложение и нажмите кнопку '+'\n"
             "3️⃣ Выберите 'Сканировать QR-код' или 'Импорт из файла'\n"
             "4️⃣ После импорта нажмите на добавленную конфигурацию для подключения\n\n"
-            "⚠️ <b>Внимание:</b> В данный момент настроенных серверов нет. "
-            "Сервис находится в тестовом режиме.\n\n"
             "Готово! Теперь ваше соединение защищено VPN Duck 🦆"
         )
         
-        keyboard = InlineKeyboardMarkup(row_width=1)
+        keyboard = InlineKeyboardMarkup(row_width=2)
         keyboard.add(
-            InlineKeyboardButton("⏰ Продлить конфигурацию", callback_data="start_extend")
+            InlineKeyboardButton("⏰ Продлить", callback_data="start_extend"),
+            InlineKeyboardButton("🌍 Геолокация", callback_data="choose_geo")
         )
         
         await bot.send_message(

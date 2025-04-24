@@ -15,14 +15,14 @@ services:
   wireguard-service:
     build: ./wireguard-service
     restart: always
-    privileged: true
+    # Убираем privileged: true
     volumes:
-      - /etc/wireguard:/etc/wireguard
-      - /root/wireguard-backup:/root/wireguard-backup
+      - /root/wireguard-configs:/app/configs
     ports:
       - "5001:5001"
-      - "51820:51820/udp"  # Для проброса UDP-порта WireGuard
+      # Убираем - "51820:51820/udp"
     environment:
+      - REMOTE_ONLY=true  # Новая переменная
       - SERVER_ENDPOINT=${SERVER_ENDPOINT}
       - SERVER_PORT=${SERVER_PORT}
       - SERVER_ADDRESS=${SERVER_ADDRESS}

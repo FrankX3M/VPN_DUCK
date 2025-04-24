@@ -638,33 +638,27 @@ async def create_new_config(user_id, geolocation_id=None):
         return {"error": f"Ошибка при создании конфигурации: {str(e)}. Пожалуйста, попробуйте позже."}
 
 async def are_servers_available():
-    """Проверяет наличие доступных серверов."""
+    """Проверяет наличие доступных внешних серверов."""
     try:
         # Получаем список серверов с wireguard-service
-        import aiohttp
-        
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{WIREGUARD_SERVICE_URL}/servers", 
-                timeout=10
-            ) as response:
+            async with session.get(f"{WIREGUARD_SERVICE_URL}/servers", timeout=10) as response:
                 if response.status != 200:
                     logger.error(f"Ошибка при получении списка серверов: {response.status}")
                     return False
                 
                 servers_data = await response.json()
                 servers = servers_data.get("servers", [])
+                active_count = servers_data.get("active", 0)
                 
                 # Проверяем наличие активных серверов
-                active_servers = [s for s in servers if s.get("active", False)]
-                
-                if not active_servers:
+                if active_count <= 0 or not servers:
                     logger.info("Нет активных серверов")
                     return False
                 
-                logger.info(f"Доступно {len(active_servers)} активных серверов")
+                logger.info(f"Доступно {active_count} активных серверов")
                 return True
-                
+
     except Exception as e:
         logger.error(f"Ошибка при проверке доступных серверов: {str(e)}")
         # В случае ошибки возвращаем False, чтобы предотвратить создание конфигурации
