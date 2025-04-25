@@ -1,0 +1,13 @@
+flask==2.3.3
+flask-cors==4.0.0
+requests==2.31.0
+python-dotenv==1.0.0
+pyyaml==6.0.1
+schedule==1.2.0
+psycopg2-binary==2.9.7
+cachetools==5.3.1
+tenacity==8.2.3
+prometheus-client==0.17.1
+cryptography==41.0.3
+urllib3==2.0.4
+aiohttp==3.8.5

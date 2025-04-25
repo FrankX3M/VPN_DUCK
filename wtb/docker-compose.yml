@@ -1,138 +1,125 @@
 services:
-  telegram-service:
-    build: ./telegram-service
+  # PostgreSQL база данных
+  db:
+    image: postgres:13
     restart: always
-    depends_on:
-      # - wireguard-service
-      - database-service
-    env_file:
-      - .env
     environment:
-      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
-      # - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
-      - DATABASE_SERVICE_URL=http://database-service:5002
-
-  # wireguard-service:
-  #   build: ./wireguard-service
-  #   restart: always
-  #   # Убираем privileged: true
-  #   volumes:
-  #     - /root/wireguard-configs:/app/configs
-  #   cap_add:
-  #     - NET_ADMIN
-  #   ports:
-  #     - "5001:5001"
-  #     # Убираем - "51820:51820/udp"
-  #   environment:
-  #     - REMOTE_ONLY=true  # Новая переменная
-  #     - SERVER_ENDPOINT=${SERVER_ENDPOINT}
-  #     - SERVER_PORT=${SERVER_PORT}
-  #     - SERVER_ADDRESS=${SERVER_ADDRESS}
-
-  database-service:
-    build: ./database-service
-    restart: always
-    depends_on:
-      - postgres
-    environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=wireguard
-      - DB_USER=postgres
-      - DB_PASS=${POSTGRES_PASSWORD}
-      # - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
-    ports:
-      - "5002:5002"
-    command: ["./wait-for-postgres.sh", "postgres", "python", "db_manager.py"]
-
-  postgres:
-    image: postgres:14-alpine
-    restart: always
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=wireguard
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    ports:
-      - "5432:5432"
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=wireguard
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  pgadmin:
-    image: dpage/pgadmin4
+  # Сервис базы данных
+  database-service:
+    build: ./database-service
     restart: always
-    depends_on:
-      - postgres
-    environment:
-      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@example.com}
-      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-adminpassword}
-      - PGADMIN_CONFIG_SERVER_MODE=False
-    ports:
-      - "5050:80"
     volumes:
-      - pgadmin-data:/var/lib/pgadmin
+      - ./database-service:/app
+    environment:
+      - POSTGRES_HOST=db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=wireguard
+    depends_on:
+      - db
+    ports:
+      - "5002:5002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
-  # Новый сервис для администрирования и мониторинга
+  # Прокси-сервер для WireGuard
+  wireguard-proxy:
+    build: ./wireguard-proxy
+    restart: always
+    volumes:
+      - ./wireguard-proxy:/app
+      - ./config:/app/config
+    environment:
+      - DATABASE_SERVICE_URL=http://database-service:5002
+      - DEBUG=False
+      - LOG_LEVEL=INFO
+      - CACHE_TTL=300
+      - HTTP_TIMEOUT=10
+      - HTTP_MAX_RETRIES=3
+    depends_on:
+      - database-service
+    ports:
+      - "5001:5001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Административная панель
   admin-panel:
     build: ./admin-panel
     restart: always
-    depends_on:
-      - database-service
-      # - wireguard-service
-    environment:
-      - DATABASE_SERVICE_URL=http://database-service:5002
-      # - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY}
-    ports:
-      - "5003:5003"
     volumes:
       - ./admin-panel:/app
+    environment:
+      - DATABASE_SERVICE_URL=http://database-service:5002
+      - WIREGUARD_PROXY_URL=http://wireguard-proxy:5001
+    depends_on:
+      - database-service
+      - wireguard-proxy
+    ports:
+      - "5000:5000"
 
-  # сервис для сбора метрик серверов
+  # Telegram бот
+  telegram-service:
+    build: ./telegram-service
+    restart: always
+    volumes:
+      - ./telegram-service:/app
+    environment:
+      - DATABASE_SERVICE_URL=http://database-service:5002
+      - WIREGUARD_PROXY_URL=http://wireguard-proxy:5001
+      - TELEGRAM_API_TOKEN=${TELEGRAM_API_TOKEN}
+      - PAYMENT_TOKEN=${PAYMENT_TOKEN}
+    depends_on:
+      - database-service
+      - wireguard-proxy
+    env_file:
+      - .env
+
+  # Сервис сбора метрик
   metrics-collector:
     build: ./metrics-collector
     restart: always
-    depends_on:
-      - database-service
-      # - wireguard-service
-    environment:
-      - DATABASE_SERVICE_URL=http://database-service:5002
-      # - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
-      - COLLECTION_INTERVAL=900  # 15 минут
-      - MAINTENANCE_INTERVAL=3600  # 1 час
-      - PING_COUNT=10
-      - STARTUP_DELAY=30  # Задержка запуска в секундах
     volumes:
       - ./metrics-collector:/app
-  
-  # бесшовная миграция пользователей
-  migration-service:
-    build: 
-      context: ./migration-service
-      dockerfile: Dockerfile
-    restart: always
-    depends_on:
-      - database-service
-      # - wireguard-service
     environment:
       - DATABASE_SERVICE_URL=http://database-service:5002
-      # - WIREGUARD_SERVICE_URL=http://wireguard-service:5001
-      - CHECK_INTERVAL=300  # Интервал проверки серверов (5 минут)
-      - MIGRATION_THRESHOLD=3  # Количество сбоев до миграции
-      - PING_COUNT=5  # Количество пингов для проверки
-      - PING_TIMEOUT=3  # Таймаут пинга в секундах
-      - PACKET_LOSS_THRESHOLD=50.0  # Порог потери пакетов (%)
-      - LATENCY_THRESHOLD=300.0  # Порог задержки (мс)
-      - STARTUP_DELAY=30  # Задержка запуска (секунды)
+      - WIREGUARD_PROXY_URL=http://wireguard-proxy:5001
+      - COLLECTION_INTERVAL=120
+    depends_on:
+      - database-service
+      - wireguard-proxy
+
+  # Сервис миграции пользователей
+  migration-service:
+    build: ./migration-service
+    restart: on-failure
     volumes:
       - ./migration-service:/app
+    environment:
+      - DATABASE_SERVICE_URL=http://database-service:5002
+      - WIREGUARD_PROXY_URL=http://wireguard-proxy:5001
+    depends_on:
+      - database-service
+      - wireguard-proxy
 
 volumes:
-  postgres-data:
-  pgadmin-data:
+  postgres_data:

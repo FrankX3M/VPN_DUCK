@@ -1,7 +1,0 @@
-FROM wtb-telegram-service
-
-# Устанавливаем токен напрямую в образе
-ENV TELEGRAM_TOKEN="7571318115:AAEhSzFzWNa4xcJ2rZTTaLPISZN9SJ1GnsY"
-
-# Запускаем дебаг-скрипт вместо бота
-CMD ["sh", "-c", "echo 'TELEGRAM_TOKEN=' $TELEGRAM_TOKEN && python -c 'import os; print(\"Python sees TELEGRAM_TOKEN as:\", repr(os.getenv(\"TELEGRAM_TOKEN\")))' && bash"]

@@ -1,71 +1,109 @@
 import os
 import logging
+import asyncio
+from typing import Optional
+
 from aiogram import Bot, Dispatcher
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
-# Конфигурация логирования
-logging.basicConfig(level=logging.INFO)
+# Настройка логирования (может быть перемещена в отдельный модуль)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Отладочная информация о переменных окружения
-logger.info("===== DEBUG INFO =====")
-logger.info(f"All environment variables: {dict(os.environ)}")
-logger.info(f"Current directory: {os.getcwd()}")
+# Получение токена и базовой конфигурации
+def get_telegram_token() -> str:
+    """
+    Получает Telegram токен из различных источников.
+    
+    Returns:
+        str: Токен Telegram бота
+    
+    Raises:
+        ValueError: Если токен не найден
+    """
+    # Приоритет источников:
+    # 1. Переменная окружения TELEGRAM_TOKEN
+    # 2. Переменная окружения TELEGRAM_API_TOKEN
+    token = os.environ.get('TELEGRAM_TOKEN') or os.environ.get('TELEGRAM_API_TOKEN')
+    
+    if not token:
+        # Попытка прочитать из .env файлов
+        env_files = ['.env', '/app/.env', '/opt/.env', '/.env']
+        for env_file in env_files:
+            try:
+                with open(env_file, 'r') as f:
+                    for line in f:
+                        if line.startswith('TELEGRAM_TOKEN='):
+                            token = line.split('=', 1)[1].strip().strip("'\"")
+                            break
+                    if token:
+                        break
+            except FileNotFoundError:
+                continue
+    
+    if not token:
+        logger.critical("Telegram Token не найден!")
+        raise ValueError("Telegram Token не может быть пустым")
+    
+    return token
 
-# Bot token из переменных окружения
-telegram_token_raw = os.environ.get('TELEGRAM_TOKEN')
-logger.info(f"Raw TELEGRAM_TOKEN from os.environ.get: {telegram_token_raw!r}")
-
-API_TOKEN = os.getenv('TELEGRAM_TOKEN')
-logger.info(f"API_TOKEN from os.getenv: {API_TOKEN!r}")
-
-# Проверяем наличие токена различными способами
-try:
-    with open('/proc/self/environ', 'rb') as f:
-        environ_content = f.read()
-    logger.info(f"Found TELEGRAM_TOKEN in /proc/self/environ: {'TELEGRAM_TOKEN' in environ_content}")
-except Exception as e:
-    logger.error(f"Error reading /proc/self/environ: {e}")
-
-if not API_TOKEN:
-    logger.error("TELEGRAM_TOKEN not found in environment variables!")
-    # Попробуем альтернативные источники
+# Инициализация бота и диспетчера
+def initialize_bot():
+    """
+    Инициализирует Telegram бота и диспетчера.
+    
+    Returns:
+        tuple: Экземпляры бота и диспетчера
+    """
     try:
-        with open('/.env', 'r') as f:
-            env_content = f.read()
-            for line in env_content.split('\n'):
-                if line.startswith('TELEGRAM_TOKEN='):
-                    API_TOKEN = line.split('=', 1)[1].strip()
-                    logger.info(f"Loaded TELEGRAM_TOKEN from .env file: {API_TOKEN!r}")
-                    break
-    except Exception as e:
-        logger.error(f"Failed to load from .env file: {e}")
+        # Получение токена
+        API_TOKEN = get_telegram_token()
         
-    if not API_TOKEN:
-        exit(1)
+        # Логирование базовой информации
+        logger.info("Инициализация Telegram бота...")
+        
+        # Создание хранилища состояний
+        storage = MemoryStorage()
+        
+        # Создание бота
+        bot = Bot(token=API_TOKEN)
+        
+        # Создание диспетчера
+        dp = Dispatcher(bot, storage=storage)
+        
+        # Добавление middleware для логирования
+        dp.middleware.setup(LoggingMiddleware())
+        
+        logger.info("Инициализация бота завершена.")
+        
+        return bot, dp
+    
+    except Exception as e:
+        logger.critical(f"Ошибка инициализации бота: {e}", exc_info=True)
+        raise
 
-ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', 'ваш_id_чата')
-# URL-ы сервисов - правильные URL-адреса с портами
-WIREGUARD_SERVICE_URL = os.getenv('WIREGUARD_SERVICE_URL', 'http://wireguard-service:5001')
+# Глобальные переменные для использования в других модулях
+bot = None
+dp = None
+
+def setup_bot():
+    """
+    Настраивает глобальные переменные бота.
+    Вызывается при импорте модуля или в начале приложения.
+    """
+    global bot, dp
+    bot, dp = initialize_bot()
+    return bot, dp
+
+# Получение дополнительных конфигураций
+WIREGUARD_SERVICE_URL = os.getenv('WIREGUARD_SERVICE_URL', '')
 DATABASE_SERVICE_URL = os.getenv('DATABASE_SERVICE_URL', 'http://database-service:5002')
-
-logger.info(f"WIREGUARD_SERVICE_URL: {WIREGUARD_SERVICE_URL}")
-logger.info(f"DATABASE_SERVICE_URL: {DATABASE_SERVICE_URL}")
-
-# Инициализация бота и диспетчера с хранилищем FSM
-logger.info("Initializing Bot with token...")
-bot = Bot(token=API_TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage)
-dp.middleware.setup(LoggingMiddleware())
-logger.info("Bot initialization complete.")
-
-# Функция для установки состояния FSM
-def set_state(user_id, state_name):
-    """Устанавливает состояние для пользователя и логирует."""
-    logger.info(f"Устанавливаем состояние {state_name} для пользователя {user_id}")
-    # Реальная установка состояния происходит в обработчиках
+ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', 'ваш_id_чата')
+REMOTE_ONLY = os.getenv('REMOTE_ONLY', 'false').lower() == 'true'
 
 # Константы для продления
 EXTEND_OPTIONS = [
@@ -75,3 +113,19 @@ EXTEND_OPTIONS = [
     {"days": 180, "stars": 950, "label": "180 дней - 950 ⭐"},
     {"days": 365, "stars": 1550, "label": "365 дней - 1550 ⭐"}
 ]
+
+# Функция для установки состояния FSM
+def set_state(user_id, state_name):
+    """
+    Устанавливает состояние для пользователя и логирует.
+    
+    Args:
+        user_id (int): ID пользователя
+        state_name (str): Название состояния
+    """
+    logger.info(f"Устанавливаем состояние {state_name} для пользователя {user_id}")
+    # Реальная установка состояния происходит в обработчиках
+
+# Автоматическая настройка при импорте
+if bot is None or dp is None:
+    setup_bot()

@@ -1,0 +1,526 @@
+{% extends 'base.html' %}
+
+{% block title %}Server Details{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Server Details: {{ server.name }}</h1>
+        <a href="/servers" class="d-none d-sm-inline-block btn btn-sm btn-primary shadow-sm">
+            <i class="fas fa-arrow-left fa-sm text-white-50"></i> Back to Servers
+        </a>
+    </div>
+    
+    <!-- Server Info Card -->
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-primary">Server Information</h6>
+                    <div class="dropdown no-arrow">
+                        <a class="dropdown-toggle" href="#" role="button" id="dropdownMenuLink"
+                            data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            <i class="fas fa-ellipsis-v fa-sm fa-fw text-gray-400"></i>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-right shadow animated--fade-in"
+                            aria-labelledby="dropdownMenuLink">
+                            <div class="dropdown-header">Server Actions:</div>
+                            <a class="dropdown-item" href="#" data-toggle="modal" data-target="#editServerModal">
+                                <i class="fas fa-edit fa-sm fa-fw mr-2 text-gray-400"></i>
+                                Edit Server
+                            </a>
+                            <a class="dropdown-item" href="#" data-toggle="modal" data-target="#deleteServerModal">
+                                <i class="fas fa-trash fa-sm fa-fw mr-2 text-gray-400"></i>
+                                Delete Server
+                            </a>
+                            <div class="dropdown-divider"></div>
+                            <a class="dropdown-item" href="#" onclick="testConnection()">
+                                <i class="fas fa-check-circle fa-sm fa-fw mr-2 text-gray-400"></i>
+                                Test Connection
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-sm-4 font-weight-bold">ID:</div>
+                        <div class="col-sm-8">{{ server.server_id }}</div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-sm-4 font-weight-bold">Name:</div>
+                        <div class="col-sm-8">{{ server.name }}</div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-sm-4 font-weight-bold">Location:</div>
+                        <div class="col-sm-8">{{ server.location }}</div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-sm-4 font-weight-bold">API URL:</div>
+                        <div class="col-sm-8">{{ server.api_url }}</div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-sm-4 font-weight-bold">Geolocation:</div>
+                        <div class="col-sm-8">{{ server.geolocation_name }}</div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-sm-4 font-weight-bold">Auth Type:</div>
+                        <div class="col-sm-8">{{ server.auth_type }}</div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-sm-4 font-weight-bold">Max Peers:</div>
+                        <div class="col-sm-8">{{ server.max_peers }}</div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-sm-4 font-weight-bold">Status:</div>
+                        <div class="col-sm-8">
+                            {% if server.is_active %}
+                            <span class="badge badge-success">Active</span>
+                            {% else %}
+                            <span class="badge badge-danger">Inactive</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Server Status</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-sm-6">
+                            <div class="card bg-{{ 'success' if status.is_available else 'danger' }} text-white shadow">
+                                <div class="card-body">
+                                    <div class="text-white-50 small">Connection Status</div>
+                                    <div class="text-lg">
+                                        {% if status.is_available %}
+                                        <i class="fas fa-check-circle"></i> Online
+                                        {% else %}
+                                        <i class="fas fa-times-circle"></i> Offline
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="card bg-info text-white shadow">
+                                <div class="card-body">
+                                    <div class="text-white-50 small">Response Time</div>
+                                    <div class="text-lg">{{ status.response_time|round(2) }} ms</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-2">
+                        <div class="col-sm-4 font-weight-bold">Peers Count:</div>
+                        <div class="col-sm-8">{{ status.peers_count }}</div>
+                    </div>
+                    <hr>
+                    <div class="row mb-2">
+                        <div class="col-sm-4 font-weight-bold">CPU Load:</div>
+                        <div class="col-sm-8">
+                            <div class="progress">
+                                <div class="progress-bar" role="progressbar" style="width: {{ status.cpu_load }}%"
+                                     aria-valuenow="{{ status.cpu_load }}" aria-valuemin="0" aria-valuemax="100">
+                                    {{ status.cpu_load }}%
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row mb-2">
+                        <div class="col-sm-4 font-weight-bold">Memory Usage:</div>
+                        <div class="col-sm-8">
+                            <div class="progress">
+                                <div class="progress-bar bg-info" role="progressbar" style="width: {{ status.memory_usage }}%"
+                                     aria-valuenow="{{ status.memory_usage }}" aria-valuemin="0" aria-valuemax="100">
+                                    {{ status.memory_usage }}%
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row mb-2">
+                        <div class="col-sm-4 font-weight-bold">Network In:</div>
+                        <div class="col-sm-8">{{ (status.network_in / 1024 / 1024)|round(2) }} MB</div>
+                    </div>
+                    <hr>
+                    <div class="row mb-2">
+                        <div class="col-sm-4 font-weight-bold">Network Out:</div>
+                        <div class="col-sm-8">{{ (status.network_out / 1024 / 1024)|round(2) }} MB</div>
+                    </div>
+                    <hr>
+                    <div class="row mb-2">
+                        <div class="col-sm-4 font-weight-bold">Last Updated:</div>
+                        <div class="col-sm-8">{{ status.collected_at }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Server Peers Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Peers on Server</h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="peersTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>User ID</th>
+                            <th>Public Key</th>
+                            <th>Created</th>
+                            <th>Last Handshake</th>
+                            <th>Data Transfer</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for peer in peers %}
+                        <tr>
+                            <td>{{ peer.user_id }}</td>
+                            <td>{{ peer.public_key[:10] }}...{{ peer.public_key[-10:] }}</td>
+                            <td>{{ peer.created_at }}</td>
+                            <td>{{ peer.last_handshake or 'Never' }}</td>
+                            <td>
+                                <i class="fas fa-arrow-down text-primary"></i> {{ (peer.transfer_rx / 1024 / 1024)|round(2) }} MB<br>
+                                <i class="fas fa-arrow-up text-success"></i> {{ (peer.transfer_tx / 1024 / 1024)|round(2) }} MB
+                            </td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-danger" 
+                                        data-toggle="modal" data-target="#removePeerModal" 
+                                        data-peer-key="{{ peer.public_key }}" data-peer-user="{{ peer.user_id }}">
+                                    <i class="fas fa-trash"></i> Remove
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Server Metrics Chart Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Server Metrics History</h6>
+        </div>
+        <div class="card-body">
+            <div class="chart-area">
+                <canvas id="serverMetricsChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Server Modal -->
+<div class="modal fade" id="editServerModal" tabindex="-1" role="dialog" aria-labelledby="editServerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editServerModalLabel">Edit Server: {{ server.name }}</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <form id="editServerForm" action="/servers/edit" method="post">
+                <input type="hidden" name="server_id" value="{{ server.id }}">
+                <div class="modal-body">
+                    <div class="form-group row">
+                        <div class="col-sm-6 mb-3">
+                            <label for="edit_name">Server Name</label>
+                            <input type="text" class="form-control" id="edit_name" name="name" value="{{ server.name }}" required>
+                        </div>
+                        <div class="col-sm-6 mb-3">
+                            <label for="edit_location">Location</label>
+                            <input type="text" class="form-control" id="edit_location" name="location" value="{{ server.location }}" required>
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <div class="col-sm-6 mb-3">
+                            <label for="edit_api_url">API URL</label>
+                            <input type="url" class="form-control" id="edit_api_url" name="api_url" value="{{ server.api_url }}" required>
+                            <small class="form-text text-muted">Full URL to the WireGuard server API</small>
+                        </div>
+                        <div class="col-sm-6 mb-3">
+                            <label for="edit_geolocation_id">Geolocation</label>
+                            <select class="form-control" id="edit_geolocation_id" name="geolocation_id" required>
+                                {% for geolocation in geolocations %}
+                                <option value="{{ geolocation.id }}" {% if geolocation.id == server.geolocation_id %}selected{% endif %}>{{ geolocation.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <div class="col-sm-6 mb-3">
+                            <label for="edit_auth_type">Authentication Type</label>
+                            <select class="form-control" id="edit_auth_type" name="auth_type" onchange="toggleEditAuthFields()">
+                                <option value="api_key" {% if server.auth_type == 'api_key' %}selected{% endif %}>API Key</option>
+                                <option value="oauth" {% if server.auth_type == 'oauth' %}selected{% endif %}>OAuth</option>
+                                <option value="hmac" {% if server.auth_type == 'hmac' %}selected{% endif %}>HMAC</option>
+                            </select>
+                        </div>
+                        <div class="col-sm-6 mb-3">
+                            <label for="edit_max_peers">Maximum Peers</label>
+                            <input type="number" class="form-control" id="edit_max_peers" name="max_peers" value="{{ server.max_peers }}" min="1">
+                        </div>
+                    </div>
+                    
+                    <!-- API Key Authentication -->
+                    <div id="edit_api_key_auth" {% if server.auth_type != 'api_key' %}style="display: none"{% endif %}>
+                        <div class="form-group">
+                            <label for="edit_api_key">API Key</label>
+                            <input type="password" class="form-control" id="edit_api_key" name="api_key" value="{{ server.api_key }}">
+                            <small class="form-text text-muted">Leave blank to keep current API key</small>
+                        </div>
+                    </div>
+                    
+                    <!-- OAuth Authentication -->
+                    <div id="edit_oauth_auth" {% if server.auth_type != 'oauth' %}style="display: none"{% endif %}>
+                        <div class="form-group row">
+                            <div class="col-sm-6 mb-3">
+                                <label for="edit_oauth_client_id">Client ID</label>
+                                <input type="text" class="form-control" id="edit_oauth_client_id" name="oauth_client_id" value="{{ server.oauth_client_id }}">
+                            </div>
+                            <div class="col-sm-6 mb-3">
+                                <label for="edit_oauth_client_secret">Client Secret</label>
+                                <input type="password" class="form-control" id="edit_oauth_client_secret" name="oauth_client_secret" value="{{ server.oauth_client_secret }}">
+                                <small class="form-text text-muted">Leave blank to keep current client secret</small>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_oauth_token_url">Token URL</label>
+                            <input type="url" class="form-control" id="edit_oauth_token_url" name="oauth_token_url" value="{{ server.oauth_token_url }}">
+                        </div>
+                    </div>
+                    
+                    <!-- HMAC Authentication -->
+                    <div id="edit_hmac_auth" {% if server.auth_type != 'hmac' %}style="display: none"{% endif %}>
+                        <div class="form-group">
+                            <label for="edit_hmac_secret">HMAC Secret</label>
+                            <input type="password" class="form-control" id="edit_hmac_secret" name="hmac_secret" value="{{ server.hmac_secret }}">
+                            <small class="form-text text-muted">Leave blank to keep current HMAC secret</small>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="edit_is_active" name="is_active" {% if server.is_active %}checked{% endif %}>
+                            <label class="custom-control-label" for="edit_is_active">Active</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Server Modal -->
+<div class="modal fade" id="deleteServerModal" tabindex="-1" role="dialog" aria-labelledby="deleteServerModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteServerModalLabel">Confirm Delete</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete server <strong>{{ server.name }}</strong>?</p>
+                <p class="text-danger">This action cannot be undone. All peers on this server will be lost.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <form action="/servers/delete" method="post">
+                    <input type="hidden" name="server_id" value="{{ server.id }}">
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Remove Peer Modal -->
+<div class="modal fade" id="removePeerModal" tabindex="-1" role="dialog" aria-labelledby="removePeerModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="removePeerModalLabel">Confirm Peer Removal</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to remove the peer for user <strong id="remove_peer_user"></strong>?</p>
+                <p class="text-danger">This will disconnect the user and they will lose access to the VPN.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <form id="removePeerForm" action="/peers/remove" method="post">
+                    <input type="hidden" id="remove_peer_key" name="public_key">
+                    <input type="hidden" name="server_id" value="{{ server.id }}">
+                    <button type="submit" class="btn btn-danger">Remove Peer</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    $(document).ready(function() {
+        // Initialize DataTable
+        $('#peersTable').DataTable();
+        
+        // Chart.js setup for metrics history
+        var ctx = document.getElementById('serverMetricsChart').getContext('2d');
+        var myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: {{ metrics_dates|safe }},
+                datasets: [
+                    {
+                        label: 'Peers Count',
+                        data: {{ metrics_peers|safe }},
+                        borderColor: 'rgba(78, 115, 223, 1)',
+                        backgroundColor: 'rgba(78, 115, 223, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        tension: 0.1
+                    },
+                    {
+                        label: 'CPU Load (%)',
+                        data: {{ metrics_cpu|safe }},
+                        borderColor: 'rgba(246, 194, 62, 1)',
+                        backgroundColor: 'rgba(246, 194, 62, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Memory Usage (%)',
+                        data: {{ metrics_memory|safe }},
+                        borderColor: 'rgba(54, 185, 204, 1)',
+                        backgroundColor: 'rgba(54, 185, 204, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                legend: {
+                    display: true,
+                    position: 'top'
+                }
+            }
+        });
+        
+        // Обработчик открытия модального окна удаления пира
+        $('#removePeerModal').on('show.bs.modal', function (event) {
+            var button = $(event.relatedTarget);
+            var peerKey = button.data('peer-key');
+            var peerUser = button.data('peer-user');
+            var modal = $(this);
+            
+            modal.find('#remove_peer_key').val(peerKey);
+            modal.find('#remove_peer_user').text(peerUser);
+        });
+        
+        // Функция для переключения полей аутентификации при редактировании
+        window.toggleEditAuthFields = function() {
+            var authType = $('#edit_auth_type').val();
+            
+            $('#edit_api_key_auth, #edit_oauth_auth, #edit_hmac_auth').hide();
+            
+            if (authType === 'api_key') {
+                $('#edit_api_key_auth').show();
+            } else if (authType === 'oauth') {
+                $('#edit_oauth_auth').show();
+            } else if (authType === 'hmac') {
+                $('#edit_hmac_auth').show();
+            }
+        };
+        
+        // Инициализация видимости полей аутентификации
+        toggleEditAuthFields();
+    });
+    
+    // Функция для тестирования соединения с сервером
+    function testConnection() {
+        $.ajax({
+            url: '/servers/test_connection/{{ server.id }}',
+            type: 'GET',
+            beforeSend: function() {
+                showToast('Testing connection to server...', 'info');
+            },
+            success: function(data) {
+                if (data.success) {
+                    showToast('Connection successful! Response time: ' + data.response_time.toFixed(2) + 'ms', 'success');
+                } else {
+                    showToast('Connection failed: ' + data.error, 'error');
+                }
+            },
+            error: function() {
+                showToast('Connection test failed', 'error');
+            }
+        });
+    }
+    
+    // Helper to show toast notifications
+    function showToast(message, type) {
+        // Проверяем, есть ли на странице toastr
+        if (typeof toastr !== 'undefined') {
+            toastr.options = {
+                closeButton: true,
+                progressBar: true,
+                positionClass: 'toast-top-right',
+                timeOut: 5000
+            };
+            
+            switch(type) {
+                case 'success':
+                    toastr.success(message);
+                    break;
+                case 'error':
+                    toastr.error(message);
+                    break;
+                case 'warning':
+                    toastr.warning(message);
+                    break;
+                default:
+                    toastr.info(message);
+            }
+        } else {
+            // Если toastr не доступен, используем стандартное предупреждение
+            alert(message);
+        }
+    }
+</script>
+{% endblock %}
