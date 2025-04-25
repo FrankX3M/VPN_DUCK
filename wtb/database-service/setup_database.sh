@@ -252,7 +252,7 @@ CREATE TABLE IF NOT EXISTS server_migrations (
 );
 
 -- Таблица для хранения информации о конфигурациях пользователей
-CREATE TABLE IF NOT EXISTS user_configurations (
+CREATE TABLE IF NOT EXISTS user_configs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     config_id INTEGER REFERENCES configurations(id),
@@ -302,8 +302,8 @@ CREATE INDEX IF NOT EXISTS idx_active_connections_server_id ON active_connection
 CREATE INDEX IF NOT EXISTS idx_user_connections_user_id ON user_connections(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_connections_server_id ON user_connections(server_id);
 CREATE INDEX IF NOT EXISTS idx_user_connections_connected_at ON user_connections(connected_at);
-CREATE INDEX IF NOT EXISTS idx_user_configurations_user_id ON user_configurations(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_configurations_server_id ON user_configurations(server_id);
+CREATE INDEX IF NOT EXISTS idx_user_configs_user_id ON user_configs(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_configs_server_id ON user_configs(server_id);
 
 -- Заполнение начальными данными
 

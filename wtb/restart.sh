@@ -33,7 +33,7 @@ print_step "Ожидание 5 секунд перед получением ло
 sleep 5
 
 
-docker compose exec database-service bash -c "chmod +x setup_database.sh && ./setup_database.sh"
+# docker compose exec database-service bash -c "chmod +x setup_database.sh && ./setup_database.sh"
 
 # Получение логов
 print_step "Вывод логов Docker Compose"

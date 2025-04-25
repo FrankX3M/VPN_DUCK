@@ -81,9 +81,13 @@
     <div class="card shadow mb-4">
         <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
             <h6 class="m-0 font-weight-bold text-primary">Remote Servers</h6>
-            <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#addServerModal">
+            <!-- <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#addServerModal">
                 <i class="fas fa-plus fa-sm"></i> Add Server
-            </button>
+            </button> -->
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addServerModal">
+                <i class="bi bi-plus-circle"></i> Добавить сервер
+            </button>  
+
         </div>
         <div class="card-body">
             <div class="table-responsive">
@@ -350,56 +354,132 @@
 
 {% block scripts %}
 <script>
-    $(document).ready(function() {
-        // Initialize DataTable
-        $('#serversTable').DataTable();
+    // $(document).ready(function() {
+    //     // Initialize DataTable
+    //     $('#serversTable').DataTable();
         
-        // Обработчик открытия модального окна редактирования
-        $('#editServerModal').on('show.bs.modal', function (event) {
-            var button = $(event.relatedTarget);
-            var serverId = button.data('server-id');
-            var modal = $(this);
+    //     // Обработчик открытия модального окна редактирования
+    //     $('#addServerModal').on('show.bs.modal', function (event) {
+    //         console.log('Add Server Modal opened');
+    //         // Можно добавить дополнительную логику инициализации, если нужно
+    //     });
+
+    //     // Функция для переключения видимости полей аутентификации
+    //     window.toggleAuthFields = function() {
+    //         var authType = document.getElementById('auth_type').value;
+        
+    //         document.getElementById('api_key_auth').style.display = 'none';
+    //         document.getElementById('oauth_auth').style.display = 'none';
+    //         document.getElementById('hmac_auth').style.display = 'none';
             
-            // Загрузка данных сервера через AJAX
-            $.ajax({
-                url: '/servers/get/' + serverId,
-                type: 'GET',
-                success: function(data) {
-                    // Заполнение формы данными
-                    modal.find('#edit_server_id').val(data.server.id);
-                    // Заполнение остальных полей...
-                }
-            });
-        });
+    //         if (authType === 'api_key') {
+    //             document.getElementById('api_key_auth').style.display = 'block';
+    //         } else if (authType === 'oauth') {
+    //             document.getElementById('oauth_auth').style.display = 'block';
+    //         } else if (authType === 'hmac') {
+    //             document.getElementById('hmac_auth').style.display = 'block';
+    //         }
+    //     };
+        
+    //     // Инициализация видимости полей аутентификации
+    //     toggleAuthFields();
+    // });
+
+
+
+
+
+    // $(document).ready(function() {
+    //     // Initialize DataTable
+    //     $('#serversTable').DataTable();
+        
+    //     // Обработчик открытия модального окна редактирования
+    //     $('#editServerModal').on('show.bs.modal', function (event) {
+    //         var button = $(event.relatedTarget);
+    //         var serverId = button.data('server-id');
+    //         var modal = $(this);
+            
+    //         // Загрузка данных сервера через AJAX
+    //         $.ajax({
+    //             url: '/servers/get/' + serverId,
+    //             type: 'GET',
+    //             success: function(data) {
+    //                 // Заполнение формы данными
+    //                 modal.find('#edit_server_id').val(data.server.id);
+    //                 // Заполнение остальных полей...
+    //             }
+    //         });
+    //     });
         
         // Обработчик открытия модального окна удаления
-        $('#deleteServerModal').on('show.bs.modal', function (event) {
-            var button = $(event.relatedTarget);
-            var serverId = button.data('server-id');
-            var serverName = button.data('server-name');
-            var modal = $(this);
+//         $('#deleteServerModal').on('show.bs.modal', function (event) {
+//             var button = $(event.relatedTarget);
+//             var serverId = button.data('server-id');
+//             var serverName = button.data('server-name');
+//             var modal = $(this);
             
-            modal.find('#delete_server_id').val(serverId);
-            modal.find('#delete_server_name').text(serverName);
+//             modal.find('#delete_server_id').val(serverId);
+//             modal.find('#delete_server_name').text(serverName);
+
+        
+//         // Функция для переключения видимости полей аутентификации
+//         window.toggleAuthFields = function() {
+//             var authType = $('#auth_type').val();
+            
+//             $('#api_key_auth, #oauth_auth, #hmac_auth').hide();
+            
+//             if (authType === 'api_key') {
+//                 $('#api_key_auth').show();
+//             } else if (authType === 'oauth') {
+//                 $('#oauth_auth').show();
+//             } else if (authType === 'hmac') {
+//                 $('#hmac_auth').show();
+//             }
+//         };
+        
+//         // Инициализация видимости полей аутентификации
+//         toggleAuthFields();
+//     });
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOMContentLoaded event fired');
+
+    // Проверка элементов
+    const addServerButton = document.querySelector('[data-bs-target="#addServerModal"]');
+    const addServerModal = document.getElementById('addServerModal');
+    const authTypeSelect = document.getElementById('auth_type');
+
+    console.log('Add Server Button:', addServerButton);
+    console.log('Add Server Modal:', addServerModal);
+    console.log('Auth Type Select:', authTypeSelect);
+
+    // Проверка событий Bootstrap
+    if (addServerModal) {
+        addServerModal.addEventListener('show.bs.modal', function (event) {
+            console.log('Modal show event triggered');
         });
-        
-        // Функция для переключения видимости полей аутентификации
-        window.toggleAuthFields = function() {
-            var authType = $('#auth_type').val();
-            
-            $('#api_key_auth, #oauth_auth, #hmac_auth').hide();
-            
-            if (authType === 'api_key') {
-                $('#api_key_auth').show();
-            } else if (authType === 'oauth') {
-                $('#oauth_auth').show();
-            } else if (authType === 'hmac') {
-                $('#hmac_auth').show();
-            }
-        };
-        
-        // Инициализация видимости полей аутентификации
-        toggleAuthFields();
-    });
+        addServerModal.addEventListener('shown.bs.modal', function (event) {
+            console.log('Modal shown event triggered');
+        });
+    }
+
+    // Принудительная регистрация событий
+    if (addServerButton) {
+        addServerButton.addEventListener('click', function(e) {
+            console.log('Add Server Button clicked');
+            console.log('Event target:', e.target);
+        });
+    }
+});
+
+// Глобальный перехват событий
+document.addEventListener('click', function(e) {
+    if (e.target.matches('[data-bs-target="#addServerModal"]')) {
+        console.log('Clicked element details:', {
+            target: e.target,
+            attributes: Array.from(e.target.attributes).map(attr => attr.name)
+        });
+    }
+});
 </script>
 {% endblock %}

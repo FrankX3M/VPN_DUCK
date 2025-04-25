@@ -89,7 +89,7 @@ services:
       wireguard-proxy:
         condition: service_healthy
     ports:
-      - "5000:5000"
+      - "5003:5003"
     networks:
       - vpn_network
 
