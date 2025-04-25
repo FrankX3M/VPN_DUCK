@@ -135,7 +135,7 @@ def servers():
 def api_get_servers():
     """API для получения списка серверов."""
     try:
-        response = requests.get(f"{DATABASE_SERVICE_URL}/servers/all", timeout=10)
+        response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/all", timeout=10)
         
         if response.status_code == 200:
             servers = response.json().get("servers", [])
@@ -161,7 +161,7 @@ def api_add_server():
         
         # Отправляем запрос на добавление сервера
         response = requests.post(
-            f"{DATABASE_SERVICE_URL}/servers/register",
+            f"{DATABASE_SERVICE_URL}/api/servers/register",
             json=data,
             timeout=15
         )
@@ -192,7 +192,7 @@ def api_delete_server(server_id):
     try:
         # Получаем информацию о сервере, чтобы узнать публичный ключ
         logger.info(f"Запрос на удаление сервера ID: {server_id}")
-        server_response = requests.get(f"{DATABASE_SERVICE_URL}/servers/{server_id}", timeout=10)
+        server_response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/{server_id}", timeout=10)
         
         if server_response.status_code != 200:
             logger.error(f"Сервер с ID {server_id} не найден в базе данных")
@@ -236,7 +236,7 @@ def api_delete_server(server_id):
         # Полностью удаляем сервер из базы данных
         logger.info(f"Полное удаление сервера {server_id} из базы данных")
         delete_response = requests.delete(
-            f"{DATABASE_SERVICE_URL}/servers/{server_id}",
+            f"{DATABASE_SERVICE_URL}/api/servers/{server_id}",
             timeout=10
         )
         
@@ -273,7 +273,7 @@ def api_create_geolocation():  # Переименовано из api_add_geoloca
         
         # Отправляем запрос на добавление геолокации
         response = requests.post(
-            f"{DATABASE_SERVICE_URL}/geolocations",
+            f"{DATABASE_SERVICE_URL}/api/geolocations",
             json=data,
             timeout=15
         )
@@ -305,7 +305,7 @@ def api_edit_geolocation(geo_id):  # Переименовано из api_update_
         
         # Отправляем запрос на обновление геолокации
         response = requests.put(
-            f"{DATABASE_SERVICE_URL}/geolocations/{geo_id}",
+            f"{DATABASE_SERVICE_URL}/api/geolocations/{geo_id}",
             json=data,
             timeout=15
         )
@@ -335,7 +335,7 @@ def api_remove_geolocation(geo_id):  # Переименовано из api_delet
     try:
         # Отправляем запрос на удаление геолокации
         response = requests.delete(
-            f"{DATABASE_SERVICE_URL}/geolocations/{geo_id}",
+            f"{DATABASE_SERVICE_URL}/api/geolocations/{geo_id}",
             timeout=15
         )
         
@@ -362,7 +362,7 @@ def api_fetch_geolocation(geo_id):  # Переименовано из api_get_ge
     """API для получения детальной информации о геолокации."""
     try:
         response = requests.get(
-            f"{DATABASE_SERVICE_URL}/geolocations/{geo_id}",
+            f"{DATABASE_SERVICE_URL}/api/geolocations/{geo_id}",
             timeout=10
         )
         
@@ -383,7 +383,7 @@ def api_get_server_metrics(server_id):
         hours = request.args.get('hours', 24, type=int)
         
         response = requests.get(
-            f"{DATABASE_SERVICE_URL}/servers/{server_id}/metrics?hours={hours}",
+            f"{DATABASE_SERVICE_URL}/api/servers/{server_id}/metrics?hours={hours}",
             timeout=15
         )
         
@@ -402,7 +402,7 @@ def api_analyze_metrics():
     """API для запуска анализа метрик всех серверов."""
     try:
         response = requests.post(
-            f"{DATABASE_SERVICE_URL}/servers/metrics/analyze",
+            f"{DATABASE_SERVICE_URL}/api/servers/metrics/analyze",
             timeout=30
         )
         
@@ -428,7 +428,7 @@ def api_rebalance_servers():
             return jsonify({"status": "error", "message": "Отсутствует обязательное поле geolocation_id"}), 400
         
         response = requests.post(
-            f"{DATABASE_SERVICE_URL}/servers/rebalance",
+            f"{DATABASE_SERVICE_URL}/api/servers/rebalance",
             json={"geolocation_id": geolocation_id, "threshold": threshold},
             timeout=30
         )
@@ -452,7 +452,7 @@ def api_migrate_users():
     """API для миграции пользователей с неактивных серверов."""
     try:
         response = requests.post(
-            f"{DATABASE_SERVICE_URL}/configs/migrate_users",
+            f"{DATABASE_SERVICE_URL}/api/configs/migrate_users",
             timeout=30
         )
         
@@ -471,7 +471,7 @@ def api_dashboard_summary():
     """API для получения сводной информации для дашборда."""
     try:
         # Получаем список серверов
-        servers_response = requests.get(f"{DATABASE_SERVICE_URL}/servers/all", timeout=10)
+        servers_response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/all", timeout=10)
         
         if servers_response.status_code != 200:
             return jsonify({"status": "error", "message": "Ошибка при получении списка серверов"}), 500
@@ -479,7 +479,7 @@ def api_dashboard_summary():
         servers = servers_response.json().get("servers", [])
         
         # Получаем список геолокаций
-        geolocations_response = requests.get(f"{DATABASE_SERVICE_URL}/geolocations", timeout=10)
+        geolocations_response = requests.get(f"{DATABASE_SERVICE_URL}/api/geolocations", timeout=10)
         
         if geolocations_response.status_code != 200:
             return jsonify({"status": "error", "message": "Ошибка при получении списка геолокаций"}), 500
@@ -570,7 +570,7 @@ def api_update_server(server_id):
             return jsonify({"status": "error", "message": "Не указаны поля для обновления"}), 400
         
         # Сначала получаем текущие данные сервера
-        server_response = requests.get(f"{DATABASE_SERVICE_URL}/servers/{server_id}", timeout=10)
+        server_response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/{server_id}", timeout=10)
         
         if server_response.status_code != 200:
             return jsonify({"status": "error", "message": "Сервер не найден"}), 404
@@ -581,7 +581,7 @@ def api_update_server(server_id):
         # Если изменились endpoint или port, нужно проверить, что такая комбинация не используется другим сервером
         if ('endpoint' in update_data or 'port' in update_data) and ('endpoint' in update_data and update_data['endpoint'] != current_server.get('endpoint') or 'port' in update_data and update_data['port'] != current_server.get('port')):
             # Получаем список всех серверов
-            all_servers_response = requests.get(f"{DATABASE_SERVICE_URL}/servers/all", timeout=10)
+            all_servers_response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/all", timeout=10)
             
             if all_servers_response.status_code == 200:
                 all_servers = all_servers_response.json().get("servers", [])
@@ -600,7 +600,7 @@ def api_update_server(server_id):
         # Отправляем запрос на обновление сервера в DATABASE_SERVICE_URL
         logger.info(f"Отправка запроса на обновление сервера {server_id} с данными: {update_data}")
         update_response = requests.put(
-            f"{DATABASE_SERVICE_URL}/servers/{server_id}",
+            f"{DATABASE_SERVICE_URL}/api/servers/{server_id}",
             json=update_data,
             timeout=15
         )
@@ -630,7 +630,7 @@ def api_update_server(server_id):
         # Обновляем базовые данные через API обновления статуса
         if 'status' in update_data:
             status_response = requests.post(
-                f"{DATABASE_SERVICE_URL}/servers/{server_id}/status",
+                f"{DATABASE_SERVICE_URL}/api/servers/{server_id}/status",
                 json={"status": update_data['status']},
                 timeout=10
             )
@@ -817,7 +817,7 @@ def api_server_operations(server_id):
     """API для операций с сервером: получение, обновление, удаление."""
     if request.method == 'GET':
         try:
-            response = requests.get(f"{DATABASE_SERVICE_URL}/servers/{server_id}", timeout=10)
+            response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/{server_id}", timeout=10)
             if response.status_code == 200:
                 server = response.json()
                 return jsonify(server), 200
@@ -854,7 +854,7 @@ def api_server_operations(server_id):
             return jsonify({"status": "error", "message": "Не указаны поля для обновления"}), 400
         
         # Сначала получаем текущие данные сервера
-        server_response = requests.get(f"{DATABASE_SERVICE_URL}/servers/{server_id}", timeout=10)
+        server_response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/{server_id}", timeout=10)
         
         if server_response.status_code != 200:
             return jsonify({"status": "error", "message": "Сервер не найден"}), 404
@@ -865,7 +865,7 @@ def api_server_operations(server_id):
         # Если изменились endpoint или port, нужно проверить, что такая комбинация не используется другим сервером
         if ('endpoint' in update_data or 'port' in update_data) and ('endpoint' in update_data and update_data['endpoint'] != current_server.get('endpoint') or 'port' in update_data and update_data['port'] != current_server.get('port')):
             # Получаем список всех серверов
-            all_servers_response = requests.get(f"{DATABASE_SERVICE_URL}/servers/all", timeout=10)
+            all_servers_response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/all", timeout=10)
             
             if all_servers_response.status_code == 200:
                 all_servers = all_servers_response.json().get("servers", [])
@@ -884,7 +884,7 @@ def api_server_operations(server_id):
         # Обновляем базовые данные через API обновления статуса
         if 'status' in update_data:
             status_response = requests.post(
-                f"{DATABASE_SERVICE_URL}/servers/{server_id}/status",
+                f"{DATABASE_SERVICE_URL}/api/servers/{server_id}/status",
                 json={"status": update_data['status']},
                 timeout=10
             )
@@ -905,7 +905,7 @@ def api_server_operations(server_id):
     elif request.method == 'DELETE':
         try:
             # Получаем информацию о сервере, чтобы узнать публичный ключ
-            server_response = requests.get(f"{DATABASE_SERVICE_URL}/servers/{server_id}", timeout=10)
+            server_response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/{server_id}", timeout=10)
             
             if server_response.status_code != 200:
                 return jsonify({"status": "error", "message": "Сервер не найден"}), 404
@@ -922,7 +922,7 @@ def api_server_operations(server_id):
             
             # Обновляем статус сервера в базе данных (помечаем как неактивный)
             status_response = requests.post(
-                f"{DATABASE_SERVICE_URL}/servers/{server_id}/status",
+                f"{DATABASE_SERVICE_URL}/api/servers/{server_id}/status",
                 json={"status": "inactive"},
                 timeout=10
             )
@@ -956,7 +956,7 @@ def api_get_geolocations():
     """API для получения списка геолокаций."""
     try:
         logger.info("Запрос на получение списка геолокаций")
-        response = requests.get(f"{DATABASE_SERVICE_URL}/geolocations", timeout=10)
+        response = requests.get(f"{DATABASE_SERVICE_URL}/api/geolocations", timeout=10)
         
         if response.status_code == 200:
             geolocations = response.json().get("geolocations", [])
@@ -977,7 +977,7 @@ def api_delete_geolocation(geo_id):
     try:
         # Отправляем запрос на удаление геолокации
         response = requests.delete(
-            f"{DATABASE_SERVICE_URL}/geolocations/{geo_id}",
+            f"{DATABASE_SERVICE_URL}/api/geolocations/{geo_id}",
             timeout=15
         )
         
@@ -1004,7 +1004,7 @@ def api_get_geolocation(geo_id):
     """API для получения детальной информации о геолокации."""
     try:
         response = requests.get(
-            f"{DATABASE_SERVICE_URL}/geolocations/{geo_id}",
+            f"{DATABASE_SERVICE_URL}/api/geolocations/{geo_id}",
             timeout=10
         )
         

@@ -83,7 +83,7 @@ def get_server_location(ip_address):
 def get_servers():
     """Получает список всех активных серверов из базы данных."""
     try:
-        response = make_api_request('get', f"{DATABASE_SERVICE_URL}/servers/all", timeout=10)
+        response = make_api_request('get', f"{DATABASE_SERVICE_URL}/api/servers/all", timeout=10)
         return response.json().get("servers", [])
     except Exception as e:
         logger.error(f"Ошибка при запросе к API для получения серверов: {str(e)}")
@@ -167,7 +167,7 @@ def measure_server_metrics(server):
 def update_server_metrics(metrics):
     """Отправляет собранные метрики в базу данных."""
     try:
-        response = make_api_request('post', f"{DATABASE_SERVICE_URL}/servers/metrics/add", json=metrics)
+        response = make_api_request('post', f"{DATABASE_SERVICE_URL}/api/servers/metrics/add", json=metrics)
         logger.info(f"Метрики для сервера {metrics['server_id']} успешно обновлены")
         return True
     except Exception as e:
@@ -193,7 +193,7 @@ def analyze_servers_metrics():
         # Создаем собственный запрос на анализ метрик с сохранением статуса maintenance
         response = make_api_request(
             'post', 
-            f"{DATABASE_SERVICE_URL}/servers/metrics/analyze",
+            f"{DATABASE_SERVICE_URL}/api/servers/metrics/analyze",
             json={"preserve_maintenance": True}  # Добавляем флаг для сохранения статуса maintenance
         )
         
@@ -209,7 +209,7 @@ def migrate_users_from_inactive_servers():
     """Мигрирует пользователей с неактивных серверов на активные."""
     try:
         response = requests.post(
-            f"{DATABASE_SERVICE_URL}/configs/migrate_users",
+            f"{DATABASE_SERVICE_URL}/api/configs/migrate_users",
             timeout=20
         )
         
@@ -233,7 +233,7 @@ def rebalance_server_load():
     """Перебалансирует нагрузку серверов."""
     try:
         # Получаем список геолокаций
-        response = requests.get(f"{DATABASE_SERVICE_URL}/geolocations/available", timeout=5)
+        response = requests.get(f"{DATABASE_SERVICE_URL}/api/geolocations/available", timeout=5)
         
         if response.status_code == 200:
             geolocations = response.json().get("geolocations", [])
@@ -243,7 +243,7 @@ def rebalance_server_load():
                 
                 # Запускаем перебалансировку для каждой доступной геолокации
                 rebalance_response = requests.post(
-                    f"{DATABASE_SERVICE_URL}/servers/rebalance",
+                    f"{DATABASE_SERVICE_URL}/api/servers/rebalance",
                     json={"geolocation_id": geo_id, "threshold": 70},
                     timeout=10
                 )
@@ -267,7 +267,7 @@ def check_geolocations_availability():
     """Проверяет доступность геолокаций и обновляет их статус."""
     try:
         response = requests.get(
-            f"{DATABASE_SERVICE_URL}/geolocations/check",
+            f"{DATABASE_SERVICE_URL}/api/geolocations/check",
             timeout=10
         )
         
@@ -287,7 +287,7 @@ def cleanup_expired_configs():
     """Очищает истекшие конфигурации."""
     try:
         response = requests.post(
-            f"{DATABASE_SERVICE_URL}/cleanup_expired",
+            f"{DATABASE_SERVICE_URL}/api/cleanup_expired",
             timeout=10
         )
         
@@ -334,7 +334,7 @@ def register_own_server():
         
         # Получаем список геолокаций
         try:
-            response = make_api_request('get', f"{DATABASE_SERVICE_URL}/geolocations")
+            response = make_api_request('get', f"{DATABASE_SERVICE_URL}/api/geolocations")
             geolocations = response.json().get("geolocations", [])
         except Exception as e:
             logger.error(f"Ошибка при получении списка геолокаций: {str(e)}")
@@ -403,7 +403,7 @@ def register_own_server():
         try:
             register_response = make_api_request(
                 'post', 
-                f"{DATABASE_SERVICE_URL}/servers/register",
+                f"{DATABASE_SERVICE_URL}/api/servers/register",
                 json=server_data,
                 max_retries=3
             )

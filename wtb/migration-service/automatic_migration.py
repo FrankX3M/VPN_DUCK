@@ -128,7 +128,7 @@ def check_server_availability(server):
 def get_all_servers():
     """Получает список всех активных серверов из базы данных."""
     try:
-        response = requests.get(f"{DATABASE_SERVICE_URL}/servers/all", timeout=10)
+        response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/all", timeout=10)
         
         if response.status_code == 200:
             all_servers = response.json().get("servers", [])
@@ -146,7 +146,7 @@ def get_all_servers():
 def get_active_connections(server_id):
     """Получает список активных подключений к серверу."""
     try:
-        response = requests.get(f"{DATABASE_SERVICE_URL}/servers/{server_id}/connections", timeout=10)
+        response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/{server_id}/connections", timeout=10)
         
         if response.status_code == 200:
             connections = response.json().get("connections", [])
@@ -164,7 +164,7 @@ def find_optimal_server(user_id, current_geo_id):
     try:
         # Запрашиваем оптимальный сервер через API
         response = requests.post(
-            f"{DATABASE_SERVICE_URL}/servers/select_optimal",
+            f"{DATABASE_SERVICE_URL}/api/servers/select_optimal",
             json={"user_id": user_id, "geolocation_id": current_geo_id},
             timeout=15
         )
@@ -224,7 +224,7 @@ def migrate_user(user_id, from_server_id, to_server_id, reason="server_down"):
         logger.info(f"Миграция пользователя {user_id} с сервера {from_server_id} на сервер {to_server_id}. Причина: {reason}")
         
         # Запрашиваем данные о сервере назначения
-        new_server_response = requests.get(f"{DATABASE_SERVICE_URL}/servers/{to_server_id}", timeout=10)
+        new_server_response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/{to_server_id}", timeout=10)
         if new_server_response.status_code != 200:
             logger.error(f"Не удалось получить данные сервера {to_server_id}")
             return False
@@ -241,7 +241,7 @@ def migrate_user(user_id, from_server_id, to_server_id, reason="server_down"):
         }
         
         migration_response = requests.post(
-            f"{DATABASE_SERVICE_URL}/configs/change_geolocation",
+            f"{DATABASE_SERVICE_URL}/api/configs/change_geolocation",
             json=migration_data,
             timeout=20
         )
@@ -257,7 +257,7 @@ def migrate_user(user_id, from_server_id, to_server_id, reason="server_down"):
             
             try:
                 requests.post(
-                    f"{DATABASE_SERVICE_URL}/server_migrations/log",
+                    f"{DATABASE_SERVICE_URL}/api/server_migrations/log",
                     json=log_migration_data,
                     timeout=10
                 )
@@ -320,7 +320,7 @@ def check_and_migrate():
                 if not active_connections:
                     try:
                         requests.post(
-                            f"{DATABASE_SERVICE_URL}/servers/{server_id}/status",
+                            f"{DATABASE_SERVICE_URL}/api/servers/{server_id}/status",
                             json={"status": "inactive"},
                             timeout=10
                         )
@@ -355,7 +355,7 @@ def check_and_migrate():
             try:
                 if metrics:
                     requests.post(
-                        f"{DATABASE_SERVICE_URL}/servers/metrics/add",
+                        f"{DATABASE_SERVICE_URL}/api/servers/metrics/add",
                         json={
                             "server_id": server_id, 
                             "latency": metrics.get("latency"),
@@ -391,7 +391,7 @@ def update_server_status_in_db():
     if servers_to_update:
         try:
             requests.post(
-                f"{DATABASE_SERVICE_URL}/servers/update_status_batch",
+                f"{DATABASE_SERVICE_URL}/api/servers/update_status_batch",
                 json={"servers": servers_to_update},
                 timeout=15
             )

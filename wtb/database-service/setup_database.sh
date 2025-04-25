@@ -1,6 +1,8 @@
 #!/bin/bash
 # setup_database.sh - Скрипт для инициализации базы данных для системы управления удаленными серверами WireGuard
-
+# запустить инициализацию базы в ручную docker compose exec database-service ./setup_database.sh
+# проверка создания базы docker compose exec db psql -U postgres -d wireguard -c "\dt"
+# Инициализация базы данных v2: docker compose exec database-service bash -c "chmod +x setup_database.sh && ./setup_database.sh"
 set -e
 
 # Цвета для вывода
@@ -336,7 +338,7 @@ SELECT
     'srv-test-001', 
     'Тестовый сервер', 
     'Москва, Россия', 
-    'http://example-wg-server.com:5000', 
+    'http://wireguard-service:5001', 
     g.id, 
     'api_key', 
     'test_api_key', 

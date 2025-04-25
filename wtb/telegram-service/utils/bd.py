@@ -30,7 +30,7 @@ async def get_available_geolocations():
         logger.info("Получение доступных геолокаций (обновление кэша)")
         
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"{DATABASE_SERVICE_URL}/geolocations/available", timeout=10) as response:
+            async with session.get(f"{DATABASE_SERVICE_URL}/api/geolocations/available", timeout=10) as response:
                 logger.info(f"Ответ API: код {response.status}")
                 
                 if response.status == 200:
@@ -75,7 +75,7 @@ async def change_config_geolocation(user_id, geolocation_id, server_id=None):
                 logger.info(f"Запрашиваем список серверов для геолокации {geolocation_id}")
                 try:
                     async with session.get(
-                        f"{DATABASE_SERVICE_URL}/servers/geolocation/{geolocation_id}",
+                        f"{DATABASE_SERVICE_URL}/api/servers/geolocation/{geolocation_id}",
                         timeout=10
                     ) as server_response:
                         
@@ -107,7 +107,7 @@ async def change_config_geolocation(user_id, geolocation_id, server_id=None):
             # Отправляем запрос на изменение геолокации с увеличенным таймаутом
             try:
                 async with session.post(
-                    f"{DATABASE_SERVICE_URL}/configs/change_geolocation",
+                    f"{DATABASE_SERVICE_URL}/api/configs/change_geolocation",
                     json=data,
                     timeout=30
                 ) as response:
@@ -173,7 +173,7 @@ async def create_new_config(user_id, geolocation_id=None):
             async with aiohttp.ClientSession() as session:
                 try:
                     async with session.get(
-                        f"{DATABASE_SERVICE_URL}/servers/all", 
+                        f"{DATABASE_SERVICE_URL}/api/servers/all", 
                         timeout=10
                     ) as servers_response:
                         if servers_response.status == 200:
@@ -241,7 +241,7 @@ async def create_new_config(user_id, geolocation_id=None):
                             db_data["server_id"] = server_id
                         
                         async with session.post(
-                            f"{DATABASE_SERVICE_URL}/config",
+                            f"{DATABASE_SERVICE_URL}/api/config",
                             json=db_data,
                             timeout=20
                         ) as db_response:
@@ -296,7 +296,7 @@ async def get_all_user_configs(user_id):
         
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                f"{DATABASE_SERVICE_URL}/configs/get_all/{user_id}", 
+                f"{DATABASE_SERVICE_URL}/api/configs/get_all/{user_id}", 
                 timeout=15
             ) as response:
                 
@@ -334,12 +334,12 @@ async def get_user_config(user_id):
     """Получает конфигурацию пользователя из базы данных."""
     try:
         logger.info(f"Получение конфигурации для пользователя {user_id}")
-        logger.info(f"Используем URL: {DATABASE_SERVICE_URL}/config/{user_id}")
+        logger.info(f"Используем URL: {DATABASE_SERVICE_URL}/api/config/{user_id}")
         
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(
-                    f"{DATABASE_SERVICE_URL}/config/{user_id}", 
+                    f"{DATABASE_SERVICE_URL}/api/config/{user_id}", 
                     timeout=10
                 ) as response:
                     
@@ -360,7 +360,7 @@ async def get_user_config(user_id):
                             await asyncio.sleep(1)  # Небольшая задержка перед повторным запросом
                             
                             async with session.get(
-                                f"{DATABASE_SERVICE_URL}/config/{user_id}", 
+                                f"{DATABASE_SERVICE_URL}/api/config/{user_id}", 
                                 timeout=10
                             ) as retry_response:
                                 if retry_response.status == 200:
@@ -424,7 +424,7 @@ async def get_servers_for_geolocation(geolocation_id):
         
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                f"{DATABASE_SERVICE_URL}/servers/geolocation/{geolocation_id}",
+                f"{DATABASE_SERVICE_URL}/api/servers/geolocation/{geolocation_id}",
                 timeout=10
             ) as response:
                 logger.info(f"Ответ API получения серверов: код {response.status}")
@@ -479,7 +479,7 @@ async def update_user_location(user_id, location):
     try:
         async with aiohttp.ClientSession() as session:
             async with session.put(
-                f"{DATABASE_SERVICE_URL}/user/location",
+                f"{DATABASE_SERVICE_URL}/api/user/location",
                 json={
                     "user_id": user_id,
                     "location": location
@@ -572,7 +572,7 @@ async def extend_config(user_id, days, stars, transaction_id):
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.post(
-                    f"{DATABASE_SERVICE_URL}/config/extend",
+                    f"{DATABASE_SERVICE_URL}/api/config/extend",
                     json={
                         "user_id": user_id,
                         "days": days,
@@ -625,7 +625,7 @@ async def get_payment_history(user_id):
         
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                f"{DATABASE_SERVICE_URL}/payments/history/{user_id}", 
+                f"{DATABASE_SERVICE_URL}/api/payments/history/{user_id}", 
                 timeout=10
             ) as response:
                 logger.info(f"Ответ API: код {response.status}")
@@ -766,7 +766,7 @@ async def recreate_config(user_id, geolocation_id=None):
                             db_data["server_id"] = server_id
                         
                         async with session.post(
-                            f"{DATABASE_SERVICE_URL}/config",
+                            f"{DATABASE_SERVICE_URL}/api/config",
                             json=db_data,
                             timeout=20
                         ) as db_response:

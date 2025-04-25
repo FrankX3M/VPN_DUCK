@@ -32,7 +32,7 @@ def init_remote_servers():
     
     # Загружаем информацию об удаленных серверах из БД
     try:
-        response = requests.get(f"{DATABASE_SERVICE_URL}/servers/all", timeout=10)
+        response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/all", timeout=10)
         if response.status_code == 200:
             servers_data = response.json()
             servers = servers_data.get("servers", [])
@@ -80,7 +80,7 @@ def get_server_for_geolocation(geolocation_id):
     try:
         # Запрос к API базы данных
         response = requests.get(
-            f"{DATABASE_SERVICE_URL}/servers/geolocation/{geolocation_id}", 
+            f"{DATABASE_SERVICE_URL}/api/servers/geolocation/{geolocation_id}", 
             timeout=5
         )
         
@@ -119,7 +119,7 @@ def get_first_available_server():
     """
     try:
         # Запрос к API базы данных для получения всех серверов
-        response = requests.get(f"{DATABASE_SERVICE_URL}/servers/all", timeout=5)
+        response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/all", timeout=5)
         
         if response.status_code == 200:
             servers_data = response.json()
@@ -281,7 +281,7 @@ def get_servers():
     """API для получения списка доступных серверов."""
     try:
         # Получаем список серверов из базы данных
-        response = requests.get(f"{DATABASE_SERVICE_URL}/servers/all", timeout=5)
+        response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/all", timeout=5)
         
         if response.status_code == 200:
             servers_data = response.json()
@@ -310,7 +310,7 @@ def add_remote_server():
     try:
         # Отправляем запрос на регистрацию сервера в базе данных
         response = requests.post(
-            f"{DATABASE_SERVICE_URL}/servers/register",
+            f"{DATABASE_SERVICE_URL}/api/servers/register",
             json=data,
             timeout=10
         )

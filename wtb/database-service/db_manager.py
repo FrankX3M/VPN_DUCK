@@ -520,6 +520,43 @@ def unmap_peer(public_key):
     except Exception as e:
         logger.exception(f"Error unmapping peer: {e}")
         return jsonify({"error": str(e)}), 500
+        
+@app.route('/api/config/<int:user_id>', methods=['GET'])
+def get_user_config(user_id):
+    """Получение конфигурации пользователя по ID"""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                query = """
+                SELECT * FROM user_configs WHERE user_id = %s
+                """
+                cur.execute(query, (user_id,))
+                config = cur.fetchone()
+                
+                if not config:
+                    return jsonify({"error": "Конфигурация не найдена"}), 404
+                
+                return jsonify({"config": dict(config)})
+    except Exception as e:
+        logger.exception(f"Ошибка при получении конфигурации пользователя: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/geolocations', methods=['GET'])
+def get_geolocations():
+    """Получение списка всех геолокаций"""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                query = """
+                SELECT * FROM geolocations ORDER BY name
+                """
+                cur.execute(query)
+                geolocations = [dict(row) for row in cur.fetchall()]
+                
+                return jsonify({"geolocations": geolocations})
+    except Exception as e:
+        logger.exception(f"Ошибка при получении геолокаций: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/servers/by-geolocation/<int:geolocation_id>', methods=['GET'])
 def get_servers_by_geolocation(geolocation_id):
@@ -557,4 +594,4 @@ def get_servers_by_geolocation(geolocation_id):
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5002)
+    app.run(host='0.0.0.0', port=5002) #, url = f"http://database-service:5002/api/config/{user_id}"

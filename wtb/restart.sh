@@ -19,7 +19,8 @@ print_step "Остановка и удаление существующих ко
 # docker compose down --remove-orphans
 
 # жеское удаление с томами
-docker compose down -v
+# docker compose down -v
+
 
 chmod +x setup.sh
 ./setup.sh

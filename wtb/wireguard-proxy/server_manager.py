@@ -75,6 +75,7 @@ class ServerManager:
             try:
                 # Проверка доступности сервера
                 start_time = time.time()
+                # Используем прямой URL из базы данных вместо хардкода
                 response = requests.get(f"{server_url}/status", timeout=5)
                 response_time = time.time() - start_time
                 

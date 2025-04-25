@@ -39,6 +39,34 @@ LOG_FILE = os.environ.get('LOG_FILE', None)
 CONFIG_PATH = os.environ.get('CONFIG_PATH', '/app/config')
 MAIN_CONFIG_FILE = os.path.join(CONFIG_PATH, 'config.yml')
 
+
+def get_user_config(user_id):
+    """
+    Получает конфигурацию для пользователя из базы данных.
+    
+    Args:
+        user_id (int): ID пользователя
+    
+    Returns:
+        dict: Конфигурация пользователя или None при ошибке
+    """
+    try:
+        logger.info(f"Получение конфигурации для пользователя {user_id}")
+        url = f"{DATABASE_SERVICE_URL}/api/config/{user_id}"
+        logger.info(f"Используем URL: {url}")
+        
+        response = requests.get(url, timeout=5)
+        logger.info(f"Ответ API: код {response.status_code}")
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            logger.info(f"Конфигурация для пользователя {user_id} не найдена ({response.status_code})")
+            return None
+    except Exception as e:
+        logger.error(f"Ошибка при получении конфигурации: {e}")
+        return None
+
 def load_config_from_file():
     """
     Загрузка конфигурации из YAML-файла
