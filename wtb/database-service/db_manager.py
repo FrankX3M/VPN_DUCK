@@ -593,5 +593,299 @@ def get_servers_by_geolocation(geolocation_id):
         logger.exception(f"Error getting servers by geolocation: {e}")
         return jsonify({"error": str(e)}), 500
 
+# Добавьте эти эндпоинты в файл db_manager.py
+
+@app.route('/api/servers/all', methods=['GET'])
+def get_all_servers():
+    """Возвращает все серверы (alias для /api/servers)"""
+    return get_servers()
+
+@app.route('/api/servers/<int:server_id>/connections', methods=['GET'])
+def get_server_connections(server_id):
+    """Получение активных подключений к серверу"""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                query = """
+                SELECT 
+                    ac.id,
+                    ac.user_id,
+                    ac.server_id,
+                    ac.connected_at,
+                    ac.last_activity,
+                    ac.ip_address,
+                    ac.bytes_sent,
+                    ac.bytes_received
+                FROM 
+                    active_connections ac
+                WHERE 
+                    ac.server_id = %s
+                """
+                cur.execute(query, (server_id,))
+                connections = [dict(row) for row in cur.fetchall()]
+                
+                return jsonify({"connections": connections})
+    except Exception as e:
+        logger.exception(f"Error getting server connections: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/servers/<int:server_id>/status', methods=['POST'])
+def update_server_status(server_id):
+    """Обновление статуса сервера"""
+    try:
+        data = request.json
+        if 'status' not in data:
+            return jsonify({"error": "Missing status field"}), 400
+            
+        status = data['status']
+        if status not in ['active', 'inactive', 'maintenance', 'error']:
+            return jsonify({"error": "Invalid status value"}), 400
+            
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                query = """
+                UPDATE remote_servers
+                SET is_active = %s
+                WHERE id = %s
+                """
+                is_active = status == 'active'
+                cur.execute(query, (is_active, server_id))
+                conn.commit()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Server status updated to {status}"
+                })
+    except Exception as e:
+        logger.exception(f"Error updating server status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/configs/change_geolocation', methods=['POST'])
+def change_user_geolocation():
+    """Изменение геолокации для пользователя"""
+    try:
+        data = request.json
+        required_fields = ['user_id', 'geolocation_id']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+                
+        user_id = data['user_id']
+        geolocation_id = data['geolocation_id']
+        server_id = data.get('server_id')
+        migration_reason = data.get('migration_reason', 'user_request')
+        
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Обновляем геолокацию в конфигурации пользователя
+                query = """
+                UPDATE configurations
+                SET geolocation_id = %s
+                WHERE user_id = %s AND active = TRUE
+                """
+                cur.execute(query, (geolocation_id, user_id))
+                
+                if server_id:
+                    # Если указан конкретный сервер, привязываем к нему
+                    query = """
+                    UPDATE configurations
+                    SET server_id = %s
+                    WHERE user_id = %s AND active = TRUE
+                    """
+                    cur.execute(query, (server_id, user_id))
+                
+                conn.commit()
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Geolocation changed successfully"
+                })
+    except Exception as e:
+        logger.exception(f"Error changing geolocation: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/server_migrations/log', methods=['POST'])
+def log_server_migration():
+    """Логирование миграции пользователя между серверами"""
+    try:
+        data = request.json
+        required_fields = ['user_id', 'from_server_id', 'to_server_id', 'migration_reason']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+                
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                query = """
+                INSERT INTO server_migrations (
+                    user_id,
+                    from_server_id,
+                    to_server_id,
+                    migration_reason,
+                    migration_time,
+                    success
+                ) VALUES (
+                    %s, %s, %s, %s, NOW(), %s
+                ) RETURNING id
+                """
+                
+                cur.execute(query, (
+                    data['user_id'],
+                    data['from_server_id'],
+                    data['to_server_id'],
+                    data['migration_reason'],
+                    data.get('success', True)
+                ))
+                
+                migration_id = cur.fetchone()[0]
+                conn.commit()
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Migration logged successfully",
+                    "migration_id": migration_id
+                })
+    except Exception as e:
+        logger.exception(f"Error logging migration: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/servers/select_optimal', methods=['POST'])
+def select_optimal_server():
+    """Выбор оптимального сервера для пользователя"""
+    try:
+        data = request.json
+        if 'user_id' not in data:
+            return jsonify({"error": "Missing user_id field"}), 400
+            
+        user_id = data['user_id']
+        geolocation_id = data.get('geolocation_id')
+        
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # Базовый запрос для получения активных серверов
+                query = """
+                SELECT 
+                    rs.id, 
+                    rs.server_id, 
+                    rs.name, 
+                    rs.location, 
+                    rs.geolocation_id,
+                    COUNT(ac.id) as active_connections
+                FROM 
+                    remote_servers rs
+                LEFT JOIN 
+                    active_connections ac ON rs.id = ac.server_id
+                WHERE 
+                    rs.is_active = TRUE
+                """
+                
+                params = []
+                
+                # Если указана геолокация, фильтруем по ней
+                if geolocation_id:
+                    query += " AND rs.geolocation_id = %s"
+                    params.append(geolocation_id)
+                
+                # Группировка и сортировка
+                query += """
+                GROUP BY rs.id
+                ORDER BY active_connections ASC, rs.id ASC
+                LIMIT 1
+                """
+                
+                cur.execute(query, params)
+                optimal_server = cur.fetchone()
+                
+                if not optimal_server:
+                    return jsonify({"message": "No available servers found"}), 404
+                
+                return jsonify({"server": dict(optimal_server)})
+    except Exception as e:
+        logger.exception(f"Error selecting optimal server: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/servers/update_status_batch', methods=['POST'])
+def update_servers_status_batch():
+    """Обновление статуса нескольких серверов"""
+    try:
+        data = request.json
+        if 'servers' not in data or not isinstance(data['servers'], list):
+            return jsonify({"error": "Missing or invalid servers list"}), 400
+            
+        servers = data['servers']
+        updated_count = 0
+        
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                for server in servers:
+                    if 'id' not in server or 'status' not in server:
+                        continue
+                        
+                    # Преобразуем статус в is_active
+                    is_active = server['status'] == 'active'
+                    
+                    query = """
+                    UPDATE remote_servers
+                    SET is_active = %s, updated_at = NOW()
+                    WHERE id = %s
+                    """
+                    
+                    cur.execute(query, (is_active, server['id']))
+                    updated_count += 1
+                
+                conn.commit()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Updated status for {updated_count} servers"
+                })
+    except Exception as e:
+        logger.exception(f"Error updating servers status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/servers/metrics/add', methods=['POST'])
+def add_server_metrics():
+    """Добавление метрик сервера"""
+    try:
+        data = request.json
+        if 'server_id' not in data:
+            return jsonify({"error": "Missing server_id field"}), 400
+            
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                query = """
+                INSERT INTO server_metrics (
+                    server_id,
+                    latency,
+                    bandwidth,
+                    jitter,
+                    packet_loss,
+                    measured_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, NOW()
+                ) RETURNING id
+                """
+                
+                cur.execute(query, (
+                    data['server_id'],
+                    data.get('latency'),
+                    data.get('bandwidth'),
+                    data.get('jitter'),
+                    data.get('packet_loss')
+                ))
+                
+                metric_id = cur.fetchone()[0]
+                conn.commit()
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Metrics added successfully",
+                    "metric_id": metric_id
+                })
+    except Exception as e:
+        logger.exception(f"Error adding server metrics: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5002) #, url = f"http://database-service:5002/api/config/{user_id}"
+    app.run(host='0.0.0.0', port=5002) 

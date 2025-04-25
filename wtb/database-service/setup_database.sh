@@ -1,8 +1,6 @@
 #!/bin/bash
 # setup_database.sh - Скрипт для инициализации базы данных для системы управления удаленными серверами WireGuard
-# запустить инициализацию базы в ручную docker compose exec database-service ./setup_database.sh
-# проверка создания базы docker compose exec db psql -U postgres -d wireguard -c "\dt"
-# Инициализация базы данных v2: docker compose exec database-service bash -c "chmod +x setup_database.sh && ./setup_database.sh"
+
 set -e
 
 # Цвета для вывода
@@ -49,6 +47,87 @@ cat > "$SQL_FILE" << 'SQL_CONTENT'
 
 -- Создание базовых таблиц
 
+-- Таблица для хранения геолокаций (должна быть создана перед remote_servers)
+CREATE TABLE IF NOT EXISTS geolocations (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(10) NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT,
+    available BOOLEAN NOT NULL DEFAULT TRUE,
+    avg_rating FLOAT DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Таблица для хранения информации о пирах WireGuard (должна быть создана перед peer_server_mapping)
+CREATE TABLE IF NOT EXISTS peers (
+    id SERIAL PRIMARY KEY,
+    public_key VARCHAR(255) UNIQUE NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_handshake TIMESTAMP WITH TIME ZONE,
+    transfer_rx BIGINT DEFAULT 0,
+    transfer_tx BIGINT DEFAULT 0
+);
+
+-- Таблица для хранения информации о внешних серверах
+CREATE TABLE IF NOT EXISTS remote_servers (
+    id SERIAL PRIMARY KEY,
+    server_id VARCHAR(50) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    location VARCHAR(100) NOT NULL,
+    api_url VARCHAR(255) NOT NULL,
+    geolocation_id INTEGER REFERENCES geolocations(id),
+    auth_type VARCHAR(20) DEFAULT 'api_key',
+    api_key VARCHAR(255),
+    oauth_client_id VARCHAR(255),
+    oauth_client_secret VARCHAR(255),
+    oauth_token_url VARCHAR(255),
+    hmac_secret VARCHAR(255),
+    max_peers INTEGER DEFAULT 100,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE
+);
+
+-- Создание индексов для remote_servers
+CREATE INDEX IF NOT EXISTS idx_remote_servers_geolocation_id ON remote_servers(geolocation_id);
+CREATE INDEX IF NOT EXISTS idx_remote_servers_is_active ON remote_servers(is_active);
+
+-- Добавление поля server_id в таблицу peers для обратной совместимости
+ALTER TABLE peers ADD COLUMN IF NOT EXISTS server_id INTEGER REFERENCES remote_servers(id);
+
+-- Таблица для хранения метрик удаленных серверов
+CREATE TABLE IF NOT EXISTS remote_server_metrics (
+    id SERIAL PRIMARY KEY,
+    server_id INTEGER REFERENCES remote_servers(id) ON DELETE CASCADE,
+    peers_count INTEGER DEFAULT 0,
+    cpu_load FLOAT DEFAULT 0,
+    memory_usage FLOAT DEFAULT 0,
+    network_in BIGINT DEFAULT 0,
+    network_out BIGINT DEFAULT 0,
+    is_available BOOLEAN DEFAULT TRUE,
+    response_time FLOAT DEFAULT 0,
+    collected_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_remote_server_metrics_server_id ON remote_server_metrics(server_id);
+CREATE INDEX IF NOT EXISTS idx_remote_server_metrics_collected_at ON remote_server_metrics(collected_at);
+
+-- Таблица для маппинга пиров к удаленным серверам
+CREATE TABLE IF NOT EXISTS peer_server_mapping (
+    id SERIAL PRIMARY KEY,
+    peer_id INTEGER REFERENCES peers(id) ON DELETE CASCADE,
+    server_id INTEGER REFERENCES remote_servers(id) ON DELETE CASCADE,
+    public_key VARCHAR(255) UNIQUE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (peer_id, server_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_peer_server_mapping_peer_id ON peer_server_mapping(peer_id);
+CREATE INDEX IF NOT EXISTS idx_peer_server_mapping_server_id ON peer_server_mapping(server_id);
+CREATE INDEX IF NOT EXISTS idx_peer_server_mapping_public_key ON peer_server_mapping(public_key);
+
 -- Таблица для хранения конфигураций WireGuard
 CREATE TABLE IF NOT EXISTS configurations (
     id SERIAL PRIMARY KEY,
@@ -71,30 +150,6 @@ CREATE TABLE IF NOT EXISTS payments (
     transaction_id TEXT,
     status TEXT NOT NULL,
     days_extended INTEGER NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- Таблица для хранения информации о пирах WireGuard
-CREATE TABLE IF NOT EXISTS peers (
-    id SERIAL PRIMARY KEY,
-    public_key VARCHAR(255) UNIQUE NOT NULL,
-    user_id INTEGER NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_handshake TIMESTAMP WITH TIME ZONE,
-    transfer_rx BIGINT DEFAULT 0,
-    transfer_tx BIGINT DEFAULT 0
-);
-
--- Создание таблиц для геолокаций
-
--- Таблица для хранения информации о геолокациях
-CREATE TABLE IF NOT EXISTS geolocations (
-    id SERIAL PRIMARY KEY,
-    code VARCHAR(10) NOT NULL UNIQUE,
-    name TEXT NOT NULL,
-    description TEXT,
-    available BOOLEAN NOT NULL DEFAULT TRUE,
-    avg_rating FLOAT DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -205,67 +260,6 @@ CREATE TABLE IF NOT EXISTS user_configurations (
     config_text TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
-
--- Создание таблиц для работы с удаленными серверами
-
--- Таблица для хранения информации о внешних серверах
-CREATE TABLE IF NOT EXISTS remote_servers (
-    id SERIAL PRIMARY KEY,
-    server_id VARCHAR(50) UNIQUE NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    location VARCHAR(100) NOT NULL,
-    api_url VARCHAR(255) NOT NULL,
-    geolocation_id INTEGER REFERENCES geolocations(id),
-    auth_type VARCHAR(20) DEFAULT 'api_key',
-    api_key VARCHAR(255),
-    oauth_client_id VARCHAR(255),
-    oauth_client_secret VARCHAR(255),
-    oauth_token_url VARCHAR(255),
-    hmac_secret VARCHAR(255),
-    max_peers INTEGER DEFAULT 100,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    is_active BOOLEAN DEFAULT TRUE
-);
-
--- Создание индексов
-CREATE INDEX IF NOT EXISTS idx_remote_servers_geolocation_id ON remote_servers(geolocation_id);
-CREATE INDEX IF NOT EXISTS idx_remote_servers_is_active ON remote_servers(is_active);
-
--- Таблица для хранения метрик удаленных серверов
-CREATE TABLE remote_server_metrics (
-    id SERIAL PRIMARY KEY,
-    server_id INTEGER REFERENCES remote_servers(id) ON DELETE CASCADE,
-    peers_count INTEGER DEFAULT 0,
-    cpu_load FLOAT DEFAULT 0,
-    memory_usage FLOAT DEFAULT 0,
-    network_in BIGINT DEFAULT 0,
-    network_out BIGINT DEFAULT 0,
-    is_available BOOLEAN DEFAULT TRUE,
-    response_time FLOAT DEFAULT 0,
-    collected_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_remote_server_metrics_server_id ON remote_server_metrics(server_id);
-CREATE INDEX IF NOT EXISTS idx_remote_server_metrics_collected_at ON remote_server_metrics(collected_at);
-
--- Таблица для маппинга пиров к удаленным серверам
-CREATE TABLE IF NOT EXISTS peer_server_mapping (
-    id SERIAL PRIMARY KEY,
-    peer_id INTEGER REFERENCES peers(id) ON DELETE CASCADE,
-    server_id INTEGER REFERENCES remote_servers(id) ON DELETE CASCADE,
-    public_key VARCHAR(255) UNIQUE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (peer_id, server_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_peer_server_mapping_peer_id ON peer_server_mapping(peer_id);
-CREATE INDEX IF NOT EXISTS idx_peer_server_mapping_server_id ON peer_server_mapping(server_id);
-CREATE INDEX IF NOT EXISTS idx_peer_server_mapping_public_key ON peer_server_mapping(public_key);
-
--- Добавление поля server_id в таблицу peers для обратной совместимости
-ALTER TABLE peers ADD COLUMN IF NOT EXISTS server_id INTEGER REFERENCES remote_servers(id);
 
 -- Создание функции для обновления timestamps
 CREATE OR REPLACE FUNCTION update_timestamp()

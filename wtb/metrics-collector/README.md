@@ -59,3 +59,9 @@ docker-compose up -d
 ```bash
 docker-compose logs -f metrics-collector
 ```
+
+Перезапуск скрипта миграции
+
+```bash
+docker compose exec database-service bash -c "chmod +x setup_database.sh && ./setup_database.sh"
+```

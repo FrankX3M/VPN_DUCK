@@ -14,6 +14,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - vpn_network
 
   # Сервис базы данных
   database-service:
@@ -27,7 +29,8 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=wireguard
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     ports:
       - "5002:5002"
     healthcheck:
@@ -36,6 +39,12 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    command: >
+      bash -c "chmod +x setup_database.sh &&
+              ./setup_database.sh &&
+              python db_manager.py"
+    networks:
+      - vpn_network
 
   # Прокси-сервер для WireGuard
   wireguard-proxy:
@@ -52,7 +61,8 @@ services:
       - HTTP_TIMEOUT=10
       - HTTP_MAX_RETRIES=3
     depends_on:
-      - database-service
+      database-service:
+        condition: service_healthy
     ports:
       - "5001:5001"
     healthcheck:
@@ -61,6 +71,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks:
+      - vpn_network
 
   # Административная панель
   admin-panel:
@@ -72,10 +84,14 @@ services:
       - DATABASE_SERVICE_URL=http://database-service:5002
       - WIREGUARD_PROXY_URL=http://wireguard-proxy:5001
     depends_on:
-      - database-service
-      - wireguard-proxy
+      database-service:
+        condition: service_healthy
+      wireguard-proxy:
+        condition: service_healthy
     ports:
       - "5000:5000"
+    networks:
+      - vpn_network
 
   # Telegram бот
   telegram-service:
@@ -89,10 +105,14 @@ services:
       - TELEGRAM_API_TOKEN=${TELEGRAM_API_TOKEN}
       - PAYMENT_TOKEN=${PAYMENT_TOKEN}
     depends_on:
-      - database-service
-      - wireguard-proxy
+      database-service:
+        condition: service_healthy
+      wireguard-proxy:
+        condition: service_healthy
     env_file:
       - .env
+    networks:
+      - vpn_network
 
   # Сервис сбора метрик
   metrics-collector:
@@ -105,8 +125,12 @@ services:
       - WIREGUARD_PROXY_URL=http://wireguard-proxy:5001
       - COLLECTION_INTERVAL=120
     depends_on:
-      - database-service
-      - wireguard-proxy
+      database-service:
+        condition: service_healthy
+      wireguard-proxy:
+        condition: service_healthy
+    networks:
+      - vpn_network
 
   # Сервис миграции пользователей
   migration-service:
@@ -117,9 +141,18 @@ services:
     environment:
       - DATABASE_SERVICE_URL=http://database-service:5002
       - WIREGUARD_PROXY_URL=http://wireguard-proxy:5001
+      - STARTUP_DELAY=60
     depends_on:
-      - database-service
-      - wireguard-proxy
+      database-service:
+        condition: service_healthy
+      wireguard-proxy:
+        condition: service_healthy
+    networks:
+      - vpn_network
+
+networks:
+  vpn_network:
+    driver: bridge
 
 volumes:
   postgres_data:

@@ -19,8 +19,11 @@ print_step "Остановка и удаление существующих ко
 # docker compose down --remove-orphans
 
 # жеское удаление с томами
-# docker compose down -v
+docker compose down -v --remove-orphans
 
+docker compose build --no-cache
+
+docker compose up -d
 
 chmod +x setup.sh
 ./setup.sh
@@ -28,6 +31,9 @@ chmod +x setup.sh
 # Небольшая пауза перед получением логов
 print_step "Ожидание 5 секунд перед получением логов..."
 sleep 5
+
+
+docker compose exec database-service bash -c "chmod +x setup_database.sh && ./setup_database.sh"
 
 # Получение логов
 print_step "Вывод логов Docker Compose"
@@ -43,3 +49,4 @@ docker system prune -a -f
 # Очистка томов
 print_step "Очистка неиспользуемых томов Docker"
 docker system prune -a --volumes -f
+

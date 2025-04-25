@@ -13,6 +13,10 @@ until PGPASSWORD=$POSTGRES_PASSWORD psql -h "$host" -U "$POSTGRES_USER" -d "$POS
 done
 
 >&2 echo "Postgres is up - executing command"
+
+chmod +x setup_database.sh
+./setup_database.sh
+
 exec $cmd
 EOL
 
