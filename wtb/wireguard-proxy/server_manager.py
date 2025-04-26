@@ -274,85 +274,85 @@ class ServerManager:
             return metrics
     
     def add_server(self, server_data):
-    """
-    Добавление нового сервера
-    
-    Args:
-        server_data (dict): Информация о сервере
+        """
+        Добавление нового сервера
         
-    Returns:
-        dict: Результат операции
-    """
-    try:
-        # Добавляем проверку тестового режима
-        if server_data.get('test_mode'):
-            logger.info("Adding server in test mode")
-            # Генерируем уникальный ID для тестового сервера
-            import uuid
-            server_id = f"test-{str(uuid.uuid4())[:8]}"
+        Args:
+            server_data (dict): Информация о сервере
             
-            # Создаем запись о сервере
-            server_info = {
-                "id": server_id,
-                "api_url": server_data.get('api_url'),
-                "location": server_data.get('location', 'Test Location'),
-                "name": server_data.get('name', 'Test Server'),
-                "geolocation_id": server_data.get('geolocation_id', 1),
-                "auth_type": server_data.get('auth_type', 'api_key'),
-                "api_key": server_data.get('api_key', 'test-key')
-            }
+        Returns:
+            dict: Результат операции
+        """
+        try:
+            # Добавляем проверку тестового режима
+            if server_data.get('test_mode'):
+                logger.info("Adding server in test mode")
+                # Генерируем уникальный ID для тестового сервера
+                import uuid
+                server_id = f"test-{str(uuid.uuid4())[:8]}"
+                
+                # Создаем запись о сервере
+                server_info = {
+                    "id": server_id,
+                    "api_url": server_data.get('api_url'),
+                    "location": server_data.get('location', 'Test Location'),
+                    "name": server_data.get('name', 'Test Server'),
+                    "geolocation_id": server_data.get('geolocation_id', 1),
+                    "auth_type": server_data.get('auth_type', 'api_key'),
+                    "api_key": server_data.get('api_key', 'test-key')
+                }
+                
+                # Добавляем сервер в локальный список
+                with self.lock:
+                    self.servers.append(server_info)
+                    # Устанавливаем статус "online"
+                    self.server_status[server_id] = "online"
+                    # Инициализируем метрики с нулевой нагрузкой
+                    self.server_load[server_id] = {
+                        "peers_count": 0,
+                        "load": 0,
+                        "response_time": 0.1
+                    }
+                
+                logger.info(f"Test server added successfully with ID: {server_id}")
+                return {
+                    "success": True,
+                    "message": "Test server added successfully",
+                    "server_id": server_id
+                }
+                
+            # Оригинальный код для реальных серверов
+            # Проверка обязательных полей
+            required_fields = ['api_url', 'location', 'geolocation_id']
+            for field in required_fields:
+                if field not in server_data:
+                    return {"error": f"Missing required field: {field}"}
             
-            # Добавляем сервер в локальный список
-            with self.lock:
-                self.servers.append(server_info)
-                # Устанавливаем статус "online"
-                self.server_status[server_id] = "online"
-                # Инициализируем метрики с нулевой нагрузкой
-                self.server_load[server_id] = {
-                    "peers_count": 0,
-                    "load": 0,
-                    "response_time": 0.1
+            # Добавление сервера в базу данных
+            response = requests.post(
+                f"{self.database_service_url}/api/servers/add", 
+                json=server_data
+            )
+            
+            if response.status_code != 200:
+                return {
+                    "success": False,
+                    "error": f"Database error: {response.status_code}",
+                    "details": response.text
                 }
             
-            logger.info(f"Test server added successfully with ID: {server_id}")
+            # Обновление локального кэша серверов
+            self.update_servers_info()
+            
             return {
                 "success": True,
-                "message": "Test server added successfully",
-                "server_id": server_id
+                "message": "Server added successfully",
+                "server_id": response.json().get('server_id')
             }
-            
-        # Оригинальный код для реальных серверов
-        # Проверка обязательных полей
-        required_fields = ['api_url', 'location', 'geolocation_id']
-        for field in required_fields:
-            if field not in server_data:
-                return {"error": f"Missing required field: {field}"}
-        
-        # Добавление сервера в базу данных
-        response = requests.post(
-            f"{self.database_service_url}/api/servers/add", 
-            json=server_data
-        )
-        
-        if response.status_code != 200:
-            return {
-                "success": False,
-                "error": f"Database error: {response.status_code}",
-                "details": response.text
-            }
-        
-        # Обновление локального кэша серверов
-        self.update_servers_info()
-        
-        return {
-            "success": True,
-            "message": "Server added successfully",
-            "server_id": response.json().get('server_id')
-        }
-            
-    except Exception as e:
-        logger.exception(f"Error adding server: {e}")
-        return {"success": False, "error": str(e)}
+                
+        except Exception as e:
+            logger.exception(f"Error adding server: {e}")
+            return {"success": False, "error": str(e)}
             
     def remove_server(self, server_id):
         """

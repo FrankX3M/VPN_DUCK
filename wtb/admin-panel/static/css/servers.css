@@ -1,0 +1,86 @@
+/* Стили для страниц серверов */
+
+/* Карточки серверов */
+.server-card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    border: 1px solid rgba(0, 0, 0, 0.125);
+    height: 100%;
+}
+
+.server-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Индикатор статуса */
+.status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+
+.status-active {
+    background-color: #28a745;
+}
+
+.status-inactive {
+    background-color: #dc3545;
+}
+
+.status-degraded {
+    background-color: #ffc107;
+}
+
+/* Таблица серверов */
+.servers-table th {
+    white-space: nowrap;
+}
+
+.servers-table td {
+    vertical-align: middle;
+}
+
+/* Метрики сервера */
+.server-metrics {
+    height: 60px;
+}
+
+/* Карточки статистики */
+.stats-card {
+    border-radius: 0.5rem;
+    overflow: hidden;
+    transition: transform 0.3s ease;
+}
+
+.stats-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+}
+
+/* Фильтры */
+.filters-container {
+    background-color: #f8f9fa;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+/* Отладочная информация */
+.debug-info {
+    font-family: monospace;
+    font-size: 0.85rem;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    padding: 0.5rem;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+/* Подсказки */
+.tooltip-inner {
+    max-width: 300px;
+    text-align: left;
+}
