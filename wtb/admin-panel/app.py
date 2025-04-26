@@ -129,7 +129,8 @@ def dashboard():
 @login_required
 def servers():
     """Страница управления серверами."""
-    return render_template('servers.html')
+    # return render_template('servers.html')
+    return render_template('servers/index.html')
 
 @app.route('/api/servers', methods=['GET'])
 @login_required

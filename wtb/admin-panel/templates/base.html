@@ -151,6 +151,8 @@
             });
         }, 5000);
     </script>
-    {% block scripts %}{% endblock %}
+    {% block scripts %}
+    <script src="{{ url_for('static', filename='js/servers/index.js') }}"></script>
+    {% endblock %}
 </body>
 </html>
