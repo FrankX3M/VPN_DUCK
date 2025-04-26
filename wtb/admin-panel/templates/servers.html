@@ -197,64 +197,122 @@
     </div>
 </div>
 
-<!-- Add Server Modal -->
-<div class="modal fade" id="addServerModal" tabindex="-1" role="dialog" aria-labelledby="addServerModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg" role="document">
+<!-- Модифицированная форма добавления сервера с полем для внутреннего IP -->
+<div class="modal fade" id="addServerModal" tabindex="-1" aria-labelledby="addServerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="addServerModalLabel">Add New Server</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <h5 class="modal-title" id="addServerModalLabel">Добавление нового сервера</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="addServerForm" action="/servers/add" method="post">
-                <div class="modal-body">
-                    <div class="form-group row">
-                        <div class="col-sm-6 mb-3">
-                            <label for="name">Server Name</label>
-                            <input type="text" class="form-control" id="name" name="name" required>
+            <div class="modal-body">
+                <form id="addServerForm">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="server_name" class="form-label">Имя сервера</label>
+                            <input type="text" class="form-control" id="server_name" name="server_name" required>
+                            <div class="form-text">Уникальное имя для идентификации сервера</div>
                         </div>
-                        <div class="col-sm-6 mb-3">
-                            <label for="location">Location</label>
+                        <div class="col-md-6">
+                            <label for="location" class="form-label">Код локации</label>
                             <input type="text" class="form-control" id="location" name="location" required>
+                            <div class="form-text">Код страны (например, ru, us, de)</div>
                         </div>
                     </div>
-                    <div class="form-group row">
-                        <div class="col-sm-6 mb-3">
-                            <label for="api_url">API URL</label>
-                            <input type="url" class="form-control" id="api_url" name="api_url" required>
-                            <small class="form-text text-muted">Full URL to the WireGuard server API (e.g., http://example.com:5000)</small>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="endpoint" class="form-label">Внешний IP (Endpoint)</label>
+                            <input type="text" class="form-control" id="endpoint" name="endpoint" required>
+                            <div class="form-text">Внешний IP-адрес сервера (например, 5.180.137.197)</div>
                         </div>
-                        <div class="col-sm-6 mb-3">
-                            <label for="geolocation_id">Geolocation</label>
-                            <select class="form-control" id="geolocation_id" name="geolocation_id" required>
-                                <option value="">Select Geolocation</option>
-                                {% for geolocation in geolocations %}
-                                <option value="{{ geolocation.id }}">{{ geolocation.name }}</option>
-                                {% endfor %}
+                        <div class="col-md-6">
+                            <label for="port" class="form-label">Порт</label>
+                            <input type="number" class="form-control" id="port" name="port" value="51820" required>
+                            <div class="form-text">Порт для подключения WireGuard (обычно 51820)</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="address" class="form-label">Внутренний IP</label>
+                            <input type="text" class="form-control" id="address" name="address" placeholder="10.0.0.1/24" required>
+                            <div class="form-text">Внутренний IP-адрес сервера с маской сети</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="public_key" class="form-label">Публичный ключ</label>
+                            <input type="text" class="form-control" id="public_key" name="public_key" required>
+                            <div class="form-text">Публичный ключ WireGuard</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="api_url" class="form-label">API URL</label>
+                            <div class="input-group">
+                                <span class="input-group-text">http://</span>
+                                <input type="text" class="form-control" id="api_ip" placeholder="IP-адрес">
+                                <span class="input-group-text">/</span>
+                            </div>
+                            <input type="hidden" id="api_url" name="api_url">
+                            <div class="form-text">IP-адрес для доступа к API сервера</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="geolocation_id" class="form-label">Геолокация</label>
+                            <select class="form-select" id="geolocation_id" name="geolocation_id" required>
+                                <option value="">Выберите геолокацию</option>
+                                <!-- Опции будут добавлены через JavaScript -->
                             </select>
+                            <div class="form-text">Выберите геолокацию сервера</div>
                         </div>
                     </div>
-                    <div class="form-group row">
-                        <div class="col-sm-6 mb-3">
-                            <label for="auth_type">Authentication Type</label>
-                            <select class="form-control" id="auth_type" name="auth_type" onchange="toggleAuthFields()">
-                                <option value="api_key">API Key</option>
-                                <option value="oauth">OAuth</option>
-                                <option value="hmac">HMAC</option>
-                            </select>
-                        </div>
-                        <div class="col-sm-6 mb-3">
-                            <label for="max_peers">Maximum Peers</label>
-                            <input type="number" class="form-control" id="max_peers" name="max_peers" value="100" min="1">
+                    
+                    <!-- Измените блок API ключа в модальном окне addServerModal -->
+                    <div id="api_key_auth">
+                        <div class="form-group">
+                            <label for="api_key_display">API Ключ (генерируется автоматически)</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="api_key_display" readonly>
+                                <button class="btn btn-outline-secondary" type="button" onclick="copyApiKey()">
+                                    <i class="bi bi-clipboard"></i> Копировать
+                                </button>
+                            </div>
+                            <!-- Скрытое поле для хранения API ключа -->
+                            <input type="hidden" id="api_key" name="api_key">
                         </div>
                     </div>
+
+           <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="max_peers" class="form-label">Максимум пиров</label>
+                            <input type="number" class="form-control" id="max_peers" name="max_peers" value="100">
+                            <div class="form-text">Максимальное количество подключений</div>
+                        </div>
+                        <div class="col-md-6 d-flex align-items-end">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="active" name="active" checked>
+                                <label class="form-check-label" for="active">
+                                    Активен
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="addServerBtn">Добавить сервер</button>
+            </div>
+        </div>
+    </div>
+</div>
                     
                     <!-- API Key Authentication -->
                     <div id="api_key_auth">
                         <div class="form-group">
                             <label for="api_key">API Key</label>
-                            <input type="password" class="form-control" id="api_key" name="api_key">
+                            <input type="hidden" id="api_key_hidden" name="api_key" value="A3cvHGCJMBQ-8fCec7pr2rQw6n9g8">
+                            <input type="password" class="form-control" id="api_key_input" name="api_key_display">
                         </div>
                     </div>
                     
@@ -354,131 +412,347 @@
 
 {% block scripts %}
 <script>
-    // $(document).ready(function() {
-    //     // Initialize DataTable
-    //     $('#serversTable').DataTable();
-        
-    //     // Обработчик открытия модального окна редактирования
-    //     $('#addServerModal').on('show.bs.modal', function (event) {
-    //         console.log('Add Server Modal opened');
-    //         // Можно добавить дополнительную логику инициализации, если нужно
-    //     });
-
-    //     // Функция для переключения видимости полей аутентификации
-    //     window.toggleAuthFields = function() {
-    //         var authType = document.getElementById('auth_type').value;
-        
-    //         document.getElementById('api_key_auth').style.display = 'none';
-    //         document.getElementById('oauth_auth').style.display = 'none';
-    //         document.getElementById('hmac_auth').style.display = 'none';
-            
-    //         if (authType === 'api_key') {
-    //             document.getElementById('api_key_auth').style.display = 'block';
-    //         } else if (authType === 'oauth') {
-    //             document.getElementById('oauth_auth').style.display = 'block';
-    //         } else if (authType === 'hmac') {
-    //             document.getElementById('hmac_auth').style.display = 'block';
-    //         }
-    //     };
-        
-    //     // Инициализация видимости полей аутентификации
-    //     toggleAuthFields();
-    // });
-
-
-
-
-
-    // $(document).ready(function() {
-    //     // Initialize DataTable
-    //     $('#serversTable').DataTable();
-        
-    //     // Обработчик открытия модального окна редактирования
-    //     $('#editServerModal').on('show.bs.modal', function (event) {
-    //         var button = $(event.relatedTarget);
-    //         var serverId = button.data('server-id');
-    //         var modal = $(this);
-            
-    //         // Загрузка данных сервера через AJAX
-    //         $.ajax({
-    //             url: '/servers/get/' + serverId,
-    //             type: 'GET',
-    //             success: function(data) {
-    //                 // Заполнение формы данными
-    //                 modal.find('#edit_server_id').val(data.server.id);
-    //                 // Заполнение остальных полей...
-    //             }
-    //         });
-    //     });
-        
-        // Обработчик открытия модального окна удаления
-//         $('#deleteServerModal').on('show.bs.modal', function (event) {
-//             var button = $(event.relatedTarget);
-//             var serverId = button.data('server-id');
-//             var serverName = button.data('server-name');
-//             var modal = $(this);
-            
-//             modal.find('#delete_server_id').val(serverId);
-//             modal.find('#delete_server_name').text(serverName);
-
-        
-//         // Функция для переключения видимости полей аутентификации
-//         window.toggleAuthFields = function() {
-//             var authType = $('#auth_type').val();
-            
-//             $('#api_key_auth, #oauth_auth, #hmac_auth').hide();
-            
-//             if (authType === 'api_key') {
-//                 $('#api_key_auth').show();
-//             } else if (authType === 'oauth') {
-//                 $('#oauth_auth').show();
-//             } else if (authType === 'hmac') {
-//                 $('#hmac_auth').show();
-//             }
-//         };
-        
-//         // Инициализация видимости полей аутентификации
-//         toggleAuthFields();
-//     });
-
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOMContentLoaded event fired');
-
-    // Проверка элементов
-    const addServerButton = document.querySelector('[data-bs-target="#addServerModal"]');
-    const addServerModal = document.getElementById('addServerModal');
-    const authTypeSelect = document.getElementById('auth_type');
-
-    console.log('Add Server Button:', addServerButton);
-    console.log('Add Server Modal:', addServerModal);
-    console.log('Auth Type Select:', authTypeSelect);
-
-    // Проверка событий Bootstrap
-    if (addServerModal) {
-        addServerModal.addEventListener('show.bs.modal', function (event) {
-            console.log('Modal show event triggered');
-        });
-        addServerModal.addEventListener('shown.bs.modal', function (event) {
-            console.log('Modal shown event triggered');
-        });
+// Функция для генерации случайного API ключа
+function generateApiKey(length = 32) {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    const charactersLength = characters.length;
+    for (let i = 0; i < length; i++) {
+        result += characters.charAt(Math.floor(Math.random() * charactersLength));
     }
+    return result;
+}
 
-    // Принудительная регистрация событий
-    if (addServerButton) {
-        addServerButton.addEventListener('click', function(e) {
-            console.log('Add Server Button clicked');
-            console.log('Event target:', e.target);
+// Функция для обработки открытия модального окна добавления сервера
+function initAddServerModal() {
+    // Ищем модальное окно по селектору
+    const addServerModal = document.getElementById('addServerModal');
+    
+    // Если модальное окно найдено
+    if (addServerModal) {
+        // Добавляем обработчик события показа модального окна
+        addServerModal.addEventListener('show.bs.modal', function() {
+            console.log('Modal show event triggered');
+            
+            // Генерируем API ключ
+            const apiKey = generateApiKey();
+            
+            // Находим поле для API ключа
+            const apiKeyInput = document.querySelector('input[name="api_key"]');
+            const apiKeyDisplay = document.getElementById('api_key_display');
+            
+            if (apiKeyInput) {
+                // Устанавливаем значение ключа в поле input
+                apiKeyInput.value = apiKey;
+                
+                // Если есть элемент для отображения ключа, показываем его там
+                if (apiKeyDisplay) {
+                    apiKeyDisplay.textContent = apiKey;
+                }
+                
+                // Обновляем видимое поле, если оно существует
+                const visibleKeyField = document.querySelector('.api-key-display');
+                if (visibleKeyField) {
+                    visibleKeyField.textContent = apiKey;
+                }
+            }
+        });
+    } else {
+        console.error('Cannot find add server modal');
+    }
+}
+
+// Вызываем инициализацию при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM fully loaded');
+    initAddServerModal();
+    
+    // Также можно добавить обработчик события отправки формы,
+    // чтобы проверить, что API ключ установлен перед отправкой
+    const addServerForm = document.getElementById('addServerForm');
+    if (addServerForm) {
+        addServerForm.addEventListener('submit', function(event) {
+            const apiKeyInput = document.querySelector('input[name="api_key"]');
+            if (!apiKeyInput || !apiKeyInput.value) {
+                // Если API ключ не установлен, генерируем его
+                apiKeyInput.value = generateApiKey();
+            }
         });
     }
 });
+function copyApiKey() {
+    const apiKeyDisplay = document.getElementById('api_key_display');
+    if (apiKeyDisplay) {
+        navigator.clipboard.writeText(apiKeyDisplay.value)
+            .then(() => {
+                // Показать уведомление о успешном копировании
+                alert('API ключ скопирован в буфер обмена');
+            })
+            .catch(err => {
+                console.error('Не удалось скопировать: ', err);
+            });
+    }
+}
+// Восстановление функциональности
+function copyAPIKey() {
+    const keyDisplay = document.getElementById('api_key_display');
+    keyDisplay.select();
+    document.execCommand('copy');
+    alert('API ключ скопирован в буфер обмена');
+}
 
-// Глобальный перехват событий
-document.addEventListener('click', function(e) {
-    if (e.target.matches('[data-bs-target="#addServerModal"]')) {
-        console.log('Clicked element details:', {
-            target: e.target,
-            attributes: Array.from(e.target.attributes).map(attr => attr.name)
+// Обновление отображаемого ключа при его генерации
+function updateAPIKeyDisplay() {
+    document.getElementById('api_key_display').value = document.getElementById('api_key').value;
+}
+(function() {
+    // 1. Восстановление списка геолокаций
+    fetch('/api/geolocations')
+        .then(r => r.json())
+        .then(data => {
+            console.log('Данные геолокаций:', data);
+            if (data.status === 'success') {
+                // Находим или создаем селектор геолокаций
+                let geoSelect = document.getElementById('geolocation_id');
+                if (!geoSelect) {
+                    console.log('Создаем новый элемент select для геолокаций');
+                    const geoFormGroup = document.querySelector('.form-group, .mb-3').cloneNode(true);
+                    const label = geoFormGroup.querySelector('label');
+                    label.textContent = 'Геолокация';
+                    label.setAttribute('for', 'geolocation_id');
+                    
+                    geoSelect = document.createElement('select');
+                    geoSelect.className = 'form-control form-select';
+                    geoSelect.id = 'geolocation_id';
+                    geoSelect.name = 'geolocation_id';
+                    geoSelect.required = true;
+                    
+                    const oldInput = geoFormGroup.querySelector('input, select');
+                    oldInput.parentNode.replaceChild(geoSelect, oldInput);
+                    
+                    // Добавляем новый элемент перед кнопкой "Добавить сервер"
+                    const footer = document.querySelector('.modal-footer');
+                    footer.parentNode.insertBefore(geoFormGroup, footer);
+                }
+                
+                // Добавляем опции
+                geoSelect.innerHTML = '<option value="">Выберите геолокацию</option>';
+                data.geolocations.forEach(geo => {
+                    const option = document.createElement('option');
+                    option.value = geo.id;
+                    option.textContent = geo.name;
+                    geoSelect.appendChild(option);
+                });
+                console.log('Геолокации восстановлены:', data.geolocations.length);
+            }
         });
+    
+    // 2. Восстановление API ключа
+    // Генерируем случайный ключ
+    const apiKey = 'key_' + Math.random().toString(36).substring(2, 15);
+    
+    // Находим поле API ключа или создаем новое
+    let apiKeyField = document.getElementById('api_key');
+    if (!apiKeyField) {
+        console.log('Создаем новое поле для API ключа');
+        const apiFormGroup = document.querySelector('.form-group, .mb-3').cloneNode(true);
+        const label = apiFormGroup.querySelector('label');
+        label.textContent = 'API Ключ';
+        label.setAttribute('for', 'api_key');
+        
+        apiKeyField = document.createElement('input');
+        apiKeyField.type = 'text';
+        apiKeyField.className = 'form-control';
+        apiKeyField.id = 'api_key';
+        apiKeyField.name = 'api_key';
+        apiKeyField.value = apiKey;
+        apiKeyField.readOnly = true;
+        
+        const oldInput = apiFormGroup.querySelector('input, select');
+        oldInput.parentNode.replaceChild(apiKeyField, oldInput);
+        
+        // Добавляем новый элемент перед кнопкой "Добавить сервер"
+        const footer = document.querySelector('.modal-footer');
+        footer.parentNode.insertBefore(apiFormGroup, footer);
+    } else {
+        apiKeyField.value = apiKey;
+    }
+    console.log('API ключ восстановлен:', apiKey);
+    
+    // 3. Настройка отправки формы
+    const addButton = document.getElementById('addServerBtn') || 
+                      document.querySelector('.modal-footer button.btn-primary');
+    
+    if (addButton) {
+        console.log('Настраиваем кнопку отправки формы');
+        addButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Собираем данные формы
+            const endpoint = document.getElementById('endpoint')?.value;
+            const port = document.getElementById('port')?.value;
+            const address = document.getElementById('address')?.value;
+            const publicKey = document.getElementById('public_key')?.value;
+            const geoId = document.getElementById('geolocation_id')?.value;
+            
+            // Проверяем заполненность обязательных полей
+            if (!endpoint || !port || !address || !publicKey || !geoId) {
+                alert('Пожалуйста, заполните все обязательные поля');
+                return;
+            }
+            
+            // Формируем данные для отправки
+            const formData = {
+                endpoint: endpoint,
+                port: parseInt(port),
+                address: address,
+                public_key: publicKey,
+                geolocation_id: parseInt(geoId),
+                api_key: apiKey,
+                api_url: `http://${endpoint}/`,
+                max_peers: parseInt(document.getElementById('max_peers')?.value || '100'),
+                active: document.getElementById('active')?.checked !== false
+            };
+            
+            console.log('Отправляем данные:', formData);
+            
+            // Отправляем запрос
+            fetch('/api/servers', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(formData)
+            })
+            .then(response => {
+                console.log('Статус ответа:', response.status);
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(`Ошибка сервера: ${response.status} ${text}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Ответ сервера:', data);
+                alert(data.status === 'success' ? 
+                      'Сервер успешно добавлен!' : 
+                      `Ошибка: ${data.message || 'Неизвестная ошибка'}`);
+                
+                if (data.status === 'success') {
+                    // Закрываем модальное окно
+                    try {
+                        const modalEl = document.getElementById('addServerModal');
+                        const modal = bootstrap.Modal.getInstance(modalEl);
+                        if (modal) modal.hide();
+                    } catch (e) {
+                        console.error('Ошибка при закрытии модального окна:', e);
+                    }
+                    
+                    // Перезагружаем страницу
+                    setTimeout(() => location.reload(), 1000);
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка отправки:', error);
+                alert('Ошибка при отправке: ' + error.message);
+            });
+        });
+    }
+})();
+// Добавьте этот скрипт в конец файла servers.html или включите его в блок scripts
+document.addEventListener('DOMContentLoaded', function() {
+    const addServerForm = document.getElementById('addServerForm');
+    if (addServerForm) {
+        addServerForm.addEventListener('submit', function(event) {
+            event.preventDefault(); // Предотвращаем стандартную отправку формы
+            
+            // Собираем данные формы
+            const formData = {
+                name: document.getElementById('name')?.value,
+                location: document.getElementById('location')?.value,
+                endpoint: document.getElementById('endpoint')?.value,
+                port: parseInt(document.getElementById('port')?.value),
+                geolocation_id: parseInt(document.getElementById('geolocation_id')?.value),
+                public_key: document.getElementById('public_key')?.value,
+                address: document.getElementById('address')?.value,
+                api_key: document.getElementById('api_key')?.value,
+                max_peers: parseInt(document.getElementById('max_peers')?.value || "100"),
+                is_active: document.getElementById('is_active')?.checked
+            };
+            
+            // Если API ключ не установлен, используем автоматически сгенерированный
+            if (!formData.api_key) {
+                formData.api_key = generateApiKey();
+                
+                // Обновляем значение в скрытом поле
+                if (document.getElementById('api_key')) {
+                    document.getElementById('api_key').value = formData.api_key;
+                }
+                
+                // Обновляем отображаемое значение
+                if (document.getElementById('api_key_display')) {
+                    document.getElementById('api_key_display').value = formData.api_key;
+                }
+            }
+            
+            // Отправляем данные на сервер через fetch API
+            fetch('/api/servers', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Закрываем модальное окно
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('addServerModal'));
+                    if (modal) modal.hide();
+                    
+                    // Показываем сообщение об успехе
+                    showAlert('Сервер успешно добавлен', 'success');
+                    
+                    // Обновляем список серверов
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    // Показываем сообщение об ошибке
+                    showAlert(`Ошибка: ${data.message}`, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Ошибка соединения с сервером', 'danger');
+            });
+        });
+    }
+    
+    // Функция для отображения сообщений
+    function showAlert(message, type) {
+        const alertsContainer = document.querySelector('.flash-messages');
+        if (!alertsContainer) {
+            console.error('Alerts container not found');
+            return;
+        }
+        
+        const alertHTML = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+        
+        alertsContainer.innerHTML += alertHTML;
+        
+        // Автоматически скрываем уведомление через 5 секунд
+        setTimeout(() => {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(alert => {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            });
+        }, 5000);
     }
 });
 </script>

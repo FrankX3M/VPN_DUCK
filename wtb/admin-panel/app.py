@@ -71,7 +71,8 @@ def get_service_url(service_name, default_port, env_var_name):
     
 # Динамическое определение URL сервисов
 DATABASE_SERVICE_URL = get_service_url("database-service", 5002, 'DATABASE_SERVICE_URL')
-WIREGUARD_SERVICE_URL = get_service_url("wireguard-service", 5001, 'WIREGUARD_SERVICE_URL')
+# WIREGUARD_SERVICE_URL = get_service_url("wireguard-service", 5001, 'WIREGUARD_SERVICE_URL')
+WIREGUARD_SERVICE_URL = get_service_url("wireguard-proxy", 5001, 'WIREGUARD_PROXY_URL')
 
 logger.info(f"Используем DATABASE_SERVICE_URL: {DATABASE_SERVICE_URL}")
 logger.info(f"Используем WIREGUARD_SERVICE_URL: {WIREGUARD_SERVICE_URL}")
@@ -147,6 +148,7 @@ def api_get_servers():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/servers', methods=['POST'])
+@app.route('/api/servers', methods=['POST'])
 @login_required
 def api_add_server():
     """API для добавления нового сервера."""
@@ -159,6 +161,12 @@ def api_add_server():
             if field not in data:
                 return jsonify({"status": "error", "message": f"Поле {field} обязательно"}), 400
         
+        # Если API ключ не указан, генерируем его автоматически
+        if 'api_key' not in data or not data['api_key']:
+            import secrets
+            data['api_key'] = secrets.token_hex(16)  # Генерация 32-символьного ключа
+            logger.info(f"Автоматически сгенерирован API ключ для сервера")
+        
         # Отправляем запрос на добавление сервера
         response = requests.post(
             f"{DATABASE_SERVICE_URL}/api/servers/register",
@@ -168,7 +176,11 @@ def api_add_server():
         
         if response.status_code in [200, 201]:
             result = response.json()
-            return jsonify({"status": "success", "server_id": result.get("server_id")}), 201
+            return jsonify({
+                "status": "success", 
+                "server_id": result.get("server_id"),
+                "api_key": data['api_key']  # Возвращаем API ключ в ответе
+            }), 201
         else:
             # Проверяем, есть ли информация об ошибке в ответе
             error_message = "Ошибка при регистрации сервера"
@@ -183,8 +195,7 @@ def api_add_server():
     except Exception as e:
         logger.error(f"Ошибка при добавлении сервера: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
-
-# @app.route('/api/servers/<int:server_id>', methods=['DELETE'])
+        
 @app.route('/api/servers/<int:server_id>/delete', methods=['POST'])
 @login_required
 def api_delete_server(server_id):

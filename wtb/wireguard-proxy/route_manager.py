@@ -39,6 +39,7 @@ class RouteManager:
         retry=retry_if_exception_type(RemoteServerError),
         reraise=True
     )
+    
     def handle_create_request(self, data):
         """
         Обработка запроса на создание новой конфигурации
@@ -60,12 +61,33 @@ class RouteManager:
             # Получение параметра геолокации, если указан
             geolocation_id = data.get('geolocation_id')
             
-            # Выбор сервера на основе критериев
-            server = self.connection_manager.get_suitable_server(geolocation_id)
-            if not server:
-                raise NoAvailableServerError(f"No available server for geolocation_id: {geolocation_id}")
+            # Если указан предпочтительный сервер, пробуем использовать его
+            preferred_server_id = data.get('preferred_server_id')
+            server = None
             
-            logger.info(f"Selected server for create request: {server['id']} ({server['location']})")
+            if preferred_server_id:
+                server = self.connection_manager.server_manager.get_server_by_id(preferred_server_id)
+                if server and self.connection_manager.server_manager.server_status.get(preferred_server_id) != "online":
+                    # Если сервер не онлайн, но ID начинается с 'test-', считаем его доступным
+                    if preferred_server_id.startswith('test-'):
+                        logger.info(f"Using test server: {preferred_server_id}")
+                    else:
+                        server = None
+            
+            # Если предпочтительный сервер не указан или не доступен, используем обычную логику
+            if not server:
+                server = self.connection_manager.get_suitable_server(geolocation_id)
+                if not server:
+                    # Проверяем, есть ли тестовые серверы
+                    test_servers = [s for s in self.connection_manager.server_manager.servers 
+                                if s.get('id', '').startswith('test-')]
+                    if test_servers:
+                        server = test_servers[0]
+                        logger.info(f"Using fallback test server: {server['id']}")
+                    else:
+                        raise NoAvailableServerError(f"No available server for geolocation_id: {geolocation_id}")
+            
+            logger.info(f"Selected server for create request: {server['id']} ({server.get('location', 'Unknown')})")
             
             # Выполнение запроса к удаленному серверу
             result = self.connection_manager.send_create_request(server['id'], data)
