@@ -151,47 +151,99 @@ def api_get_servers():
 @app.route('/api/servers', methods=['POST'])
 @app.route('/api/servers', methods=['POST'])
 @login_required
+# def api_add_server():
+#     """API для добавления нового сервера."""
+#     try:
+#         data = request.json
+        
+#         # Проверяем обязательные поля
+#         required_fields = ['geolocation_id', 'endpoint', 'port', 'public_key', 'address']
+#         for field in required_fields:
+#             if field not in data:
+#                 return jsonify({"status": "error", "message": f"Поле {field} обязательно"}), 400
+        
+#         # Если API ключ не указан, генерируем его автоматически
+#         if 'api_key' not in data or not data['api_key']:
+#             import secrets
+#             data['api_key'] = secrets.token_hex(16)  # Генерация 32-символьного ключа
+#             logger.info(f"Автоматически сгенерирован API ключ для сервера")
+        
+#         # Отправляем запрос на добавление сервера
+#         response = requests.post(
+#             f"{DATABASE_SERVICE_URL}/api/servers/add",
+#             json=data,
+#             timeout=15
+#         )
+        
+#         if response.status_code in [200, 201]:
+#             result = response.json()
+#             return jsonify({
+#                 "status": "success", 
+#                 "server_id": result.get("server_id"),
+#                 "api_key": data['api_key']  # Возвращаем API ключ в ответе
+#             }), 201
+#         else:
+#             # Проверяем, есть ли информация об ошибке в ответе
+#             error_message = "Ошибка при регистрации сервера"
+#             try:
+#                 error_data = response.json()
+#                 if "error" in error_data:
+#                     error_message = error_data.get("error")
+#             except:
+#                 pass
+            
+#             return jsonify({"status": "error", "message": error_message}), response.status_code
+#     except Exception as e:
+#         logger.error(f"Ошибка при добавлении сервера: {str(e)}")
+#         return jsonify({"status": "error", "message": str(e)}), 500
+
 def api_add_server():
     """API для добавления нового сервера."""
     try:
         data = request.json
+        logger.info(f"Получены данные для добавления сервера: {data}")
         
         # Проверяем обязательные поля
-        required_fields = ['geolocation_id', 'endpoint', 'port', 'public_key', 'address']
+        required_fields = ['endpoint', 'port', 'public_key', 'address', 'geolocation_id']
         for field in required_fields:
             if field not in data:
+                logger.error(f"Отсутствует обязательное поле: {field}")
                 return jsonify({"status": "error", "message": f"Поле {field} обязательно"}), 400
         
         # Если API ключ не указан, генерируем его автоматически
         if 'api_key' not in data or not data['api_key']:
             import secrets
-            data['api_key'] = secrets.token_hex(16)  # Генерация 32-символьного ключа
+            data['api_key'] = secrets.token_hex(16)
             logger.info(f"Автоматически сгенерирован API ключ для сервера")
+        
+        # Добавляем дополнительные необходимые поля для database-service
+        server_data = {
+            "name": data.get('name', f"Server {data['endpoint']}"),
+            "location": data.get('location', f"{data['endpoint']}:{data['port']}"),
+            "api_url": f"http://{data['endpoint']}:{data['port']}/api",
+            "geolocation_id": data['geolocation_id'],
+            "auth_type": data.get('auth_type', 'api_key'),
+            "api_key": data['api_key']
+        }
         
         # Отправляем запрос на добавление сервера
         response = requests.post(
-            f"{DATABASE_SERVICE_URL}/api/servers/register",
-            json=data,
+            f"{DATABASE_SERVICE_URL}/api/servers/add",
+            json=server_data,
             timeout=15
         )
         
         if response.status_code in [200, 201]:
             result = response.json()
+            logger.info(f"Сервер успешно добавлен: {result}")
             return jsonify({
                 "status": "success", 
                 "server_id": result.get("server_id"),
-                "api_key": data['api_key']  # Возвращаем API ключ в ответе
+                "api_key": server_data['api_key']
             }), 201
         else:
-            # Проверяем, есть ли информация об ошибке в ответе
-            error_message = "Ошибка при регистрации сервера"
-            try:
-                error_data = response.json()
-                if "error" in error_data:
-                    error_message = error_data.get("error")
-            except:
-                pass
-            
+            error_message = f"Ошибка при регистрации сервера: {response.status_code}"
+            logger.error(error_message)
             return jsonify({"status": "error", "message": error_message}), response.status_code
     except Exception as e:
         logger.error(f"Ошибка при добавлении сервера: {str(e)}")

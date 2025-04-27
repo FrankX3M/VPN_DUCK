@@ -1,355 +1,729 @@
 {% extends "base.html" %}
 
-{% block title %}Главная - VPN Duck{% endblock %}
+{% block title %}Управление серверами - VPN Duck{% endblock %}
+
+{% block head_extra %}
+<style>
+    .status-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    
+    .status-active {
+        background-color: #28a745;
+    }
+    
+    .status-inactive {
+        background-color: #dc3545;
+    }
+    
+    .status-degraded {
+        background-color: #ffc107;
+    }
+    
+    .server-card {
+        transition: transform 0.2s ease;
+    }
+    
+    .server-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+    
+    .server-metrics {
+        height: 60px;
+        overflow: hidden;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
     <div class="row align-items-center mb-4">
         <div class="col">
-            <h1>Панель управления</h1>
-            <p class="text-muted">Обзор VPN-инфраструктуры</p>
+            <h1>Управление серверами</h1>
+            <p class="text-muted">Добавление, мониторинг и управление VPN-серверами</p>
         </div>
         <div class="col-auto">
-            <button class="btn btn-primary" id="refreshDashboard">
-                <i class="bi bi-arrow-clockwise"></i> Обновить данные
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addServerModal">
+                <i class="bi bi-plus-circle"></i> Добавить сервер
+            </button>
+            <button class="btn btn-primary ms-2" id="refreshServers">
+                <i class="bi bi-arrow-clockwise"></i> Обновить
             </button>
         </div>
     </div>
 
+    <!-- Фильтры -->
     <div class="row mb-4">
-        <!-- Статистика серверов -->
-        <div class="col-md-3">
-            <div class="card bg-primary text-white card-stats">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="flex-shrink-0">
-                            <i class="bi bi-hdd-rack display-5"></i>
-                        </div>
-                        <div class="flex-grow-1 ms-3 text-end">
-                            <h2 class="mb-0" id="activeServers">-</h2>
-                            <p class="mb-0">Активные серверы</p>
-                        </div>
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Фильтры</h5>
+                    <div class="btn-group" id="statusFilter">
+                        <button type="button" class="btn btn-sm btn-outline-primary filter-btn active" data-filter="all">Все</button>
+                        <button type="button" class="btn btn-sm btn-outline-success filter-btn" data-filter="active">Активные</button>
+                        <button type="button" class="btn btn-sm btn-outline-warning filter-btn" data-filter="degraded">Проблемные</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger filter-btn" data-filter="inactive">Неактивные</button>
                     </div>
-                    <small class="mt-2 d-block text-white" id="totalServers">Всего: -</small>
                 </div>
-            </div>
-        </div>
-
-        <!-- Статистика геолокаций -->
-        <div class="col-md-3">
-            <div class="card bg-success text-white card-stats">
                 <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="flex-shrink-0">
-                            <i class="bi bi-globe display-5"></i>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label for="geoFilter" class="form-label">Геолокация</label>
+                            <select class="form-select" id="geoFilter">
+                                <option value="all" selected>Все геолокации</option>
+                                <!-- Опции будут добавлены через JavaScript -->
+                            </select>
                         </div>
-                        <div class="flex-grow-1 ms-3 text-end">
-                            <h2 class="mb-0" id="activeGeolocations">-</h2>
-                            <p class="mb-0">Доступные геолокации</p>
+                        <div class="col-md-4">
+                            <label for="loadFilter" class="form-label">Нагрузка</label>
+                            <select class="form-select" id="loadFilter">
+                                <option value="all" selected>Любая нагрузка</option>
+                                <option value="low">Низкая (&lt;30%)</option>
+                                <option value="medium">Средняя (30-70%)</option>
+                                <option value="high">Высокая (&gt;70%)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="sortBy" class="form-label">Сортировка</label>
+                            <select class="form-select" id="sortBy">
+                                <option value="id">По ID</option>
+                                <option value="geo">По геолокации</option>
+                                <option value="status">По статусу</option>
+                                <option value="load">По нагрузке</option>
+                                <option value="latency">По задержке</option>
+                            </select>
                         </div>
                     </div>
-                    <small class="mt-2 d-block text-white" id="totalGeolocations">Всего: -</small>
-                </div>
-            </div>
-        </div>
-
-        <!-- Статус WireGuard -->
-        <div class="col-md-3">
-            <div class="card bg-info text-white card-stats">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="flex-shrink-0">
-                            <i class="bi bi-shield-lock display-5"></i>
-                        </div>
-                        <div class="flex-grow-1 ms-3 text-end">
-                            <h2 class="mb-0 text-nowrap" id="wireguardStatus">-</h2>
-                            <p class="mb-0">Статус WireGuard</p>
-                        </div>
-                    </div>
-                    <small class="mt-2 d-block text-white" id="peersCount">Активные пиры: -</small>
-                </div>
-            </div>
-        </div>
-
-        <!-- Средние показатели -->
-        <div class="col-md-3">
-            <div class="card bg-warning text-white card-stats">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="flex-shrink-0">
-                            <i class="bi bi-graph-up display-5"></i>
-                        </div>
-                        <div class="flex-grow-1 ms-3 text-end">
-                            <h2 class="mb-0" id="avgLatency">-</h2>
-                            <p class="mb-0">Средняя задержка</p>
-                        </div>
-                    </div>
-                    <small class="mt-2 d-block text-white" id="avgPacketLoss">Потеря пакетов: -</small>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="row mb-4">
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="card-title mb-0">Статус серверов</h5>
-                </div>
-                <div class="card-body" style="min-height: 300px;">
-                    <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Геолокация</th>
-                                    <th>Endpoint</th>
-                                    <th>Статус</th>
-                                    <th>Задержка</th>
-                                    <th>Потери</th>
-                                </tr>
-                            </thead>
-                            <tbody id="serversTable">
-                                <tr>
-                                    <td colspan="6" class="text-center">Загрузка данных...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+    <!-- Список серверов -->
+    <div class="row" id="serversList">
+        <!-- Серверы будут добавлены через JavaScript -->
+        <div class="col-12 text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Загрузка...</span>
             </div>
+            <p class="mt-2">Загрузка серверов...</p>
         </div>
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="card-title mb-0">Действия</h5>
-                </div>
-                <div class="card-body">
-                    <div class="list-group">
-                        <a href="{{ url_for('servers') }}" class="list-group-item list-group-item-action">
-                            <div class="d-flex align-items-center">
-                                <i class="bi bi-plus-circle me-3 text-primary"></i>
-                                <div>
-                                    <h6 class="mb-0">Добавить новый сервер</h6>
-                                    <small class="text-muted">Регистрация нового сервера в системе</small>
-                                </div>
-                            </div>
-                        </a>
-                        <button id="migrateUsersBtn" class="list-group-item list-group-item-action">
-                            <div class="d-flex align-items-center">
-                                <i class="bi bi-arrows-move me-3 text-warning"></i>
-                                <div>
-                                    <h6 class="mb-0">Миграция пользователей</h6>
-                                    <small class="text-muted">Перенос с неактивных серверов</small>
-                                </div>
-                            </div>
-                        </button>
-                        <button id="analyzeMetricsBtn" class="list-group-item list-group-item-action">
-                            <div class="d-flex align-items-center">
-                                <i class="bi bi-bar-chart me-3 text-info"></i>
-                                <div>
-                                    <h6 class="mb-0">Анализ метрик</h6>
-                                    <small class="text-muted">Обновление рейтингов серверов</small>
-                                </div>
-                            </div>
-                        </button>
-                        <a href="{{ url_for('dashboard') }}" class="list-group-item list-group-item-action">
-                            <div class="d-flex align-items-center">
-                                <i class="bi bi-graph-up me-3 text-success"></i>
-                                <div>
-                                    <h6 class="mb-0">Детальный мониторинг</h6>
-                                    <small class="text-muted">Подробные метрики и графики</small>
-                                </div>
-                            </div>
-                        </a>
+    </div>
+</div>
+
+<!-- Модальное окно добавления сервера -->
+<div class="modal fade" id="addServerModal" tabindex="-1" aria-labelledby="addServerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addServerModalLabel">Добавление нового сервера</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addServerForm">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="endpoint" class="form-label">Внешний IP (Endpoint)</label>
+                            <input type="text" class="form-control" id="endpoint" name="endpoint" required>
+                            <div class="form-text">Внешний IP-адрес сервера (например, 5.180.137.197)</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="port" class="form-label">Порт</label>
+                            <input type="number" class="form-control" id="port" name="port" value="51820" required>
+                            <div class="form-text">Порт для подключения WireGuard (обычно 51820)</div>
+                        </div>
                     </div>
-                </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="address" class="form-label">Внутренний IP</label>
+                            <input type="text" class="form-control" id="address" name="address" placeholder="10.0.0.1/24" required>
+                            <div class="form-text">Внутренний IP-адрес сервера с маской сети</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="public_key" class="form-label">Публичный ключ</label>
+                            <input type="text" class="form-control" id="public_key" name="public_key" required>
+                            <div class="form-text">Публичный ключ WireGuard</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="geolocation_id" class="form-label">Геолокация</label>
+                            <select class="form-select" id="geolocation_id" name="geolocation_id" required>
+                                <option value="">Выберите геолокацию</option>
+                                <!-- Опции будут добавлены через JavaScript -->
+                            </select>
+                            <div class="form-text">Выберите геолокацию сервера</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="api_key_display" class="form-label">API Ключ (генерируется автоматически)</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="api_key_display" readonly>
+                                <button class="btn btn-outline-secondary" type="button" id="copyApiKeyBtn">
+                                    <i class="bi bi-clipboard"></i> Копировать
+                                </button>
+                            </div>
+                            <input type="hidden" id="api_key" name="api_key">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="addServerBtn">Добавить сервер</button>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Подключаем модальное окно подтверждения удаления -->
+{% include "components/delete_modal.html" %}
 {% endblock %}
 
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Загрузка данных при загрузке страницы
-    loadDashboardData();
+    // Переменные для хранения данных
+    let serversData = [];
+    let geolocationsData = [];
+    let deleteServerId = null;
     
-    // Обработчик кнопки обновления
-    document.getElementById('refreshDashboard').addEventListener('click', function() {
-        loadDashboardData();
-    });
+    // Инициализация страницы
+    initPage();
     
-    // Обработчик кнопки миграции пользователей
-    document.getElementById('migrateUsersBtn').addEventListener('click', function() {
-        this.disabled = true;
-        this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Выполняется...';
+    // Функция инициализации страницы
+    function initPage() {
+        // Загрузка данных
+        loadGeolocations();
+        loadServers();
         
-        fetch('/api/servers/migrate_users', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                showAlert(`Миграция выполнена успешно. Перемещено пользователей: ${data.migrated}`, 'success');
-                loadDashboardData();
-            } else {
-                showAlert(`Ошибка: ${data.message}`, 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showAlert('Ошибка соединения с сервером', 'danger');
-        })
-        .finally(() => {
-            this.disabled = false;
-            this.innerHTML = '<div class="d-flex align-items-center"><i class="bi bi-arrows-move me-3 text-warning"></i><div><h6 class="mb-0">Миграция пользователей</h6><small class="text-muted">Перенос с неактивных серверов</small></div></div>';
-        });
-    });
-    
-    // Обработчик кнопки анализа метрик
-    document.getElementById('analyzeMetricsBtn').addEventListener('click', function() {
-        this.disabled = true;
-        this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Выполняется...';
+        // Генерация API ключа для формы добавления сервера
+        generateApiKey();
         
-        fetch('/api/metrics/analyze', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                showAlert(`Анализ метрик выполнен успешно. Обновлено серверов: ${data.updated_servers}`, 'success');
-                loadDashboardData();
-            } else {
-                showAlert(`Ошибка: ${data.message}`, 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showAlert('Ошибка соединения с сервером', 'danger');
-        })
-        .finally(() => {
-            this.disabled = false;
-            this.innerHTML = '<div class="d-flex align-items-center"><i class="bi bi-bar-chart me-3 text-info"></i><div><h6 class="mb-0">Анализ метрик</h6><small class="text-muted">Обновление рейтингов серверов</small></div></div>';
-        });
-    });
+        // Обработчики событий
+        setupEventListeners();
+    }
     
-    // Функция загрузки сводных данных
-    function loadDashboardData() {
-        fetch('/api/dashboard/summary')
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                updateDashboardStats(data.summary);
-                loadServers();
-            } else {
-                showAlert(`Ошибка: ${data.message}`, 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showAlert('Ошибка соединения с сервером', 'danger');
+    // Функция настройки обработчиков событий
+    function setupEventListeners() {
+        // Кнопка обновления списка серверов
+        document.getElementById('refreshServers').addEventListener('click', function() {
+            loadServers();
+        });
+        
+        // Фильтры статуса
+        document.querySelectorAll('#statusFilter .filter-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                // Удаляем класс active со всех кнопок
+                document.querySelectorAll('#statusFilter .filter-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                
+                // Добавляем класс active на текущую кнопку
+                this.classList.add('active');
+                
+                // Фильтруем серверы
+                filterServers();
+            });
+        });
+        
+        // Фильтр геолокации
+        document.getElementById('geoFilter').addEventListener('change', function() {
+            filterServers();
+        });
+        
+        // Фильтр нагрузки
+        document.getElementById('loadFilter').addEventListener('change', function() {
+            filterServers();
+        });
+        
+        // Сортировка
+        document.getElementById('sortBy').addEventListener('change', function() {
+            sortServers();
+            renderServers();
+        });
+        
+        // Кнопка копирования API ключа
+        document.getElementById('copyApiKeyBtn').addEventListener('click', function() {
+            const apiKeyDisplay = document.getElementById('api_key_display');
+            navigator.clipboard.writeText(apiKeyDisplay.value)
+                .then(() => {
+                    showAlert('API ключ скопирован в буфер обмена', 'success');
+                })
+                .catch(err => {
+                    console.error('Не удалось скопировать: ', err);
+                    showAlert('Не удалось скопировать ключ', 'danger');
+                });
+        });
+        
+        // Кнопка добавления сервера
+        document.getElementById('addServerBtn').addEventListener('click', function() {
+            addServer();
+        });
+        
+        // Кнопка подтверждения удаления сервера
+        document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+            if (!deleteServerId) return;
+            
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Удаление...';
+            
+            deleteServer(deleteServerId, this);
         });
     }
     
-    // Функция обновления статистики на дашборде
-    function updateDashboardStats(summary) {
-        document.getElementById('activeServers').textContent = summary.active_servers;
-        document.getElementById('totalServers').textContent = `Всего: ${summary.total_servers}`;
+    // Функция генерации API ключа
+    function generateApiKey() {
+        const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let result = '';
+        const charactersLength = characters.length;
+        for (let i = 0; i < 32; i++) {
+            result += characters.charAt(Math.floor(Math.random() * charactersLength));
+        }
         
-        document.getElementById('activeGeolocations').textContent = summary.active_geolocations;
-        document.getElementById('totalGeolocations').textContent = `Всего: ${summary.total_geolocations}`;
-        
-        document.getElementById('wireguardStatus').textContent = summary.wireguard_status === 'running' ? 'Active' : 'Inactive';
-        document.getElementById('peersCount').textContent = `Активные пиры: ${summary.peers_count}`;
-        
-        document.getElementById('avgLatency').textContent = `${summary.avg_latency} мс`;
-        document.getElementById('avgPacketLoss').textContent = `Потеря пакетов: ${summary.avg_packet_loss}%`;
+        document.getElementById('api_key').value = result;
+        document.getElementById('api_key_display').value = result;
+    }
+    
+    // Функция загрузки списка геолокаций
+    function loadGeolocations() {
+        fetch('/api/geolocations')
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                geolocationsData = data.geolocations;
+                
+                // Заполняем селектор геолокаций для фильтра
+                const geoFilter = document.getElementById('geoFilter');
+                geoFilter.innerHTML = '<option value="all" selected>Все геолокации</option>';
+                
+                // Заполняем селектор геолокаций для формы добавления
+                const geoSelect = document.getElementById('geolocation_id');
+                geoSelect.innerHTML = '<option value="">Выберите геолокацию</option>';
+                
+                data.geolocations.forEach(geo => {
+                    // Добавляем опцию в фильтр
+                    const filterOption = document.createElement('option');
+                    filterOption.value = geo.id;
+                    filterOption.textContent = geo.name;
+                    geoFilter.appendChild(filterOption);
+                    
+                    // Добавляем опцию в форму
+                    const formOption = document.createElement('option');
+                    formOption.value = geo.id;
+                    formOption.textContent = geo.name;
+                    geoSelect.appendChild(formOption);
+                });
+            } else {
+                showAlert(`Ошибка: ${data.message}`, 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Ошибка соединения с сервером', 'danger');
+        });
     }
     
     // Функция загрузки списка серверов
     function loadServers() {
+        const container = document.getElementById('serversList');
+        container.innerHTML = `
+            <div class="col-12 text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Загрузка...</span>
+                </div>
+                <p class="mt-2">Загрузка серверов...</p>
+            </div>
+        `;
+        
         fetch('/api/servers')
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                updateServersTable(data.servers);
+                serversData = data.servers;
+                
+                // Сортируем серверы согласно текущему выбору
+                sortServers();
+                
+                // Отображаем серверы
+                renderServers();
             } else {
                 showAlert(`Ошибка: ${data.message}`, 'danger');
+                container.innerHTML = `
+                    <div class="col-12 text-center py-5">
+                        <p class="text-danger">Ошибка загрузки данных</p>
+                    </div>
+                `;
             }
         })
         .catch(error => {
             console.error('Error:', error);
             showAlert('Ошибка соединения с сервером', 'danger');
+            container.innerHTML = `
+                <div class="col-12 text-center py-5">
+                    <p class="text-danger">Ошибка соединения с сервером</p>
+                </div>
+            `;
         });
     }
     
-    // Функция обновления таблицы серверов
-    function updateServersTable(servers) {
-        const tableBody = document.getElementById('serversTable');
-        tableBody.innerHTML = '';
+    // Функция добавления нового сервера
+    function addServer() {
+        // Получаем данные из формы
+        const endpoint = document.getElementById('endpoint').value;
+        const port = document.getElementById('port').value;
+        const address = document.getElementById('address').value;
+        const publicKey = document.getElementById('public_key').value;
+        const geolocationId = document.getElementById('geolocation_id').value;
+        const apiKey = document.getElementById('api_key').value;
         
-        if (servers.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="6" class="text-center">Нет доступных серверов</td></tr>';
+        // Проверяем обязательные поля
+        if (!endpoint || !port || !address || !publicKey || !geolocationId) {
+            showAlert('Пожалуйста, заполните все обязательные поля', 'warning');
             return;
         }
         
-        servers.forEach(server => {
+        // Формируем данные для запроса
+        const data = {
+            endpoint: endpoint,
+            port: parseInt(port),
+            address: address,
+            public_key: publicKey,
+            geolocation_id: parseInt(geolocationId),
+            api_key: apiKey
+        };
+        
+        // Отключаем кнопку на время запроса
+        const addButton = document.getElementById('addServerBtn');
+        addButton.disabled = true;
+        addButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Добавление...';
+        
+        // Отправляем запрос на добавление сервера
+        fetch('/api/servers', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.status === 'success') {
+                // Сбрасываем форму
+                document.getElementById('addServerForm').reset();
+                
+                // Закрываем модальное окно
+                const modal = bootstrap.Modal.getInstance(document.getElementById('addServerModal'));
+                modal.hide();
+                
+                // Показываем сообщение об успехе
+                showAlert('Сервер успешно добавлен', 'success');
+                
+                // Обновляем список серверов
+                loadServers();
+                
+                // Генерируем новый API ключ для следующего сервера
+                generateApiKey();
+            } else {
+                showAlert(`Ошибка: ${result.message}`, 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Ошибка соединения с сервером', 'danger');
+        })
+        .finally(() => {
+            // Возвращаем кнопку в исходное состояние
+            addButton.disabled = false;
+            addButton.innerHTML = 'Добавить сервер';
+        });
+    }
+    
+    // Функция фильтрации серверов
+    function filterServers() {
+        renderServers();
+    }
+    
+    // Функция сортировки серверов
+    function sortServers() {
+        const sortBy = document.getElementById('sortBy').value;
+        
+        switch (sortBy) {
+            case 'id':
+                serversData.sort((a, b) => a.id - b.id);
+                break;
+            case 'geo':
+                serversData.sort((a, b) => {
+                    const geoA = a.geolocation_name || '';
+                    const geoB = b.geolocation_name || '';
+                    return geoA.localeCompare(geoB);
+                });
+                break;
+            case 'status':
+                serversData.sort((a, b) => {
+                    const order = { 'active': 0, 'degraded': 1, 'inactive': 2 };
+                    return order[a.status] - order[b.status];
+                });
+                break;
+            case 'load':
+                serversData.sort((a, b) => (a.load || 0) - (b.load || 0));
+                break;
+            case 'latency':
+                serversData.sort((a, b) => (a.avg_latency || 999) - (b.avg_latency || 999));
+                break;
+        }
+    }
+    
+    // Функция отображения серверов
+    function renderServers() {
+        const container = document.getElementById('serversList');
+        container.innerHTML = '';
+        
+        // Получаем текущие фильтры
+        const statusFilter = document.querySelector('#statusFilter .filter-btn.active').dataset.filter;
+        const geoFilter = document.getElementById('geoFilter').value;
+        const loadFilter = document.getElementById('loadFilter').value;
+        
+        // Фильтруем серверы
+        let filteredServers = serversData;
+        
+        // Фильтр по статусу
+        if (statusFilter !== 'all') {
+            filteredServers = filteredServers.filter(server => server.status === statusFilter);
+        }
+        
+        // Фильтр по геолокации
+        if (geoFilter !== 'all') {
+            filteredServers = filteredServers.filter(server => server.geolocation_id == geoFilter);
+        }
+        
+        // Фильтр по нагрузке
+        if (loadFilter !== 'all') {
+            switch (loadFilter) {
+                case 'low':
+                    filteredServers = filteredServers.filter(server => (server.load || 0) < 30);
+                    break;
+                case 'medium':
+                    filteredServers = filteredServers.filter(server => (server.load || 0) >= 30 && (server.load || 0) <= 70);
+                    break;
+                case 'high':
+                    filteredServers = filteredServers.filter(server => (server.load || 0) > 70);
+                    break;
+            }
+        }
+        
+        // Проверяем, есть ли серверы после фильтрации
+        if (filteredServers.length === 0) {
+            container.innerHTML = `
+                <div class="col-12 text-center py-5">
+                    <p>Нет серверов, соответствующих выбранным фильтрам</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Отображаем серверы
+        filteredServers.forEach(server => {
+            // Определяем классы и тексты в зависимости от статуса
             let statusClass = 'secondary';
-            if (server.status === 'active') statusClass = 'success';
-            if (server.status === 'inactive') statusClass = 'danger';
-            if (server.status === 'degraded') statusClass = 'warning';
+            let statusText = 'Неизвестно';
+            let loadClass = 'info';
             
-            const avgLatency = server.avg_latency || '-';
-            const avgPacketLoss = server.avg_packet_loss || '-';
+            if (server.status === 'active') {
+                statusClass = 'success';
+                statusText = 'Активен';
+            } else if (server.status === 'inactive') {
+                statusClass = 'danger';
+                statusText = 'Неактивен';
+            } else if (server.status === 'degraded') {
+                statusClass = 'warning';
+                statusText = 'Проблемы';
+            }
             
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${server.id}</td>
-                <td>${server.geolocation_name || '-'}</td>
-                <td>${server.endpoint}:${server.port}</td>
-                <td><span class="badge bg-${statusClass}">${server.status}</span></td>
-                <td>${avgLatency} ${avgLatency !== '-' ? 'мс' : ''}</td>
-                <td>${avgPacketLoss} ${avgPacketLoss !== '-' ? '%' : ''}</td>
+            // Определяем класс индикатора нагрузки
+            const load = server.load || 0;
+            if (load < 30) {
+                loadClass = 'success';
+            } else if (load <= 70) {
+                loadClass = 'warning';
+            } else {
+                loadClass = 'danger';
+            }
+            
+            // Создаем колонку для сервера
+            const col = document.createElement('div');
+            col.className = 'col-lg-4 col-md-6 mb-4';
+            
+            // Используем шаблон server_card.html с серверными переменными
+            col.innerHTML = `
+                <div class="card shadow-sm server-card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">
+                            <span class="status-dot status-${server.status}"></span>
+                            Сервер #${server.id}
+                        </h6>
+                        <span class="badge bg-${statusClass}">${statusText}</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">Геолокация:</span>
+                            <span>${server.geolocation_name || 'Неизвестно'}</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">Endpoint:</span>
+                            <span>${server.endpoint}:${server.port}</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">Пиры:</span>
+                            <span>${server.peers_count || 0} / ${server.max_peers || '∞'}</span>
+                        </div>
+                        <div class="mb-2">
+                            <span class="text-muted">Нагрузка:</span>
+                            <div class="progress mt-1">
+                                <div class="progress-bar bg-${loadClass}" 
+                                     role="progressbar" 
+                                     style="width: ${load}%" 
+                                     aria-valuenow="${load}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    ${load}%
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3 border-top pt-2">
+                            <small class="d-block mb-1"><strong>Внутренний IP:</strong> ${server.address}</small>
+                            <small class="d-block mb-1"><strong>Публичный ключ:</strong> <code>${server.public_key ? server.public_key.substring(0, 12) + '...' : 'Н/Д'}</code></small>
+                        </div>
+                        
+                        <div class="server-metrics mt-3">
+                            <div class="d-flex justify-content-between">
+                                <small class="text-muted">Задержка: ${server.avg_latency || '-'} мс</small>
+                                <small class="text-muted">Потери: ${server.avg_packet_loss || '-'}%</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-transparent">
+                        <div class="btn-group btn-group-sm w-100">
+                            <button class="btn btn-outline-info view-server-btn" data-server-id="${server.id}" title="Подробности">
+                                <i class="bi bi-info-circle me-1"></i> Детали
+                            </button>
+                            <button class="btn btn-outline-primary edit-server-btn" data-server-id="${server.id}" title="Редактировать">
+                                <i class="bi bi-pencil me-1"></i> Изменить
+                            </button>
+                            <button class="btn btn-outline-danger delete-server-btn" data-server-id="${server.id}" data-server-name="Сервер #${server.id}" title="Удалить">
+                                <i class="bi bi-trash me-1"></i> Удалить
+                            </button>
+                        </div>
+                    </div>
+                </div>
             `;
             
-            tableBody.appendChild(row);
+            container.appendChild(col);
         });
-    }
-    
-    // Функция для отображения уведомлений
-    function showAlert(message, type) {
-        const alertsContainer = document.querySelector('.flash-messages');
-        if (!alertsContainer) {
-            console.error('Alerts container not found');
-            return;
-        }
         
-        const alertHTML = `
-            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        `;
-        
-        alertsContainer.innerHTML += alertHTML;
-        
-        // Автоматически скрываем уведомление через 5 секунд
-        setTimeout(() => {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(alert => {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
+        // Добавляем обработчики для кнопок
+        document.querySelectorAll('.view-server-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const serverId = this.dataset.serverId;
+                window.location.href = `/servers/${serverId}`;
             });
-        }, 5000);
+        });
+        
+        document.querySelectorAll('.edit-server-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const serverId = this.dataset.serverId;
+                // Здесь будет логика редактирования сервера
+                alert('Редактирование сервера ' + serverId + ' (функциональность в разработке)');
+});
+});
+
+document.querySelectorAll('.delete-server-btn').forEach(button => {
+    button.addEventListener('click', function() {
+        const serverId = this.dataset.serverId;
+        const serverName = this.dataset.serverName;
+        openDeleteModal(serverId, serverName);
+    });
+});
+}
+
+// Функция открытия модального окна подтверждения удаления
+function openDeleteModal(serverId, serverName) {
+deleteServerId = serverId;
+document.getElementById('deleteServerName').textContent = serverName;
+
+// Открываем модальное окно
+const deleteModal = new bootstrap.Modal(document.getElementById('deleteServerModal'));
+deleteModal.show();
+}
+
+// Функция удаления сервера
+function deleteServer(serverId, button) {
+fetch(`/api/servers/${serverId}/delete`, {
+    method: 'POST'
+})
+.then(response => response.json())
+.then(result => {
+    if (result.status === 'success') {
+        // Закрываем модальное окно
+        const modal = bootstrap.Modal.getInstance(document.getElementById('deleteServerModal'));
+        modal.hide();
+        
+        // Показываем сообщение об успехе
+        showAlert('Сервер успешно удален', 'success');
+        
+        // Обновляем список серверов
+        loadServers();
+    } else {
+        showAlert(`Ошибка: ${result.message}`, 'danger');
     }
+})
+.catch(error => {
+    console.error('Error:', error);
+    showAlert('Ошибка соединения с сервером', 'danger');
+})
+.finally(() => {
+    // Возвращаем кнопку в исходное состояние
+    button.disabled = false;
+    button.innerHTML = 'Удалить сервер';
+    
+    // Сбрасываем ID удаляемого сервера
+    deleteServerId = null;
+});
+}
+
+// Функция для отображения уведомлений
+function showAlert(message, type) {
+const alertsContainer = document.querySelector('.flash-messages');
+if (!alertsContainer) {
+    console.error('Alerts container not found');
+    return;
+}
+
+const alertHTML = `
+    <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+`;
+
+alertsContainer.innerHTML += alertHTML;
+
+// Автоматически скрываем уведомление через 5 секунд
+setTimeout(() => {
+    const alerts = document.querySelectorAll('.alert');
+    alerts.forEach(alert => {
+        const bsAlert = new bootstrap.Alert(alert);
+        bsAlert.close();
+    });
+}, 5000);
+}
 });
 </script>
 {% endblock %}

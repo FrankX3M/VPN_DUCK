@@ -66,16 +66,57 @@ class ServerManager:
             except Exception as e:
                 logger.exception(f"Error updating servers info: {e}")
     
+    # def _check_servers_availability(self):
+    #     """Проверка доступности каждого сервера"""
+    #     for server in self.servers:
+    #         server_id = server['id']
+    #         server_url = server['api_url']
+            
+    #         try:
+    #             # Проверка доступности сервера
+    #             start_time = time.time()
+    #             # Используем прямой URL из базы данных вместо хардкода
+    #             response = requests.get(f"{server_url}/status", timeout=5)
+    #             response_time = time.time() - start_time
+                
+    #             if response.status_code == 200:
+    #                 self.server_status[server_id] = "online"
+                    
+    #                 # Обновление метрик
+    #                 server_data = response.json()
+    #                 peers_count = server_data.get('peers_count', 0)
+    #                 self.server_load[server_id] = {
+    #                     "peers_count": peers_count,
+    #                     "load": server_data.get('load', 0),
+    #                     "response_time": response_time
+    #                 }
+                    
+    #                 logger.info(f"Server {server_id} ({server_url}) is online with {peers_count} peers")
+    #             else:
+    #                 self.server_status[server_id] = "offline"
+    #                 logger.warning(f"Server {server_id} returned status code {response.status_code}")
+            
+    #         except requests.RequestException as e:
+    #             self.server_status[server_id] = "offline"
+    #             logger.warning(f"Server {server_id} is not available: {e}")
     def _check_servers_availability(self):
         """Проверка доступности каждого сервера"""
         for server in self.servers:
-            server_id = server['id']
-            server_url = server['api_url']
+            server_id = str(server.get('id'))  # Преобразуем ID в строку
+            server_url = server.get('api_url')
+            
+            # Пропускаем проверку для тестовых серверов
+            if server_id.startswith('test-'):
+                self.server_status[server_id] = "online"
+                continue
+            
+            if not server_url:
+                self.server_status[server_id] = "offline"
+                logger.warning(f"No API URL for server {server_id}")
+                continue
             
             try:
-                # Проверка доступности сервера
                 start_time = time.time()
-                # Используем прямой URL из базы данных вместо хардкода
                 response = requests.get(f"{server_url}/status", timeout=5)
                 response_time = time.time() - start_time
                 
@@ -91,7 +132,7 @@ class ServerManager:
                         "response_time": response_time
                     }
                     
-                    logger.info(f"Server {server_id} ({server_url}) is online with {peers_count} peers")
+                    logger.info(f"Server {server_id} is online with {peers_count} peers")
                 else:
                     self.server_status[server_id] = "offline"
                     logger.warning(f"Server {server_id} returned status code {response.status_code}")
@@ -99,7 +140,8 @@ class ServerManager:
             except requests.RequestException as e:
                 self.server_status[server_id] = "offline"
                 logger.warning(f"Server {server_id} is not available: {e}")
-    
+
+
     def get_available_servers(self):
         """
         Получение списка доступных серверов
