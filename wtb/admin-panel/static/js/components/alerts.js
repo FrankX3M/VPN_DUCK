@@ -8,8 +8,9 @@
      * @param {string} type - Тип уведомления (success, danger, warning, info)
      * @param {number} timeout - Время в мс до автоскрытия сообщения
      */
-    function showAlert(message, type, timeout = 5000) {
-        // Ищем контейнер для уведомлений
+   // Модифицируйте функцию showAlert в вашем коде:
+    function showAlert(message, type) {
+        // Пытаемся найти контейнер
         let alertsContainer = document.querySelector('.flash-messages');
         
         // Если контейнер не найден, создаем его
@@ -25,6 +26,7 @@
             document.body.appendChild(alertsContainer);
         }
         
+        // Создаем уведомление
         const alertHTML = `
             <div class="alert alert-${type} alert-dismissible fade show" role="alert">
                 ${message}
@@ -34,9 +36,9 @@
         
         alertsContainer.innerHTML += alertHTML;
         
-        // Автоматически скрываем уведомление через указанное время
+        // Автоматически скрываем уведомление через 5 секунд
         setTimeout(() => {
-            const alerts = document.querySelectorAll('.alert');
+            const alerts = alertsContainer.querySelectorAll('.alert');
             alerts.forEach(alert => {
                 try {
                     const bsAlert = new bootstrap.Alert(alert);
@@ -46,7 +48,7 @@
                     alert.remove();
                 }
             });
-        }, timeout);
+        }, 5000);
     }
 
     // Экспортируем функцию в глобальное пространство имен

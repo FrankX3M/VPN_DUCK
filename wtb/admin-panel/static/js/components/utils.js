@@ -2,6 +2,9 @@
  * Модуль с вспомогательными функциями
  */
 (function() {
+    // Создаем объект Utils для глобального доступа
+    window.Utils = window.Utils || {};
+
     /**
      * Генерирует случайный API ключ
      * @param {number} length - Длина ключа
@@ -27,18 +30,22 @@
     function copyToClipboard(text) {
         return navigator.clipboard.writeText(text)
             .then(() => {
-                window.showAlert('Текст скопирован в буфер обмена', 'success');
+                if (typeof window.showAlert === 'function') {
+                    window.showAlert('Текст скопирован в буфер обмена', 'success');
+                } else {
+                    console.log('Текст скопирован в буфер обмена');
+                }
                 return true;
             })
             .catch(err => {
                 console.error('Не удалось скопировать: ', err);
-                window.showAlert('Не удалось скопировать текст', 'danger');
+                if (typeof window.showAlert === 'function') {
+                    window.showAlert('Не удалось скопировать текст', 'danger');
+                }
                 return false;
             });
     }
     
-    /**
-     * Отправляет API запрос с обработкой ошибок
     /**
      * Отправляет API запрос с обработкой ошибок
      * @param {string} url - URL для запроса
@@ -46,6 +53,8 @@
      * @returns {Promise<Object>} Результат запроса
      */
     async function apiRequest(url, options = {}) {
+        console.log(`API запрос: ${options.method || 'GET'} ${url}`);
+        
         const fetchOptions = {
             method: options.method || 'GET',
             headers: {
@@ -73,4 +82,11 @@
             throw error;
         }
     }
+
+    // Экспортируем функции в глобальный объект Utils
+    window.Utils.generateApiKey = generateApiKey;
+    window.Utils.copyToClipboard = copyToClipboard;
+    window.Utils.apiRequest = apiRequest;
+
+    console.log('Модуль Utils успешно загружен');
 })();
