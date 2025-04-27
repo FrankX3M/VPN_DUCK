@@ -1,0 +1,679 @@
+{% extends "base.html" %}
+
+{% block title %}Детали сервера - VPN Duck{% endblock %}
+
+{% block head_extra %}
+<style>
+    .status-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    
+    .status-active { background-color: #28a745; }
+    .status-inactive { background-color: #dc3545; }
+    .status-degraded { background-color: #ffc107; }
+    
+    .metrics-chart { height: 300px; }
+    
+    .server-info-card {
+        transition: all 0.3s ease;
+    }
+    
+    .server-info-card:hover {
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+
+    .flash-messages {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1050;
+        max-width: 350px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Flash messages container -->
+<div class="flash-messages"></div>
+
+<div class="container-fluid">
+    <div class="row align-items-center mb-4">
+        <div class="col">
+            <h1>
+                <span class="status-dot status-{{ server.status }}"></span>
+                Сервер #{{ server.id }}
+            </h1>
+            <p class="text-muted">{{ server.endpoint }}:{{ server.port }}</p>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('servers') }}" class="btn btn-outline-primary">
+                <i class="bi bi-arrow-left"></i> Назад к списку
+            </a>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editServerModal">
+                <i class="bi bi-pencil"></i> Редактировать
+            </button>
+            <button type="button" class="btn btn-danger" 
+                    data-bs-toggle="modal" 
+                    data-bs-target="#deleteServerModal"
+                    data-server-id="{{ server.id|e }}" 
+                    data-server-name="Сервер #{{ server.id|e }}">
+                <i class="bi bi-trash"></i> Удалить
+            </button>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <!-- Информация о сервере -->
+        <div class="col-md-6">
+            <div class="card server-info-card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Информация о сервере</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <tbody>
+                                <tr>
+                                    <th width="40%">ID:</th>
+                                    <td>{{ server.id }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Endpoint:</th>
+                                    <td>{{ server.endpoint }}:{{ server.port }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Внутренний IP:</th>
+                                    <td>{{ server.address }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Публичный ключ:</th>
+                                    <td><code>{{ server.public_key }}</code></td>
+                                </tr>
+                                <tr>
+                                    <th>Геолокация:</th>
+                                    <td>{{ server.geolocation_name or 'Не указана' }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Статус:</th>
+                                    <td>
+                                        {% if server.status == 'active' %}
+                                            <span class="badge bg-success">Активен</span>
+                                        {% elif server.status == 'inactive' %}
+                                            <span class="badge bg-danger">Неактивен</span>
+                                        {% elif server.status == 'degraded' %}
+                                            <span class="badge bg-warning">Проблемы</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Неизвестно</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Нагрузка:</th>
+                                    <td>
+                                        <div class="progress">
+                                            {% set load = server.load or 0 %}
+                                            {% set load_class = 'success' if load < 30 else ('warning' if load < 70 else 'danger') %}
+                                            <div class="progress-bar bg-{{ load_class }}" 
+                                                role="progressbar" 
+                                                style="width: {{ load }}%" 
+                                                aria-valuenow="{{ load }}" 
+                                                aria-valuemin="0" 
+                                                aria-valuemax="100">
+                                                {{ load }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Пиры:</th>
+                                    <td>{{ server.peers_count or 0 }}</td>
+                                </tr>
+                                <tr>
+                                    <th>API ключ:</th>
+                                    <td><code>{{ server.api_key|truncate(20, True) }}</code></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Метрики -->
+        <div class="col-md-6">
+            <div class="card server-info-card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Метрики сервера</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title text-muted">Средняя задержка</h6>
+                                    <h3 class="mb-0">{{ server.avg_latency or '?' }} мс</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title text-muted">Потеря пакетов</h6>
+                                    <h3 class="mb-0">{{ server.avg_packet_loss or '?' }}%</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="metrics-chart mt-3">
+                        <canvas id="serverMetricsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Пиры сервера -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Клиенты сервера</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID пользователя</th>
+                            <th>Публичный ключ</th>
+                            <th>Дата создания</th>
+                            <th>Последняя активность</th>
+                            <th>Трафик</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="serverPeersTableBody">
+                        <tr>
+                            <td colspan="6" class="text-center py-3">
+                                <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                                    <span class="visually-hidden">Загрузка...</span>
+                                </div>
+                                Загрузка пиров...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования сервера -->
+<div class="modal fade" id="editServerModal" tabindex="-1" aria-labelledby="editServerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editServerModalLabel">Редактирование сервера #{{ server.id }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editServerForm">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="edit_endpoint" class="form-label">Endpoint</label>
+                            <input type="text" class="form-control" id="edit_endpoint" name="endpoint" value="{{ server.endpoint }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="edit_port" class="form-label">Порт</label>
+                            <input type="number" class="form-control" id="edit_port" name="port" value="{{ server.port }}" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="edit_address" class="form-label">Внутренний IP</label>
+                            <input type="text" class="form-control" id="edit_address" name="address" value="{{ server.address }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="edit_geolocation_id" class="form-label">Геолокация</label>
+                            <select class="form-select" id="edit_geolocation_id" name="geolocation_id" required>
+                                <option value="">Выберите геолокацию</option>
+                                {% for geo in geolocations %}
+                                <option value="{{ geo.id }}" {% if geo.id == server.geolocation_id %}selected{% endif %}>{{ geo.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="edit_status" class="form-label">Статус</label>
+                        <select class="form-select" id="edit_status" name="status">
+                            <option value="active" {% if server.status == 'active' %}selected{% endif %}>Активен</option>
+                            <option value="inactive" {% if server.status == 'inactive' %}selected{% endif %}>Неактивен</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveServerChangesBtn">Сохранить изменения</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно подтверждения удаления -->
+{% include "components/delete_modal.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Configuration constants
+const CONFIG = {
+    ALERT_TIMEOUT: 5000,         // Timeout for alerts in milliseconds
+    RELOAD_DELAY: 1000,          // Delay before page reload in milliseconds
+    PEERS_LOAD_DELAY: 1000,      // Simulated delay for peers loading
+    API_BASE_URL: '/api/servers' // Base URL for server API
+};
+
+// Server data safely parsed from server-side
+const SERVER_DATA = {
+    id: {{ server.id }},
+};
+
+// Load metrics separately to avoid syntax errors
+{% if metrics %}
+SERVER_DATA.metrics = {{ metrics|tojson }};
+{% else %}
+SERVER_DATA.metrics = null;
+{% endif %}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize components
+    initMetricsChart();
+    initPeersTable();
+    initEventListeners();
+});
+
+/**
+ * Initialize all event listeners
+ */
+function initEventListeners() {
+    // Save server changes button
+    const saveBtn = document.getElementById('saveServerChangesBtn');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', updateServer);
+    }
+    
+    // Setup delete modal triggers
+    setupDeleteModalTriggers();
+}
+
+/**
+ * Setup event listeners for delete modal
+ */
+function setupDeleteModalTriggers() {
+    // Set up delete modal triggers
+    document.querySelectorAll('[data-bs-target="#deleteServerModal"]').forEach(button => {
+        button.addEventListener('click', function() {
+            const serverId = this.dataset.serverId;
+            const serverName = this.dataset.serverName;
+            
+            const nameEl = document.getElementById('deleteServerName');
+            const confirmBtn = document.getElementById('confirmDeleteBtn');
+            
+            if (nameEl) {
+                nameEl.textContent = serverName;
+            }
+            
+            if (confirmBtn) {
+                confirmBtn.dataset.serverId = serverId;
+                confirmBtn.addEventListener('click', function handleDelete() {
+                    // Get server ID from dataset
+                    const id = this.dataset.serverId;
+                    
+                    // Update button state
+                    setButtonLoading(this, 'Удаление...');
+                    
+                    // Call delete function
+                    deleteServer(id);
+                    
+                    // Remove event listener to prevent multiple bindings
+                    this.removeEventListener('click', handleDelete);
+                });
+            }
+        });
+    });
+}
+
+/**
+ * Initialize metrics chart
+ */
+function initMetricsChart() {
+    const ctx = document.getElementById('serverMetricsChart');
+    if (!ctx) return;
+    
+    const metricsData = SERVER_DATA.metrics || {};
+    const history = metricsData.history || [];
+    
+    if (history.length === 0) {
+        // If no data, display message
+        ctx.style.display = 'none';
+        const noDataMsg = document.createElement('p');
+        noDataMsg.className = 'text-center text-muted my-5';
+        noDataMsg.textContent = 'Нет данных для отображения';
+        ctx.parentNode.appendChild(noDataMsg);
+        return;
+    }
+    
+    // Prepare chart data
+    const chartData = prepareChartData(history);
+    
+    // Create chart
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: chartData.labels,
+            datasets: [
+                {
+                    label: 'Задержка (мс)',
+                    data: chartData.latency,
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Потеря пакетов (%)',
+                    data: chartData.packetLoss,
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45
+                    }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Задержка (мс)'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    grid: {
+                        drawOnChartArea: false
+                    },
+                    title: {
+                        display: true,
+                        text: 'Потеря пакетов (%)'
+                    },
+                    min: 0,
+                    max: 100
+                }
+            },
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            }
+        }
+    });
+}
+
+/**
+ * Prepare chart data from server history
+ * @param {Array} history - Array of history data points
+ * @return {Object} Formatted chart data
+ */
+function prepareChartData(history) {
+    return {
+        labels: history.map(item => {
+            const date = new Date(item.hour);
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }),
+        latency: history.map(item => item.avg_latency),
+        packetLoss: history.map(item => item.avg_packet_loss)
+    };
+}
+
+/**
+ * Initialize peers table
+ */
+function initPeersTable() {
+    // In a real system, load peers from API
+    // This is a placeholder for the demo
+    setTimeout(() => {
+        const tableBody = document.getElementById('serverPeersTableBody');
+        if (tableBody) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center">Нет данных о пирах</td>
+                </tr>
+            `;
+        }
+    }, CONFIG.PEERS_LOAD_DELAY);
+}
+
+/**
+ * Update server details
+ */
+function updateServer() {
+    // Get form data
+    const formData = {
+        endpoint: document.getElementById('edit_endpoint')?.value,
+        port: parseInt(document.getElementById('edit_port')?.value || '0'),
+        address: document.getElementById('edit_address')?.value,
+        geolocation_id: parseInt(document.getElementById('edit_geolocation_id')?.value || '0'),
+        status: document.getElementById('edit_status')?.value
+    };
+    
+    // Validate required fields
+    if (!formData.endpoint || !formData.port || !formData.address || !formData.geolocation_id) {
+        showAlert('Пожалуйста, заполните все обязательные поля', 'warning');
+        return;
+    }
+    
+    // Get save button and set loading state
+    const saveButton = document.getElementById('saveServerChangesBtn');
+    if (!saveButton) return;
+    
+    setButtonLoading(saveButton, 'Сохранение...');
+    
+    // Send API request
+    apiRequest(`${CONFIG.API_BASE_URL}/${SERVER_DATA.id}`, {
+        method: 'PUT',
+        body: formData
+    })
+    .then(result => {
+        if (result.status === 'success') {
+            // Close modal and show success message
+            closeModal('editServerModal');
+            showAlert('Сервер успешно обновлен', 'success');
+            
+            // Reload page after delay
+            setTimeout(() => {
+                window.location.reload();
+            }, CONFIG.RELOAD_DELAY);
+        } else {
+            showAlert(`Ошибка: ${result.message}`, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('Ошибка соединения с сервером', 'danger');
+    })
+    .finally(() => {
+        // Reset button state
+        resetButton(saveButton, 'Сохранить изменения');
+    });
+}
+
+/**
+ * Delete server
+ * @param {number|string} serverId - ID of server to delete
+ */
+function deleteServer(serverId) {
+    // Send delete request
+    apiRequest(`${CONFIG.API_BASE_URL}/${serverId}/delete`, {
+        method: 'POST'
+    })
+    .then(result => {
+        if (result.status === 'success') {
+            // Close modal and show success message
+            closeModal('deleteServerModal');
+            showAlert('Сервер успешно удален', 'success');
+            
+            // Redirect to servers list after delay
+            setTimeout(() => {
+                window.location.href = '/servers';
+            }, CONFIG.RELOAD_DELAY);
+        } else {
+            showAlert(`Ошибка: ${result.message}`, 'danger');
+            // Reset delete button
+            resetButton(document.getElementById('confirmDeleteBtn'), 'Удалить сервер');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('Ошибка соединения с сервером', 'danger');
+        // Reset delete button
+        resetButton(document.getElementById('confirmDeleteBtn'), 'Удалить сервер');
+    });
+}
+
+/**
+ * Show alert message
+ * @param {string} message - Alert message to display
+ * @param {string} type - Alert type (success, warning, danger, info)
+ */
+function showAlert(message, type = 'info') {
+    const alertsContainer = document.querySelector('.flash-messages');
+    if (!alertsContainer) {
+        console.error('Alerts container not found');
+        return;
+    }
+    
+    // Create unique ID for this alert
+    const alertId = `alert-${Date.now()}`;
+    
+    // Create alert element
+    const alertElement = document.createElement('div');
+    alertElement.className = `alert alert-${type} alert-dismissible fade show`;
+    alertElement.id = alertId;
+    alertElement.role = 'alert';
+    alertElement.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    // Add alert to container
+    alertsContainer.appendChild(alertElement);
+    
+    // Initialize Bootstrap alert
+    const bsAlert = new bootstrap.Alert(alertElement);
+    
+    // Auto-close after timeout
+    setTimeout(() => {
+        bsAlert.close();
+    }, CONFIG.ALERT_TIMEOUT);
+}
+
+/**
+* Set button to loading state
+* @param {HTMLElement} button - Button element
+* @param {string} loadingText - Text to display while loading
+*/
+function setButtonLoading(button, loadingText) {
+    if (!button) return;
+    
+    button.disabled = true;
+    button.dataset.originalHtml = button.innerHTML;
+    button.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ${loadingText}`;
+}
+
+/**
+* Reset button state
+* @param {HTMLElement} button - Button element
+* @param {string} text - Text to display (or null to use original)
+*/
+function resetButton(button, text = null) {
+    if (!button) return;
+    
+    button.disabled = false;
+    button.innerHTML = text || button.dataset.originalHtml || 'Submit';
+}
+
+/**
+* Close bootstrap modal
+* @param {string} modalId - ID of modal to close
+*/
+function closeModal(modalId) {
+    const modalElement = document.getElementById(modalId);
+    if (modalElement) {
+        const modal = bootstrap.Modal.getInstance(modalElement);
+        if (modal) {
+            modal.hide();
+        }
+    }
+}
+
+/**
+* Make API request with proper error handling
+* @param {string} url - API endpoint
+* @param {Object} options - Fetch options
+* @return {Promise} Promise resolving to JSON response
+*/
+async function apiRequest(url, options = {}) {
+    // Prepare fetch options
+    const fetchOptions = {
+        method: options.method || 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            ...options.headers
+        }
+    };
+    
+    // Add body if provided
+    if (options.body) {
+        fetchOptions.body = JSON.stringify(options.body);
+    }
+    
+    try {
+        const response = await fetch(url, fetchOptions);
+        
+        // Check if response is OK
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('API request failed:', error);
+        throw error;
+    }
+}
+</script>
+{% endblock %}

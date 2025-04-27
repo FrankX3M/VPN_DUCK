@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block title %}Добавление сервера - VPN Duck{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row align-items-center mb-4">
+        <div class="col">
+            <h1>Добавление нового сервера</h1>
+            <p class="text-muted">Заполните информацию о новом WireGuard сервере</p>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('servers') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-x-circle"></i> Отмена
+            </a>
+        </div>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form id="addServerForm" method="post" action="{{ url_for('api_add_server') }}">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="endpoint" class="form-label">Внешний IP (Endpoint)</label>
+                                <input type="text" class="form-control" id="endpoint" name="endpoint" required>
+                                <div class="form-text">Внешний IP-адрес сервера (например, 5.180.137.197)</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="port" class="form-label">Порт</label>
+                                <input type="number" class="form-control" id="port" name="port" value="51820" required>
+                                <div class="form-text">Порт для подключения WireGuard (обычно 51820)</div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="address" class="form-label">Внутренний IP</label>
+                                <input type="text" class="form-control" id="address" name="address" placeholder="10.0.0.1/24" required>
+                                <div class="form-text">Внутренний IP-адрес сервера с маской сети</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="public_key" class="form-label">Публичный ключ</label>
+                                <input type="text" class="form-control" id="public_key" name="public_key" required>
+                                <div class="form-text">Публичный ключ WireGuard</div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="geolocation_id" class="form-label">Геолокация</label>
+                                <select class="form-select" id="geolocation_id" name="geolocation_id" required>
+                                    <option value="">Выберите геолокацию</option>
+                                    {% for geo in geolocations %}
+                                    <option value="{{ geo.id }}">{{ geo.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">Выберите геолокацию сервера</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="api_key_display" class="form-label">API Ключ</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="api_key_display" readonly>
+                                    <button class="btn btn-outline-secondary" type="button" id="copyApiKeyBtn" onclick="copyApiKey()">
+                                        <i class="bi bi-clipboard"></i> Копировать
+                                    </button>
+                                    <button class="btn btn-outline-secondary" type="button" id="generateApiKeyBtn" onclick="generateApiKey()">
+                                        <i class="bi bi-arrow-repeat"></i> Сгенерировать
+                                    </button>
+                                </div>
+                                <input type="hidden" id="api_key" name="api_key">
+                                <div class="form-text">API ключ для аутентификации на сервере</div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="max_peers" class="form-label">Максимум пиров</label>
+                                <input type="number" class="form-control" id="max_peers" name="max_peers" value="100">
+                                <div class="form-text">Максимальное количество подключений (0 = без ограничений)</div>
+                            </div>
+                            <div class="col-md-6 d-flex align-items-end">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="active" name="active" checked>
+                                    <label class="form-check-label" for="active">Активировать сервер сразу</label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                            <a href="{{ url_for('servers') }}" class="btn btn-outline-secondary me-md-2">Отмена</a>
+                            <button type="submit" class="btn btn-primary">Добавить сервер</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Генерируем начальный API ключ
+    generateApiKey();
+    
+    // Обработчик отправки формы
+    document.getElementById('addServerForm').addEventListener('submit', function(event) {
+        event.preventDefault();
+        
+        // Проверка заполнения обязательных полей
+        const requiredFields = ['endpoint', 'port', 'address', 'public_key', 'geolocation_id'];
+        let isValid = true;
+        
+        requiredFields.forEach(field => {
+            const input = document.getElementById(field);
+            if (!input.value.trim()) {
+                input.classList.add('is-invalid');
+                isValid = false;
+            } else {
+                input.classList.remove('is-invalid');
+            }
+        });
+        
+        if (!isValid) {
+            showAlert('Пожалуйста, заполните все обязательные поля', 'warning');
+            return;
+        }
+        
+        // Подготовка данных для отправки
+        const formData = {
+            endpoint: document.getElementById('endpoint').value.trim(),
+            port: parseInt(document.getElementById('port').value),
+            address: document.getElementById('address').value.trim(),
+            public_key: document.getElementById('public_key').value.trim(),
+            geolocation_id: parseInt(document.getElementById('geolocation_id').value),
+            api_key: document.getElementById('api_key').value,
+            max_peers: parseInt(document.getElementById('max_peers').value || '0'),
+            active: document.getElementById('active').checked
+        };
+        
+        // Отправка данных на сервер
+        fetch('/api/servers', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Показываем сообщение об успехе
+                showAlert('Сервер успешно добавлен!', 'success');
+                
+                // Перенаправляем на страницу со списком серверов через 2 секунды
+                setTimeout(() => {
+                    window.location.href = '/servers';
+                }, 2000);
+            } else {
+                showAlert(`Ошибка: ${data.message}`, 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Ошибка соединения с сервером', 'danger');
+        });
+    });
+});
+
+function generateApiKey() {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    const length = 32;
+    
+    for (let i = 0; i < length; i++) {
+        result += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    
+    document.getElementById('api_key').value = result;
+    document.getElementById('api_key_display').value = result;
+}
+
+function copyApiKey() {
+    const apiKeyDisplay = document.getElementById('api_key_display');
+    apiKeyDisplay.select();
+    document.execCommand('copy');
+    
+    // Показываем индикатор копирования
+    const copyBtn = document.getElementById('copyApiKeyBtn');
+    const originalText = copyBtn.innerHTML;
+    copyBtn.innerHTML = '<i class="bi bi-check"></i> Скопировано';
+    
+    setTimeout(() => {
+        copyBtn.innerHTML = originalText;
+    }, 2000);
+}
+
+// Функция для отображения уведомлений
+function showAlert(message, type) {
+    // Ищем контейнер для уведомлений
+    let alertsContainer = document.querySelector('.flash-messages');
+    
+    // Если контейнер не найден, создаем его
+    if (!alertsContainer) {
+        console.log('Контейнер для уведомлений не найден, создаю новый');
+        alertsContainer = document.createElement('div');
+        alertsContainer.className = 'flash-messages';
+        alertsContainer.style.position = 'fixed';
+        alertsContainer.style.top = '20px';
+        alertsContainer.style.right = '20px';
+        alertsContainer.style.zIndex = '1050';
+        alertsContainer.style.minWidth = '300px';
+        document.body.appendChild(alertsContainer);
+    }
+    
+    const alertHTML = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    `;
+    
+    alertsContainer.innerHTML += alertHTML;
+    
+    // Автоматически скрываем уведомление через 5 секунд
+    setTimeout(() => {
+        const alerts = alertsContainer.querySelectorAll('.alert');
+        alerts.forEach(alert => {
+            try {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            } catch (e) {
+                // Если bootstrap не загружен или возникла ошибка, удаляем элемент вручную
+                alert.remove();
+            }
+        });
+    }, 5000);
+}
+</script>
+{% endblock %}

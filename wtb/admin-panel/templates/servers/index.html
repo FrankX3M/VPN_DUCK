@@ -374,6 +374,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Функция добавления нового сервера
+    // Улучшенная функция добавления сервера для templates/servers/index.html
     function addServer() {
         // Получаем данные из формы
         const endpoint = document.getElementById('endpoint').value;
@@ -399,6 +400,8 @@ document.addEventListener('DOMContentLoaded', function() {
             api_key: apiKey
         };
         
+        console.log('Отправляемые данные:', data);
+        
         // Отключаем кнопку на время запроса
         const addButton = document.getElementById('addServerBtn');
         addButton.disabled = true;
@@ -412,8 +415,13 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify(data)
         })
-        .then(response => response.json())
+        .then(response => {
+            console.log('Статус ответа:', response.status);
+            return response.json();
+        })
         .then(result => {
+            console.log('Результат операции:', result);
+            
             if (result.status === 'success') {
                 // Сбрасываем форму
                 document.getElementById('addServerForm').reset();
@@ -423,7 +431,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 modal.hide();
                 
                 // Показываем сообщение об успехе
-                showAlert('Сервер успешно добавлен', 'success');
+                showAlert('Сервер успешно добавлен. ID: ' + result.server_id, 'success');
                 
                 // Обновляем список серверов
                 loadServers();
@@ -435,7 +443,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            console.error('Error:', error);
+            console.error('Ошибка:', error);
             showAlert('Ошибка соединения с сервером', 'danger');
         })
         .finally(() => {
@@ -640,7 +648,8 @@ document.addEventListener('DOMContentLoaded', function() {
             button.addEventListener('click', function() {
                 const serverId = this.dataset.serverId;
                 // Здесь будет логика редактирования сервера
-                alert('Редактирование сервера ' + serverId + ' (функциональность в разработке)');
+                // alert('Редактирование сервера ' + serverId + ' (функциональность в разработке)');
+                window.location.href = `/servers/${serverId}/edit`;
 });
 });
 

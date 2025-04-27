@@ -148,55 +148,9 @@ def api_get_servers():
         logger.error(f"Ошибка при получении списка серверов: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/servers', methods=['POST'])
+
 @app.route('/api/servers', methods=['POST'])
 @login_required
-# def api_add_server():
-#     """API для добавления нового сервера."""
-#     try:
-#         data = request.json
-        
-#         # Проверяем обязательные поля
-#         required_fields = ['geolocation_id', 'endpoint', 'port', 'public_key', 'address']
-#         for field in required_fields:
-#             if field not in data:
-#                 return jsonify({"status": "error", "message": f"Поле {field} обязательно"}), 400
-        
-#         # Если API ключ не указан, генерируем его автоматически
-#         if 'api_key' not in data or not data['api_key']:
-#             import secrets
-#             data['api_key'] = secrets.token_hex(16)  # Генерация 32-символьного ключа
-#             logger.info(f"Автоматически сгенерирован API ключ для сервера")
-        
-#         # Отправляем запрос на добавление сервера
-#         response = requests.post(
-#             f"{DATABASE_SERVICE_URL}/api/servers/add",
-#             json=data,
-#             timeout=15
-#         )
-        
-#         if response.status_code in [200, 201]:
-#             result = response.json()
-#             return jsonify({
-#                 "status": "success", 
-#                 "server_id": result.get("server_id"),
-#                 "api_key": data['api_key']  # Возвращаем API ключ в ответе
-#             }), 201
-#         else:
-#             # Проверяем, есть ли информация об ошибке в ответе
-#             error_message = "Ошибка при регистрации сервера"
-#             try:
-#                 error_data = response.json()
-#                 if "error" in error_data:
-#                     error_message = error_data.get("error")
-#             except:
-#                 pass
-            
-#             return jsonify({"status": "error", "message": error_message}), response.status_code
-#     except Exception as e:
-#         logger.error(f"Ошибка при добавлении сервера: {str(e)}")
-#         return jsonify({"status": "error", "message": str(e)}), 500
-
 def api_add_server():
     """API для добавления нового сервера."""
     try:
@@ -205,10 +159,22 @@ def api_add_server():
         
         # Проверяем обязательные поля
         required_fields = ['endpoint', 'port', 'public_key', 'address', 'geolocation_id']
-        for field in required_fields:
-            if field not in data:
-                logger.error(f"Отсутствует обязательное поле: {field}")
-                return jsonify({"status": "error", "message": f"Поле {field} обязательно"}), 400
+        missing_fields = [field for field in required_fields if field not in data]
+        
+        if missing_fields:
+            logger.error(f"Отсутствуют обязательные поля: {missing_fields}")
+            return jsonify({"status": "error", "message": f"Отсутствуют обязательные поля: {', '.join(missing_fields)}"}), 400
+        
+        # Проверка типов данных
+        try:
+            # Преобразуем строковые представления чисел в числа
+            if isinstance(data['port'], str):
+                data['port'] = int(data['port'])
+            if isinstance(data['geolocation_id'], str):
+                data['geolocation_id'] = int(data['geolocation_id'])
+        except ValueError as e:
+            logger.error(f"Ошибка преобразования типов данных: {str(e)}")
+            return jsonify({"status": "error", "message": f"Ошибка в данных: {str(e)}"}), 400
         
         # Если API ключ не указан, генерируем его автоматически
         if 'api_key' not in data or not data['api_key']:
@@ -216,15 +182,22 @@ def api_add_server():
             data['api_key'] = secrets.token_hex(16)
             logger.info(f"Автоматически сгенерирован API ключ для сервера")
         
-        # Добавляем дополнительные необходимые поля для database-service
+        # Добавляем дополнительные поля для database-service
         server_data = {
             "name": data.get('name', f"Server {data['endpoint']}"),
             "location": data.get('location', f"{data['endpoint']}:{data['port']}"),
             "api_url": f"http://{data['endpoint']}:{data['port']}/api",
             "geolocation_id": data['geolocation_id'],
+            "endpoint": data['endpoint'],
+            "port": data['port'],
+            "public_key": data['public_key'],
+            "address": data['address'],
             "auth_type": data.get('auth_type', 'api_key'),
-            "api_key": data['api_key']
+            "api_key": data['api_key'],
+            "status": "active"  # Устанавливаем активный статус по умолчанию
         }
+        
+        logger.info(f"Подготовленные данные для добавления сервера: {server_data}")
         
         # Отправляем запрос на добавление сервера
         response = requests.post(
@@ -233,20 +206,38 @@ def api_add_server():
             timeout=15
         )
         
+        logger.info(f"Статус ответа от DATABASE_SERVICE: {response.status_code}")
+        logger.info(f"Тело ответа: {response.text}")
+        
         if response.status_code in [200, 201]:
-            result = response.json()
-            logger.info(f"Сервер успешно добавлен: {result}")
-            return jsonify({
-                "status": "success", 
-                "server_id": result.get("server_id"),
-                "api_key": server_data['api_key']
-            }), 201
+            try:
+                result = response.json()
+                logger.info(f"Сервер успешно добавлен: {result}")
+                return jsonify({
+                    "status": "success", 
+                    "server_id": result.get("server_id"),
+                    "api_key": server_data['api_key']
+                }), 201
+            except ValueError as e:
+                logger.error(f"Ошибка при разборе JSON-ответа: {str(e)}")
+                return jsonify({
+                    "status": "success", 
+                    "message": "Сервер добавлен, но произошла ошибка при разборе ответа"
+                }), 201
         else:
-            error_message = f"Ошибка при регистрации сервера: {response.status_code}"
+            error_message = f"Ошибка при регистрации сервера: HTTP {response.status_code}"
+            try:
+                error_data = response.json()
+                if isinstance(error_data, dict) and "error" in error_data:
+                    error_message = error_data.get("error")
+            except:
+                if response.text:
+                    error_message += f" - {response.text[:100]}"
+            
             logger.error(error_message)
             return jsonify({"status": "error", "message": error_message}), response.status_code
     except Exception as e:
-        logger.error(f"Ошибка при добавлении сервера: {str(e)}")
+        logger.exception(f"Непредвиденная ошибка при добавлении сервера: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
         
 @app.route('/api/servers/<int:server_id>/delete', methods=['POST'])
@@ -717,164 +708,99 @@ def api_update_server(server_id):
         logger.error(f"Ошибка при обновлении сервера: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# # Добавить этот эндпоинт в app.py после существующих API-эндпоинтов
-# @app.route('/api/servers/<int:server_id>', methods=['PUT'])
-# @login_required
-# def api_update_server(server_id):
-#     """API для обновления данных сервера."""
-#     try:
-#         data = request.json
+@app.route('/servers/add', methods=['GET'])
+@login_required
+def add_server():
+    """Страница добавления нового сервера."""
+    try:
+        # Получаем список геолокаций для формы
+        response = requests.get(f"{DATABASE_SERVICE_URL}/api/geolocations", timeout=10)
+        geolocations = []
         
-#         # Формируем данные для запроса
-#         update_data = {}
+        if response.status_code == 200:
+            geolocations = response.json().get("geolocations", [])
         
-#         # Добавляем поля, которые разрешено обновлять
-#         if 'endpoint' in data:
-#             update_data['endpoint'] = data['endpoint']
-#         if 'port' in data:
-#             update_data['port'] = int(data['port'])
-#         if 'address' in data:
-#             update_data['address'] = data['address']
-#         if 'geolocation_id' in data:
-#             update_data['geolocation_id'] = int(data['geolocation_id'])
-#         if 'status' in data:
-#             update_data['status'] = data['status']
-#         if 'city' in data and 'country' in data:
-#             # Если указаны город и страна, то обновляем также местоположение сервера
-#             update_data['city'] = data['city']
-#             update_data['country'] = data['country']
-        
-#         # Проверяем, что есть хотя бы одно поле для обновления
-#         if not update_data:
-#             return jsonify({"status": "error", "message": "Не указаны поля для обновления"}), 400
-        
-#         # Сначала получаем текущие данные сервера
-#         server_response = requests.get(f"{DATABASE_SERVICE_URL}/servers/{server_id}", timeout=10)
-        
-#         if server_response.status_code != 200:
-#             return jsonify({"status": "error", "message": "Сервер не найден"}), 404
-        
-#         # Данные текущего сервера
-#         current_server = server_response.json()
-        
-#         # Если изменились endpoint или port, нужно проверить, что такая комбинация не используется другим сервером
-#         if ('endpoint' in update_data or 'port' in update_data) and ('endpoint' in update_data and update_data['endpoint'] != current_server.get('endpoint') or 'port' in update_data and update_data['port'] != current_server.get('port')):
-#             # Получаем список всех серверов
-#             all_servers_response = requests.get(f"{DATABASE_SERVICE_URL}/servers/all", timeout=10)
-            
-#             if all_servers_response.status_code == 200:
-#                 all_servers = all_servers_response.json().get("servers", [])
-                
-#                 # Проверяем, что нет конфликтов
-#                 endpoint = update_data.get('endpoint', current_server.get('endpoint'))
-#                 port = update_data.get('port', current_server.get('port'))
-                
-#                 for server in all_servers:
-#                     if server.get('id') != server_id and server.get('endpoint') == endpoint and server.get('port') == port:
-#                         return jsonify({
-#                             "status": "error", 
-#                             "message": f"Сервер с endpoint {endpoint} и портом {port} уже существует"
-#                         }), 409
-        
-#         # Обновляем данные сервера через DATABASE_SERVICE_URL
-#         # Поскольку напрямую такого API может не быть, мы можем создать или использовать
-#         # другие API, например, для обновления статуса
-        
-#         # Обновляем базовые данные через API обновления статуса
-#         if 'status' in update_data:
-#             status_response = requests.post(
-#                 f"{DATABASE_SERVICE_URL}/servers/{server_id}/status",
-#                 json={"status": update_data['status']},
-#                 timeout=10
-#             )
-            
-#             if status_response.status_code != 200:
-#                 return jsonify({
-#                     "status": "error", 
-#                     "message": f"Ошибка при обновлении статуса сервера: {status_response.status_code}"
-#                 }), 500
-        
-#         # Возвращаем успешный результат
-#         # В реальной реализации вы могли бы расширить API сервера базы данных
-#         # для поддержки полного обновления атрибутов сервера
-#         return jsonify({
-#             "status": "success", 
-#             "message": "Данные сервера успешно обновлены",
-#             "updated_fields": list(update_data.keys())
-#         })
-#     except Exception as e:
-#         logger.error(f"Ошибка при обновлении сервера: {str(e)}")
-#         return jsonify({"status": "error", "message": str(e)}), 500
+        return render_template('servers/add.html', geolocations=geolocations)
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке страницы добавления сервера: {str(e)}")
+        flash(f"Ошибка при загрузке страницы: {str(e)}", 'danger')
+        return redirect(url_for('servers'))
 
-# @app.route('/api/geolocations', methods=['POST'])
-# @login_required
-# def api_add_geolocation():
-#     """API для добавления новой геолокации."""
-#     try:
-#         data = request.json
+@app.route('/servers/edit/<int:server_id>', methods=['GET'])
+@login_required
+def edit_server(server_id):
+    """Страница редактирования сервера."""
+    try:
+        # Получаем информацию о сервере
+        response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/{server_id}", timeout=10)
         
-#         # Проверяем обязательные поля
-#         required_fields = ['code', 'name']
-#         for field in required_fields:
-#             if field not in data:
-#                 return jsonify({"status": "error", "message": f"Поле {field} обязательно"}), 400
+        if response.status_code != 200:
+            flash(f"Сервер с ID {server_id} не найден", 'danger')
+            return redirect(url_for('servers'))
         
-#         # Отправляем запрос на добавление геолокации
-#         response = requests.post(
-#             f"{DATABASE_SERVICE_URL}/geolocations",
-#             json=data,
-#             timeout=15
-#         )
+        server_data = response.json()
         
-#         if response.status_code in [200, 201]:
-#             result = response.json()
-#             return jsonify({"status": "success", "geolocation_id": result.get("geolocation_id")}), 201
-#         else:
-#             # Проверяем, есть ли информация об ошибке в ответе
-#             error_message = "Ошибка при создании геолокации"
-#             try:
-#                 error_data = response.json()
-#                 if "error" in error_data:
-#                     error_message = error_data.get("error")
-#             except:
-#                 pass
-            
-#             return jsonify({"status": "error", "message": error_message}), response.status_code
-#     except Exception as e:
-#         logger.error(f"Ошибка при добавлении геолокации: {str(e)}")
-#         return jsonify({"status": "error", "message": str(e)}), 500
+        # Получаем список геолокаций для формы
+        geo_response = requests.get(f"{DATABASE_SERVICE_URL}/api/geolocations", timeout=10)
+        geolocations = []
+        
+        if geo_response.status_code == 200:
+            geolocations = geo_response.json().get("geolocations", [])
+        
+        return render_template(
+            'servers/edit.html', 
+            server=server_data, 
+            geolocations=geolocations
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке страницы редактирования сервера {server_id}: {str(e)}")
+        flash(f"Ошибка при загрузке страницы: {str(e)}", 'danger')
+        return redirect(url_for('servers'))
 
-# @app.route('/api/geolocations/<int:geo_id>', methods=['PUT'])
-# @login_required
-# def api_update_geolocation(geo_id):
-#     """API для обновления данных геолокации."""
-#     try:
-#         data = request.json
+
+@app.route('/servers/<int:server_id>', methods=['GET'])
+@login_required
+def server_details(server_id):
+    """Страница с детальной информацией о сервере."""
+    try:
+        # Получаем информацию о сервере
+        response = requests.get(f"{DATABASE_SERVICE_URL}/api/servers/{server_id}", timeout=10)
         
-#         # Отправляем запрос на обновление геолокации
-#         response = requests.put(
-#             f"{DATABASE_SERVICE_URL}/geolocations/{geo_id}",
-#             json=data,
-#             timeout=15
-#         )
+        if response.status_code != 200:
+            flash(f"Сервер с ID {server_id} не найден", 'danger')
+            return redirect(url_for('servers'))
         
-#         if response.status_code == 200:
-#             result = response.json()
-#             return jsonify({"status": "success", "geolocation_id": result.get("geolocation_id")}), 200
-#         else:
-#             # Проверяем, есть ли информация об ошибке в ответе
-#             error_message = "Ошибка при обновлении геолокации"
-#             try:
-#                 error_data = response.json()
-#                 if "error" in error_data:
-#                     error_message = error_data.get("error")
-#             except:
-#                 pass
-            
-#             return jsonify({"status": "error", "message": error_message}), response.status_code
-#     except Exception as e:
-#         logger.error(f"Ошибка при обновлении геолокации: {str(e)}")
-#         return jsonify({"status": "error", "message": str(e)}), 500
+        server_data = response.json()
+        
+        # Получаем список геолокаций для формы редактирования
+        geo_response = requests.get(f"{DATABASE_SERVICE_URL}/api/geolocations", timeout=10)
+        geolocations = []
+        
+        if geo_response.status_code == 200:
+            geolocations = geo_response.json().get("geolocations", [])
+        
+        # Получаем метрики сервера
+        metrics_response = requests.get(
+            f"{DATABASE_SERVICE_URL}/api/servers/{server_id}/metrics?hours=24", 
+            timeout=10
+        )
+        
+        server_metrics = {}
+        if metrics_response.status_code == 200:
+            server_metrics = metrics_response.json()
+        
+        return render_template(
+            'servers/details.html', 
+            server=server_data, 
+            geolocations=geolocations,
+            metrics=server_metrics
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации о сервере {server_id}: {str(e)}")
+        flash(f"Ошибка при загрузке данных сервера: {str(e)}", 'danger')
+        return redirect(url_for('servers'))
+
 @app.route('/api/servers/<int:server_id>', methods=['GET', 'PUT', 'DELETE'])
 @login_required
 def api_server_operations(server_id):
