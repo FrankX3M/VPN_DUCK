@@ -2,11 +2,224 @@
 
 {% block title %}Редактирование сервера - VPN Duck{% endblock %}
 
+{% block head_extra %}
+<style>
+    .card {
+        transition: all 0.3s ease;
+    }
+    
+    .card:hover {
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    }
+    
+    .required-field::after {
+        content: '*';
+        color: red;
+        margin-left: 4px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<!-- Содержимое страницы без изменений -->
+<div class="container-fluid">
+    <!-- Хлебные крошки -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Главная</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('servers') }}">Серверы</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Редактирование сервера #{{ server.id }}</li>
+        </ol>
+    </nav>
+
+    <!-- Заголовок страницы -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">Редактирование сервера #{{ server.id }}</h1>
+        <div>
+            <a href="{{ url_for('server_details', server_id=server.id) }}" class="btn btn-outline-primary me-2">
+                <i class="bi bi-info-circle"></i> Детали
+            </a>
+            <a href="{{ url_for('servers') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> К списку
+            </a>
+        </div>
+    </div>
+
+    <!-- Форма редактирования сервера -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between">
+            <h6 class="m-0 font-weight-bold text-primary">Данные сервера</h6>
+            <span class="badge bg-{{ 'success' if server.status == 'active' else 'danger' }}">
+                {{ 'Активен' if server.status == 'active' else 'Неактивен' }}
+            </span>
+        </div>
+        <div class="card-body">
+            <form id="editServerForm">
+                <input type="hidden" id="server_id" name="server_id" value="{{ server.id }}">
+                
+                <!-- Основные параметры -->
+                <div class="row mb-4">
+                    <div class="col-lg-6">
+                        <h5 class="mb-3">Основные параметры</h5>
+                        
+                        <div class="mb-3">
+                            <label for="endpoint" class="form-label required-field">Endpoint (IP/Домен)</label>
+                            <input type="text" class="form-control" id="endpoint" name="endpoint" value="{{ server.endpoint }}" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="port" class="form-label required-field">Порт</label>
+                            <input type="number" class="form-control" id="port" name="port" value="{{ server.port }}" required min="1" max="65535">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="address" class="form-label required-field">Внутренний IP</label>
+                            <input type="text" class="form-control" id="address" name="address" value="{{ server.address }}" required>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-6">
+                        <h5 class="mb-3">Настройки</h5>
+                        
+                        <div class="mb-3">
+                            <label for="geolocation_id" class="form-label required-field">Геолокация</label>
+                            <select class="form-select" id="geolocation_id" name="geolocation_id" required>
+                                {% for geo in geolocations %}
+                                <option value="{{ geo.id }}" {% if geo.id == server.geolocation_id %}selected{% endif %}>{{ geo.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="status" class="form-label">Статус</label>
+                            <select class="form-select" id="status" name="status">
+                                <option value="active" {% if server.status == 'active' %}selected{% endif %}>Активен</option>
+                                <option value="inactive" {% if server.status == 'inactive' %}selected{% endif %}>Неактивен</option>
+                                <option value="degraded" {% if server.status == 'degraded' %}selected{% endif %}>Проблемы</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="max_peers" class="form-label">Максимум пиров</label>
+                            <input type="number" class="form-control" id="max_peers" name="max_peers" value="{{ server.max_peers or 100 }}" min="1">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- API ключ -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h5 class="mb-3">API ключ</h5>
+                        
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="api_key" value="{{ server.api_key }}" readonly>
+                            <button class="btn btn-outline-secondary" type="button" id="copyApiKeyBtn">
+                                <i class="bi bi-clipboard"></i> Копировать
+                            </button>
+                        </div>
+                        <div class="form-text">Этот ключ используется для аутентификации сервера</div>
+                    </div>
+                </div>
+                
+                <!-- Кнопки формы -->
+                <div class="d-flex justify-content-between">
+                    <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteServerModal">
+                        <i class="bi bi-trash"></i> Удалить сервер
+                    </button>
+                    <div>
+                        <a href="{{ url_for('servers') }}" class="btn btn-secondary me-2">Отмена</a>
+                        <button type="button" id="saveChangesBtn" class="btn btn-primary">
+                            <i class="bi bi-check2"></i> Сохранить изменения
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно удаления сервера -->
+<div class="modal fade" id="deleteServerModal" tabindex="-1" aria-labelledby="deleteServerModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteServerModalLabel">Подтверждение удаления</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Вы действительно хотите удалить сервер <strong>{{ server.name or 'Сервер #' + server.id|string }}</strong>?</p>
+                <p class="text-danger">Это действие нельзя отменить. Все пиры на этом сервере будут удалены.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Удалить сервер</button>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- В конец body -->
+<div id="debug-info" class="container mt-3" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <h5>Отладочная информация</h5>
+            <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('debug-info').style.display='none'">Скрыть</button>
+        </div>
+        <div class="card-body">
+            <pre id="debug-output" style="max-height: 300px; overflow: auto;"></pre>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
+<script>
+    // Функция для отображения отладочной информации
+    function showDebugInfo(info) {
+        const debugOutput = document.getElementById('debug-output');
+        const debugInfo = document.getElementById('debug-info');
+        
+        if (debugOutput && debugInfo) {
+            debugOutput.textContent += JSON.stringify(info, null, 2) + '\n\n';
+            debugInfo.style.display = 'block';
+        }
+    }
+
+    // Перехватываем ошибки fetch
+    const originalFetch = window.fetch;
+    window.fetch = function() {
+        showDebugInfo({
+            type: 'fetch-request',
+            url: arguments[0],
+            options: arguments[1],
+            timestamp: new Date().toISOString()
+        });
+        
+        return originalFetch.apply(this, arguments)
+            .then(response => {
+                // Клонируем ответ перед чтением, чтобы не потерять данные
+                const clone = response.clone();
+                clone.text().then(text => {
+                    showDebugInfo({
+                        type: 'fetch-response',
+                        url: response.url,
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: text.substring(0, 1000), // Ограничиваем размер для больших ответов
+                        timestamp: new Date().toISOString()
+                    });
+                });
+                return response;
+            })
+            .catch(error => {
+                showDebugInfo({
+                    type: 'fetch-error',
+                    message: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                });
+                throw error;
+            });
+    };
+</script>
 <script src="{{ url_for('static', filename='js/components/alerts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/components/modals.js') }}"></script>
 <script src="{{ url_for('static', filename='js/components/utils.js') }}"></script>

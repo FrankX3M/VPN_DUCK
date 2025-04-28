@@ -1,167 +1,445 @@
-/**
- * Модуль для страницы детализации сервера
- */
-(function() {
-    // Configuration constants
-    const CONFIG = {
-        ALERT_TIMEOUT: 5000,
-        RELOAD_DELAY: 1000,
-        PEERS_LOAD_DELAY: 1000,
-        API_BASE_URL: '/api/servers'
-    };
-
-    // Server data safely parsed from server-side
-    let SERVER_DATA = {
-        id: null,
-        metrics: null
-    };
-
+document.addEventListener('DOMContentLoaded', function() {
+    // Получаем ID сервера из URL
+    const serverId = window.location.pathname.split('/').pop();
+    let serverData = null;
+    const charts = {};
+    
+    // Получаем ссылки на элементы DOM
+    const serverNameEl = document.getElementById('server-name');
+    const serverLoadingEl = document.getElementById('server-loading');
+    const serverInfoEl = document.getElementById('server-info');
+    const metricsLoadingEl = document.getElementById('metrics-loading');
+    const currentMetricsEl = document.getElementById('current-metrics');
+    const historyLoadingEl = document.getElementById('history-loading');
+    const historyErrorEl = document.getElementById('history-error');
+    const metricsHistoryEl = document.getElementById('metrics-history');
+    const mockedDataAlertEl = document.getElementById('mocked-data-alert');
+    const editServerBtn = document.getElementById('edit-server-btn');
+    
+    // Настройка кнопок управления
+    editServerBtn.href = `/servers/edit/${serverId}`;
+    
+    // Загрузка данных о сервере
+    loadServerData();
+    
+    // Настройка обработчиков событий
+    setupEventHandlers();
+    
     /**
-     * Инициализация страницы
+     * Загрузка данных о сервере и обновление интерфейса
      */
-    function initPage() {
-        // Получаем ID сервера из URL
-        const urlParts = window.location.pathname.split('/');
-        SERVER_DATA.id = urlParts[urlParts.length - 1];
+    function loadServerData() {
+        // Сброс UI в состояние загрузки
+        serverNameEl.textContent = 'Загрузка данных сервера...';
+        serverLoadingEl.classList.remove('d-none');
+        serverInfoEl.classList.add('d-none');
+        metricsLoadingEl.classList.remove('d-none');
+        currentMetricsEl.classList.add('d-none');
+        historyLoadingEl.classList.remove('d-none');
+        metricsHistoryEl.classList.add('d-none');
+        historyErrorEl.classList.add('d-none');
+        mockedDataAlertEl.classList.add('d-none');
         
-        // Загружаем метрики
-        loadServerMetrics();
-        
-        // Инициализируем компоненты
-        initMetricsChart();
-        initPeersTable();
-        initEventListeners();
+        // Получение информации о сервере
+        fetch(`/api/servers/${serverId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                serverData = data;
+                updateServerInfo(data);
+                
+                // Загрузка текущих метрик после получения основной информации
+                return fetch(`/api/servers/${serverId}/status`);
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return { status: 'unknown', error: `HTTP error! status: ${response.status}` };
+                }
+                return response.json();
+            })
+            .then(data => {
+                updateMetrics(data);
+                
+                // Загрузка истории метрик
+                loadMetricsHistory(24); // Загружаем историю за 24 часа по умолчанию
+            })
+            .catch(error => {
+                console.error('Error loading server data:', error);
+                showAlert('error', 'Ошибка при загрузке данных сервера', error.message);
+                
+                // В случае ошибки показываем карточку с основной информацией
+                serverLoadingEl.classList.add('d-none');
+                serverInfoEl.classList.remove('d-none');
+                metricsLoadingEl.classList.add('d-none');
+                currentMetricsEl.classList.remove('d-none');
+                historyLoadingEl.classList.add('d-none');
+                historyErrorEl.classList.remove('d-none');
+            });
     }
-
+    
     /**
-     * Инициализация всех обработчиков событий
+     * Обновление информации о сервере
      */
-    function initEventListeners() {
-        // Save server changes button
-        const saveBtn = document.getElementById('saveServerChangesBtn');
-        if (saveBtn) {
-            saveBtn.addEventListener('click', updateServer);
+    function updateServerInfo(data) {
+        // Обновление названия сервера
+        serverNameEl.textContent = data.name || `Сервер ${data.id}`;
+        
+        // Обновление основной информации
+        document.getElementById('server-id').textContent = data.id;
+        document.getElementById('server-location').textContent = data.location || 'Не указано';
+        document.getElementById('server-endpoint').textContent = data.endpoint || data.api_url || 'Не указано';
+        document.getElementById('server-auth-type').textContent = data.auth_type || 'Не указано';
+        
+        // Форматирование дат
+        const addedDate = data.created_at ? new Date(data.created_at) : null;
+        document.getElementById('server-added-date').textContent = addedDate ? addedDate.toLocaleString() : 'Не указано';
+        
+        // Обновление ссылок и кнопок
+        document.getElementById('edit-server-btn').href = `/servers/edit/${data.id}`;
+        document.getElementById('restart-server-name').textContent = data.name || `Сервер ${data.id}`;
+        document.getElementById('delete-server-name').textContent = data.name || `Сервер ${data.id}`;
+        
+        // Показываем информацию о сервере
+        serverLoadingEl.classList.add('d-none');
+        serverInfoEl.classList.remove('d-none');
+    }
+    
+    /**
+     * Обновление метрик сервера
+     */
+    function updateMetrics(data) {
+        // Проверка наличия флага мокированных данных
+        if (data.mocked) {
+            mockedDataAlertEl.classList.remove('d-none');
+        } else {
+            mockedDataAlertEl.classList.add('d-none');
         }
         
-        // Setup delete modal triggers
-        setupDeleteModalTriggers();
-    }
-
-    /**
-     * Настройка триггеров для модального окна удаления
-     */
-    function setupDeleteModalTriggers() {
-        document.querySelectorAll('[data-bs-target="#deleteServerModal"]').forEach(button => {
-            button.addEventListener('click', function() {
-                const serverId = this.dataset.serverId;
-                const serverName = this.dataset.serverName;
-                
-                const nameEl = document.getElementById('deleteServerName');
-                const confirmBtn = document.getElementById('confirmDeleteBtn');
-                
-                if (nameEl) {
-                    nameEl.textContent = serverName;
+        // Обновление статуса
+        const statusEl = document.getElementById('server-status');
+        const statusDot = statusEl.querySelector('.status-dot');
+        
+        statusDot.className = 'status-dot';
+        
+        switch (data.status) {
+            case 'active':
+            case 'online':
+                statusDot.classList.add('status-active');
+                statusEl.innerHTML = statusDot.outerHTML + 'Активен';
+                break;
+            case 'inactive':
+            case 'offline':
+                statusDot.classList.add('status-inactive');
+                statusEl.innerHTML = statusDot.outerHTML + 'Неактивен';
+                break;
+            case 'degraded':
+                statusDot.classList.add('status-degraded');
+                statusEl.innerHTML = statusDot.outerHTML + 'Ограниченная работа';
+                if (data.mocked) {
+                    statusEl.innerHTML += '<span class="mocked-data-indicator">Симуляция</span>';
                 }
-                
-                if (confirmBtn) {
-                    confirmBtn.dataset.serverId = serverId;
-                    confirmBtn.addEventListener('click', function handleDelete() {
-                        // Get server ID from dataset
-                        const id = this.dataset.serverId;
-                        
-                        // Update button state
-                        window.Modals.setButtonLoading(this, 'Удаление...');
-                        
-                        // Call delete function
-                        deleteServer(id);
-                        
-                        // Remove event listener to prevent multiple bindings
-                        this.removeEventListener('click', handleDelete);
-                    });
-                }
-            });
-        });
+                break;
+            default:
+                statusDot.classList.add('status-unknown');
+                statusEl.innerHTML = statusDot.outerHTML + 'Неизвестно';
+        }
+        
+        // Обновление основных метрик
+        document.getElementById('peers-count').textContent = data.peers_count || 0;
+        document.getElementById('server-load').textContent = (data.load || 0) + '%';
+        
+        // Обновление CPU
+        const cpuUsage = data.cpu_usage || 0;
+        document.getElementById('cpu-usage').textContent = cpuUsage + '%';
+        const cpuBar = document.getElementById('cpu-usage-bar');
+        cpuBar.style.width = cpuUsage + '%';
+        if (cpuUsage > 80) {
+            cpuBar.className = 'progress-bar bg-danger';
+        } else if (cpuUsage > 50) {
+            cpuBar.className = 'progress-bar bg-warning';
+        } else {
+            cpuBar.className = 'progress-bar bg-primary';
+        }
+        
+        // Обновление памяти
+        const memoryUsage = data.memory_usage || 0;
+        document.getElementById('memory-usage').textContent = memoryUsage + '%';
+        const memoryBar = document.getElementById('memory-usage-bar');
+        memoryBar.style.width = memoryUsage + '%';
+        if (memoryUsage > 80) {
+            memoryBar.className = 'progress-bar bg-danger';
+        } else if (memoryUsage > 50) {
+            memoryBar.className = 'progress-bar bg-warning';
+        } else {
+            memoryBar.className = 'progress-bar bg-success';
+        }
+        
+        // Обновление потери пакетов
+        const packetLoss = data.packet_loss || 0;
+        document.getElementById('packet-loss').textContent = packetLoss + '%';
+        const packetLossBar = document.getElementById('packet-loss-bar');
+        packetLossBar.style.width = packetLoss + '%';
+        if (packetLoss > 10) {
+            packetLossBar.className = 'progress-bar bg-danger';
+        } else if (packetLoss > 5) {
+            packetLossBar.className = 'progress-bar bg-warning';
+        } else {
+            packetLossBar.className = 'progress-bar bg-success';
+        }
+        
+        // Обновление времени работы
+        const uptime = data.uptime || 0;
+        document.getElementById('uptime').textContent = formatUptime(uptime);
+        
+        // Обновление задержки
+        document.getElementById('latency').textContent = (data.latency_ms || 0) + ' мс';
+        
+        // Обновление версии WireGuard
+        document.getElementById('wg-version').textContent = data.version || 'Н/Д';
+        
+        // Обновление времени последней проверки
+        const lastCheck = data.last_check ? new Date(data.last_check) : null;
+        document.getElementById('server-last-check').textContent = lastCheck ? lastCheck.toLocaleString() : 'Не указано';
+        document.getElementById('last-update').textContent = lastCheck ? lastCheck.toLocaleString() : 'Не указано';
+        
+        // Показываем информацию о метриках
+        metricsLoadingEl.classList.add('d-none');
+        currentMetricsEl.classList.remove('d-none');
     }
-
+    
     /**
-     * Загрузка метрик сервера
+     * Загрузка истории метрик
      */
-    function loadServerMetrics() {
-        window.Utils.apiRequest(`${CONFIG.API_BASE_URL}/${SERVER_DATA.id}/metrics`)
+    function loadMetricsHistory(hours) {
+        // Показываем индикатор загрузки
+        historyLoadingEl.classList.remove('d-none');
+        metricsHistoryEl.classList.add('d-none');
+        historyErrorEl.classList.add('d-none');
+        
+        // Запрос данных истории метрик
+        fetch(`/api/servers/${serverId}/metrics?hours=${hours}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
-                if (data.status === 'success') {
-                    SERVER_DATA.metrics = data.metrics;
-                    initMetricsChart();
+                if (data && data.metrics && data.metrics.length > 0) {
+                    updateMetricsCharts(data.metrics);
+                    
+                    // Показываем графики
+                    historyLoadingEl.classList.add('d-none');
+                    metricsHistoryEl.classList.remove('d-none');
+                } else {
+                    // Если нет данных метрик
+                    historyLoadingEl.classList.add('d-none');
+                    historyErrorEl.classList.remove('d-none');
                 }
             })
             .catch(error => {
-                console.error('Failed to load metrics:', error);
+                console.error('Error loading metrics history:', error);
+                
+                // Показываем ошибку
+                historyLoadingEl.classList.add('d-none');
+                historyErrorEl.classList.remove('d-none');
             });
     }
-
+    
     /**
-     * Инициализация графика метрик
+     * Обновление графиков метрик
      */
-    function initMetricsChart() {
-        const ctx = document.getElementById('serverMetricsChart');
-        if (!ctx) return;
+    function updateMetricsCharts(metricsData) {
+        // Подготовка данных для графиков
+        const timestamps = metricsData.map(item => new Date(item.timestamp));
+        const peersData = metricsData.map(item => item.peers_count || 0);
+        const loadData = metricsData.map(item => item.load || 0);
+        const cpuData = metricsData.map(item => item.cpu_usage || 0);
+        const memoryData = metricsData.map(item => item.memory_usage || 0);
+        const latencyData = metricsData.map(item => item.latency_ms || 0);
+        const packetLossData = metricsData.map(item => item.packet_loss || 0);
         
-        const metricsData = SERVER_DATA.metrics || {};
-        const history = metricsData.history || [];
+        // Уничтожаем существующие графики перед созданием новых
+        Object.values(charts).forEach(chart => {
+            if (chart) chart.destroy();
+        });
         
-        if (history.length === 0) {
-            // If no data, display message
-            ctx.style.display = 'none';
-            const noDataMsg = document.createElement('p');
-            noDataMsg.className = 'text-center text-muted my-5';
-            noDataMsg.textContent = 'Нет данных для отображения';
-            ctx.parentNode.appendChild(noDataMsg);
-            return;
-        }
-        
-        // Prepare chart data
-        const chartData = prepareChartData(history);
-        
-        // Create chart
-        new Chart(ctx, {
+        // Создание графика пиров
+        charts.peersChart = new Chart(document.getElementById('peers-chart'), {
             type: 'line',
             data: {
-                labels: chartData.labels,
-                datasets: [
-                    {
-                        label: 'Задержка (мс)',
-                        data: chartData.latency,
-                        borderColor: 'rgba(54, 162, 235, 1)',
-                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                        borderWidth: 2,
-                        tension: 0.3,
-                        yAxisID: 'y'
-                    },
-                    {
-                        label: 'Потеря пакетов (%)',
-                        data: chartData.packetLoss,
-                        borderColor: 'rgba(255, 99, 132, 1)',
-                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                        borderWidth: 2,
-                        tension: 0.3,
-                        yAxisID: 'y1'
-                    }
-                ]
+                labels: timestamps,
+                datasets: [{
+                    label: 'Количество пиров',
+                    data: peersData,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    tension: 0.1,
+                    fill: true
+                }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
                     x: {
-                        ticks: {
-                            maxRotation: 45,
-                            minRotation: 45
+                        type: 'time',
+                        time: {
+                            unit: 'hour',
+                            tooltipFormat: 'dd.MM.yyyy HH:mm'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Время'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Пиры'
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Создание графика нагрузки
+        charts.loadChart = new Chart(document.getElementById('load-chart'), {
+            type: 'line',
+            data: {
+                labels: timestamps,
+                datasets: [{
+                    label: 'Нагрузка (%)',
+                    data: loadData,
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    tension: 0.1,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'hour',
+                            tooltipFormat: 'dd.MM.yyyy HH:mm'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Время'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Нагрузка (%)'
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Создание графика ресурсов (CPU и память)
+        charts.resourcesChart = new Chart(document.getElementById('resources-chart'), {
+            type: 'line',
+            data: {
+                labels: timestamps,
+                datasets: [{
+                    label: 'CPU (%)',
+                    data: cpuData,
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    tension: 0.1,
+                    fill: false
+                }, {
+                    label: 'Память (%)',
+                    data: memoryData,
+                    borderColor: 'rgba(153, 102, 255, 1)',
+                    backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                    tension: 0.1,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'hour',
+                            tooltipFormat: 'dd.MM.yyyy HH:mm'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Время'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Использование (%)'
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Создание графика задержки и потери пакетов
+        charts.latencyChart = new Chart(document.getElementById('latency-chart'), {
+            type: 'line',
+            data: {
+                labels: timestamps,
+                datasets: [{
+                    label: 'Задержка (мс)',
+                    data: latencyData,
+                    borderColor: 'rgba(255, 159, 64, 1)',
+                    backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                    tension: 0.1,
+                    fill: false,
+                    yAxisID: 'y'
+                }, {
+                    label: 'Потеря пакетов (%)',
+                    data: packetLossData,
+                    borderColor: 'rgba(255, 206, 86, 1)',
+                    backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                    tension: 0.1,
+                    fill: false,
+                    yAxisID: 'y1'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'hour',
+                            tooltipFormat: 'dd.MM.yyyy HH:mm'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Время'
                         }
                     },
                     y: {
                         type: 'linear',
                         display: true,
                         position: 'left',
+                        beginAtZero: true,
                         title: {
                             display: true,
                             text: 'Задержка (мс)'
@@ -171,148 +449,235 @@
                         type: 'linear',
                         display: true,
                         position: 'right',
+                        beginAtZero: true,
+                        max: 100,
                         grid: {
                             drawOnChartArea: false
                         },
                         title: {
                             display: true,
                             text: 'Потеря пакетов (%)'
-                        },
-                        min: 0,
-                        max: 100
-                    }
-                },
-                plugins: {
-                    legend: { position: 'top' },
-                    tooltip: {
-                        mode: 'index',
-                        intersect: false
+                        }
                     }
                 }
             }
         });
     }
-
+    
     /**
-     * Подготовка данных для графика из истории сервера
-     * @param {Array} history - Массив точек истории
-     * @return {Object} Форматированные данные для графика
+     * Настройка обработчиков событий
      */
-    function prepareChartData(history) {
-        return {
-            labels: history.map(item => {
-                const date = new Date(item.hour);
-                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            }),
-            latency: history.map(item => item.avg_latency),
-            packetLoss: history.map(item => item.avg_packet_loss)
-        };
-    }
-
-    /**
-     * Инициализация таблицы пиров
-     */
-    function initPeersTable() {
-        // В реальной системе здесь будет загрузка пиров с API
-        setTimeout(() => {
-            const tableBody = document.getElementById('serverPeersTableBody');
-            if (tableBody) {
-                tableBody.innerHTML = `
-                    <tr>
-                        <td colspan="6" class="text-center">Нет данных о пирах</td>
-                    </tr>
-                `;
-            }
-        }, CONFIG.PEERS_LOAD_DELAY);
-    }
-
-    /**
-     * Обновление информации о сервере
-     */
-    function updateServer() {
-        // Get form data
-        const formData = {
-            endpoint: document.getElementById('edit_endpoint')?.value,
-            port: parseInt(document.getElementById('edit_port')?.value || '0'),
-            address: document.getElementById('edit_address')?.value,
-            geolocation_id: parseInt(document.getElementById('edit_geolocation_id')?.value || '0'),
-            status: document.getElementById('edit_status')?.value
-        };
+    function setupEventHandlers() {
+        // Обработчик для кнопки обновления
+        document.getElementById('refresh-btn').addEventListener('click', function() {
+            loadServerData();
+            showAlert('success', 'Данные обновлены', 'Информация о сервере успешно обновлена.');
+        });
         
-        // Validate required fields
-        if (!formData.endpoint || !formData.port || !formData.address || !formData.geolocation_id) {
-            window.showAlert('Пожалуйста, заполните все обязательные поля', 'warning');
-            return;
-        }
+        // Обработчик для кнопки проверки соединения
+        document.getElementById('test-connection-btn').addEventListener('click', function() {
+            testServerConnection();
+        });
         
-        // Get save button and set loading state
-        const saveButton = document.getElementById('saveServerChangesBtn');
-        if (!saveButton) return;
+        // Обработчик для кнопки перезапуска сервера
+        document.getElementById('restart-server-btn').addEventListener('click', function() {
+            $('#restart-confirm-modal').modal('show');
+        });
         
-        window.Modals.setButtonLoading(saveButton, 'Сохранение...');
+        // Обработчик для кнопки подтверждения перезапуска
+        document.getElementById('confirm-restart-btn').addEventListener('click', function() {
+            restartServer();
+        });
         
-        // Send API request
-        window.Utils.apiRequest(`${CONFIG.API_BASE_URL}/${SERVER_DATA.id}`, {
-            method: 'PUT',
-            body: formData
-        })
-        .then(result => {
-            if (result.status === 'success') {
-                // Close modal and show success message
-                window.Modals.close('editServerModal');
-                window.showAlert('Сервер успешно обновлен', 'success');
+        // Обработчик для кнопки удаления сервера
+        document.getElementById('delete-server-btn').addEventListener('click', function() {
+            $('#delete-confirm-modal').modal('show');
+        });
+        
+        // Обработчики для поля подтверждения удаления
+        document.getElementById('delete-confirm-input').addEventListener('input', function() {
+            const confirmBtn = document.getElementById('confirm-delete-btn');
+            confirmBtn.disabled = this.value !== 'УДАЛИТЬ';
+        });
+        
+        // Обработчик для кнопки подтверждения удаления
+        document.getElementById('confirm-delete-btn').addEventListener('click', function() {
+            deleteServer();
+        });
+        
+        // Обработчики для фильтров времени
+        document.querySelectorAll('.time-filter').forEach(button => {
+            button.addEventListener('click', function() {
+                // Удаляем класс active со всех кнопок
+                document.querySelectorAll('.time-filter').forEach(btn => {
+                    btn.classList.remove('active');
+                });
                 
-                // Reload page after delay
-                setTimeout(() => {
-                    window.location.reload();
-                }, CONFIG.RELOAD_DELAY);
-            } else {
-                window.showAlert(`Ошибка: ${result.message}`, 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            window.showAlert('Ошибка соединения с сервером', 'danger');
-        })
-        .finally(() => {
-            // Reset button state
-            window.Modals.resetButton(saveButton, 'Сохранить изменения');
+                // Добавляем класс active текущей кнопке
+                this.classList.add('active');
+                
+                // Загружаем историю метрик за выбранный период
+                const hours = this.getAttribute('data-hours');
+                loadMetricsHistory(hours);
+            });
         });
     }
-
+    
     /**
-     * Удаление сервера
-     * @param {number|string} serverId - ID сервера для удаления
+     * Проверка соединения с сервером
      */
-    function deleteServer(serverId) {
-        // Send delete request
-        window.Utils.apiRequest(`${CONFIG.API_BASE_URL}/${serverId}/delete`, {
+    function testServerConnection() {
+        showAlert('info', 'Проверка соединения', 'Проверка соединения с сервером...');
+        
+        fetch(`/api/servers/${serverId}/ping`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', 'Соединение установлено', `Сервер доступен. Задержка: ${data.latency_ms} мс`);
+                } else {
+                    showAlert('error', 'Ошибка соединения', data.message || 'Сервер недоступен');
+                }
+            })
+            .catch(error => {
+                console.error('Error testing connection:', error);
+                showAlert('error', 'Ошибка проверки соединения', error.message);
+            });
+    }
+    
+    /**
+     * Перезапуск сервера
+     */
+    function restartServer() {
+        showAlert('info', 'Перезапуск сервера', 'Отправка запроса на перезапуск сервера...');
+        
+        fetch(`/api/servers/${serverId}/restart`, {
             method: 'POST'
         })
-        .then(result => {
-            if (result.status === 'success') {
-                // Close modal and show success message
-                window.Modals.close('deleteServerModal');
-                window.showAlert('Сервер успешно удален', 'success');
-                
-                // Redirect to servers list after delay
-                setTimeout(() => {
-                    window.location.href = '/servers';
-                }, CONFIG.RELOAD_DELAY);
-            } else {
-                window.showAlert(`Ошибка: ${result.message}`, 'danger');
-                // Reset delete button
-                window.Modals.resetButton(document.getElementById('confirmDeleteBtn'), 'Удалить сервер');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            window.showAlert('Ошибка соединения с сервером', 'danger');
-            // Reset delete button
-            window.Modals.resetButton(document.getElementById('confirmDeleteBtn'), 'Удалить сервер');
-        });
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', 'Сервер перезапущен', 'Сервер успешно перезапущен. Обновление данных...');
+                    
+                    // Закрываем модальное окно
+                    $('#restart-confirm-modal').modal('hide');
+                    
+                    // Ждем немного перед обновлением данных
+                    setTimeout(() => {
+                        loadServerData();
+                    }, 3000);
+                } else {
+                    showAlert('error', 'Ошибка перезапуска', data.message || 'Не удалось перезапустить сервер');
+                    $('#restart-confirm-modal').modal('hide');
+                }
+            })
+            .catch(error => {
+                console.error('Error restarting server:', error);
+                showAlert('error', 'Ошибка перезапуска', error.message);
+                $('#restart-confirm-modal').modal('hide');
+            });
     }
-
-    // Инициализация при загрузке страницы
-    document.addEventListener('DOMContentLoaded', initPage);
-})();
+    
+    /**
+     * Удаление сервера
+     */
+    function deleteServer() {
+        showAlert('info', 'Удаление сервера', 'Отправка запроса на удаление сервера...');
+        
+        fetch(`/api/servers/${serverId}`, {
+            method: 'DELETE'
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', 'Сервер удален', 'Сервер успешно удален. Перенаправление на список серверов...');
+                    
+                    // Закрываем модальное окно
+                    $('#delete-confirm-modal').modal('hide');
+                    
+                    // Перенаправляем на список серверов
+                    setTimeout(() => {
+                        window.location.href = '/servers';
+                    }, 2000);
+                } else {
+                    showAlert('error', 'Ошибка удаления', data.message || 'Не удалось удалить сервер');
+                    $('#delete-confirm-modal').modal('hide');
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting server:', error);
+                showAlert('error', 'Ошибка удаления', error.message);
+                $('#delete-confirm-modal').modal('hide');
+            });
+    }
+    
+    /**
+     * Форматирование времени работы
+     */
+    function formatUptime(seconds) {
+        if (!seconds || seconds <= 0) {
+            return 'Н/Д';
+        }
+        
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        
+        let result = '';
+        if (days > 0) {
+            result += `${days} д. `;
+        }
+        
+        if (hours > 0 || days > 0) {
+            result += `${hours} ч. `;
+        }
+        
+        result += `${minutes} мин.`;
+        
+        return result;
+    }
+    
+    /**
+     * Отображение уведомления
+     */
+    function showAlert(type, title, message) {
+        // Создаем элемент уведомления
+        const alertElement = document.createElement('div');
+        alertElement.className = `alert alert-${type} alert-dismissible fade show`;
+        alertElement.role = 'alert';
+        
+        // Добавляем содержимое уведомления
+        alertElement.innerHTML = `
+            <strong>${title}</strong> ${message}
+            <button type="button" class="close" data-dismiss="alert" aria-label="Закрыть">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        `;
+        
+        // Добавляем уведомление в контейнер
+        const flashMessagesContainer = document.querySelector('.flash-messages');
+        flashMessagesContainer.appendChild(alertElement);
+        
+        // Автоматически удаляем уведомление через 5 секунд
+        setTimeout(() => {
+            alertElement.classList.remove('show');
+            setTimeout(() => {
+                alertElement.remove();
+            }, 300);
+        }, 5000);
+    }
+});

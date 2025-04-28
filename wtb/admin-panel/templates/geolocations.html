@@ -4,6 +4,32 @@
 
 {% block head_extra %}
 <style>
+    .geo-card {
+        transition: transform 0.2s ease;
+        height: 100%;
+    }
+    
+    .geo-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+    
+    .geo-status-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    
+    .geo-status-available {
+        background-color: #28a745;
+    }
+    
+    .geo-status-unavailable {
+        background-color: #dc3545;
+    }
+    
     .action-buttons {
         white-space: nowrap;
     }
@@ -11,7 +37,207 @@
 {% endblock %}
 
 {% block content %}
-<!-- Содержимое страницы без изменений -->
+<div class="container-fluid">
+    <!-- Заголовок страницы -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">Управление геолокациями</h1>
+        <button class="btn btn-primary" id="addGeolocationBtn" data-bs-toggle="modal" data-bs-target="#addGeolocationModal">
+            <i class="bi bi-plus-circle"></i> Добавить геолокацию
+        </button>
+    </div>
+
+    <!-- Статистика геолокаций -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Всего геолокаций</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="totalGeolocationsCount">0</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-globe fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Доступные</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="availableGeolocationsCount">0</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-check-circle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Недоступные</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="unavailableGeolocationsCount">0</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-x-circle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Активные серверы</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="serversWithGeolocationsCount">0</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-hdd-rack fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Список геолокаций -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Список геолокаций</h6>
+            <button class="btn btn-sm btn-outline-primary" id="refreshGeolocationsBtn">
+                <i class="bi bi-arrow-clockwise"></i> Обновить
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Код</th>
+                            <th>Название</th>
+                            <th>Статус</th>
+                            <th>Серверы</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="geolocationsTableBody">
+                        <tr>
+                            <td colspan="6" class="text-center">Загрузка данных...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно добавления геолокации -->
+<div class="modal fade" id="addGeolocationModal" tabindex="-1" aria-labelledby="addGeolocationModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addGeolocationModalLabel">Добавление геолокации</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addGeolocationForm">
+                    <div class="mb-3">
+                        <label for="geo_code" class="form-label">Код страны</label>
+                        <input type="text" class="form-control" id="geo_code" name="code" required maxlength="2" placeholder="ru">
+                        <div class="form-text">Двухбуквенный код страны (ISO 3166-1 alpha-2)</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="geo_name" class="form-label">Название</label>
+                        <input type="text" class="form-control" id="geo_name" name="name" required placeholder="Россия">
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="geo_available" name="available" checked>
+                        <label class="form-check-label" for="geo_available">Геолокация доступна</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveGeolocationBtn">Добавить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования геолокации -->
+<div class="modal fade" id="editGeolocationModal" tabindex="-1" aria-labelledby="editGeolocationModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editGeolocationModalLabel">Редактирование геолокации</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editGeolocationForm">
+                    <input type="hidden" id="edit_geo_id" name="id">
+                    <div class="mb-3">
+                        <label for="edit_geo_code" class="form-label">Код страны</label>
+                        <input type="text" class="form-control" id="edit_geo_code" name="code" required maxlength="2">
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_geo_name" class="form-label">Название</label>
+                        <input type="text" class="form-control" id="edit_geo_name" name="name" required>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="edit_geo_available" name="available">
+                        <label class="form-check-label" for="edit_geo_available">Геолокация доступна</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="updateGeolocationBtn">Сохранить изменения</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно удаления геолокации -->
+<div class="modal fade" id="deleteGeolocationModal" tabindex="-1" aria-labelledby="deleteGeolocationModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteGeolocationModalLabel">Подтверждение удаления</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Вы действительно хотите удалить геолокацию <strong id="deleteGeolocationName"></strong>?</p>
+                <p class="text-danger">Это действие нельзя отменить. Все связанные серверы будут отключены от этой геолокации.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteGeolocationBtn">Удалить</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="debug-info" class="container mt-3" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <h5>Отладочная информация</h5>
+            <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('debug-info').style.display='none'">Скрыть</button>
+        </div>
+        <div class="card-body">
+            <pre id="debug-output" style="max-height: 300px; overflow: auto;"></pre>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -19,4 +245,53 @@
 <script src="{{ url_for('static', filename='js/components/modals.js') }}"></script>
 <script src="{{ url_for('static', filename='js/components/utils.js') }}"></script>
 <script src="{{ url_for('static', filename='js/geolocations/index.js') }}"></script>
+<script>
+    // Функция для отображения отладочной информации
+    function showDebugInfo(info) {
+        const debugOutput = document.getElementById('debug-output');
+        const debugInfo = document.getElementById('debug-info');
+        
+        if (debugOutput && debugInfo) {
+            debugOutput.textContent += JSON.stringify(info, null, 2) + '\n\n';
+            debugInfo.style.display = 'block';
+        }
+    }
+
+    // Перехватываем ошибки fetch
+    const originalFetch = window.fetch;
+    window.fetch = function() {
+        showDebugInfo({
+            type: 'fetch-request',
+            url: arguments[0],
+            options: arguments[1],
+            timestamp: new Date().toISOString()
+        });
+        
+        return originalFetch.apply(this, arguments)
+            .then(response => {
+                // Клонируем ответ перед чтением, чтобы не потерять данные
+                const clone = response.clone();
+                clone.text().then(text => {
+                    showDebugInfo({
+                        type: 'fetch-response',
+                        url: response.url,
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: text.substring(0, 1000), // Ограничиваем размер для больших ответов
+                        timestamp: new Date().toISOString()
+                    });
+                });
+                return response;
+            })
+            .catch(error => {
+                showDebugInfo({
+                    type: 'fetch-error',
+                    message: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                });
+                throw error;
+            });
+    };
+</script>
 {% endblock %}

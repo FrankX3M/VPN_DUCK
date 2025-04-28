@@ -5,18 +5,91 @@
     // Базовый URL API
     const API_BASE_URL = '/api';
     
+    // Флаг для отслеживания ошибок соединения
+    let connectionErrorShown = false;
+    
+    /**
+     * Универсальная функция для выполнения API запросов
+     * @param {string} endpoint - Конечная точка API
+     * @param {Object} options - Опции запроса
+     * @returns {Promise<Object>} Результат запроса
+     */
+    async function makeApiRequest(endpoint, options = {}) {
+        const url = `${API_BASE_URL}${endpoint}`;
+        console.log(`API запрос: ${options.method || 'GET'} ${url}`);
+        
+        // Формируем параметры запроса
+        const fetchOptions = {
+            method: options.method || 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            },
+            credentials: 'same-origin'  // Важно для работы с сессионными куками
+        };
+        
+        // Добавляем тело запроса, если оно есть
+        if (options.body) {
+            fetchOptions.body = JSON.stringify(options.body);
+            console.log(`Тело запроса:`, options.body);
+        }
+        
+        try {
+            // Выполняем запрос
+            const response = await fetch(url, fetchOptions);
+            
+            // Логируем заголовки ответа
+            const headers = {};
+            response.headers.forEach((value, key) => {
+                headers[key] = value;
+            });
+            console.log(`Заголовки ответа:`, headers);
+            
+            // Получаем текст ответа
+            const responseText = await response.text();
+            console.log(`Статус ответа: ${response.status}, Текст:`, responseText.substring(0, 500));
+            
+            // Пытаемся распарсить JSON
+            let responseData;
+            try {
+                responseData = JSON.parse(responseText);
+            } catch (e) {
+                console.error('Ошибка при разборе JSON ответа:', e);
+                throw new Error(`Ошибка формата ответа: ${responseText.substring(0, 100)}...`);
+            }
+            
+            // Проверяем статус ответа
+            if (!response.ok) {
+                const errorMessage = responseData.message || responseData.error || `Ошибка ${response.status}`;
+                console.error(`Ошибка API: ${errorMessage}`);
+                throw new Error(errorMessage);
+            }
+            
+            // Сбрасываем флаг ошибки соединения
+            connectionErrorShown = false;
+            
+            return responseData;
+        } catch (error) {
+            // Если это ошибка сети и мы ещё не показывали уведомление
+            if (error.name === 'TypeError' && error.message.includes('fetch') && !connectionErrorShown) {
+                console.error('Ошибка соединения с сервером:', error);
+                if (typeof window.showAlert === 'function') {
+                    window.showAlert('Ошибка соединения с сервером. Проверьте подключение к интернету.', 'danger');
+                    connectionErrorShown = true;
+                }
+            } else {
+                console.error('Ошибка API запроса:', error);
+            }
+            throw error;
+        }
+    }
+    
     /**
      * Получить список всех серверов
      * @returns {Promise<Object>} Результат запроса
      */
     async function fetchServers() {
-        try {
-            const response = await fetch(`${API_BASE_URL}/servers`);
-            return await response.json();
-        } catch (error) {
-            console.error('Ошибка при получении списка серверов:', error);
-            throw error;
-        }
+        return makeApiRequest('/servers');
     }
     
     /**
@@ -25,13 +98,7 @@
      * @returns {Promise<Object>} Информация о сервере
      */
     async function fetchServerDetails(serverId) {
-        try {
-            const response = await fetch(`${API_BASE_URL}/servers/${serverId}`);
-            return await response.json();
-        } catch (error) {
-            console.error(`Ошибка при получении информации о сервере ${serverId}:`, error);
-            throw error;
-        }
+        return makeApiRequest(`/servers/${serverId}`);
     }
     
     /**
@@ -51,35 +118,46 @@
             }
         }
         
+        // Создаем копию данных для безопасной модификации
+        const data = {...serverData};
+        
         // Преобразуем числовые значения
-        if (serverData.port) serverData.port = parseInt(serverData.port);
-        if (serverData.geolocation_id) serverData.geolocation_id = parseInt(serverData.geolocation_id);
-        if (serverData.max_peers) serverData.max_peers = parseInt(serverData.max_peers);
+        data.port = parseInt(data.port, 10);
+        data.geolocation_id = parseInt(data.geolocation_id, 10);
+        if (data.max_peers) data.max_peers = parseInt(data.max_peers, 10);
+        
+        // Проверяем корректность числовых значений
+        if (isNaN(data.port)) {
+            throw new Error('Поле port должно быть числом');
+        }
+        if (isNaN(data.geolocation_id)) {
+            throw new Error('Поле geolocation_id должно быть числом');
+        }
+        
+        // Добавляем имя сервера, если оно не указано
+        if (!data.name) {
+            data.name = `Сервер ${data.endpoint}:${data.port}`;
+        }
+        
+        // Добавляем локацию, если не указана
+        if (!data.location) {
+            data.location = `${data.endpoint}:${data.port}`;
+        }
         
         // Устанавливаем API URL, если не указан
-        if (!serverData.api_url && serverData.endpoint) {
-            serverData.api_url = `http://${serverData.endpoint}/`;
+        if (!data.api_url && data.endpoint) {
+            data.api_url = `http://${data.endpoint}:${data.port}/api`;
         }
         
         // Генерируем API ключ, если не указан
-        if (!serverData.api_key) {
-            serverData.api_key = generateApiKey();
+        if (!data.api_key) {
+            data.api_key = generateApiKey();
         }
         
-        try {
-            const response = await fetch(`${API_BASE_URL}/servers`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(serverData)
-            });
-            
-            return await response.json();
-        } catch (error) {
-            console.error('Ошибка при добавлении сервера:', error);
-            throw error;
-        }
+        return makeApiRequest('/servers', {
+            method: 'POST',
+            body: data
+        });
     }
     
     /**
@@ -89,20 +167,18 @@
      * @returns {Promise<Object>} Результат операции
      */
     async function updateServer(serverId, updateData) {
-        try {
-            const response = await fetch(`${API_BASE_URL}/servers/${serverId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(updateData)
-            });
-            
-            return await response.json();
-        } catch (error) {
-            console.error(`Ошибка при обновлении сервера ${serverId}:`, error);
-            throw error;
-        }
+        // Создаем копию данных для безопасной модификации
+        const data = {...updateData};
+        
+        // Преобразуем числовые значения, если они указаны
+        if ('port' in data) data.port = parseInt(data.port, 10);
+        if ('geolocation_id' in data) data.geolocation_id = parseInt(data.geolocation_id, 10);
+        if ('max_peers' in data) data.max_peers = parseInt(data.max_peers, 10);
+        
+        return makeApiRequest(`/servers/${serverId}`, {
+            method: 'PUT',
+            body: data
+        });
     }
     
     /**
@@ -111,16 +187,9 @@
      * @returns {Promise<Object>} Результат операции
      */
     async function deleteServer(serverId) {
-        try {
-            const response = await fetch(`${API_BASE_URL}/servers/${serverId}/delete`, {
-                method: 'POST'
-            });
-            
-            return await response.json();
-        } catch (error) {
-            console.error(`Ошибка при удалении сервера ${serverId}:`, error);
-            throw error;
-        }
+        return makeApiRequest(`/servers/${serverId}/delete`, {
+            method: 'POST'
+        });
     }
     
     /**
@@ -130,13 +199,7 @@
      * @returns {Promise<Object>} Метрики сервера
      */
     async function fetchServerMetrics(serverId, hours = 24) {
-        try {
-            const response = await fetch(`${API_BASE_URL}/server_metrics/${serverId}?hours=${hours}`);
-            return await response.json();
-        } catch (error) {
-            console.error(`Ошибка при получении метрик сервера ${serverId}:`, error);
-            throw error;
-        }
+        return makeApiRequest(`/server_metrics/${serverId}?hours=${hours}`);
     }
     
     /**
@@ -144,13 +207,64 @@
      * @returns {Promise<Object>} Список геолокаций
      */
     async function fetchGeolocations() {
-        try {
-            const response = await fetch(`${API_BASE_URL}/geolocations`);
-            return await response.json();
-        } catch (error) {
-            console.error('Ошибка при получении списка геолокаций:', error);
-            throw error;
+        return makeApiRequest('/geolocations');
+    }
+    
+    /**
+     * Добавить новую геолокацию
+     * @param {Object} geoData - Данные новой геолокации
+     * @returns {Promise<Object>} Результат операции
+     */
+    async function addGeolocation(geoData) {
+        // Проверяем обязательные поля
+        const requiredFields = ['code', 'name'];
+        for (const field of requiredFields) {
+            if (!geoData[field]) {
+                throw new Error(`Отсутствует обязательное поле: ${field}`);
+            }
         }
+        
+        // Создаем копию данных для безопасной модификации
+        const data = {...geoData};
+        
+        // Добавляем поле available, если оно отсутствует
+        if (!('available' in data)) {
+            data.available = true;
+        }
+        
+        // Добавляем описание, если оно отсутствует
+        if (!data.description) {
+            data.description = `Серверы в регионе ${data.name}`;
+        }
+        
+        return makeApiRequest('/geolocations', {
+            method: 'POST',
+            body: data
+        });
+    }
+    
+    /**
+     * Обновить геолокацию
+     * @param {number} geoId - ID геолокации
+     * @param {Object} updateData - Данные для обновления
+     * @returns {Promise<Object>} Результат операции
+     */
+    async function updateGeolocation(geoId, updateData) {
+        return makeApiRequest(`/geolocations/${geoId}`, {
+            method: 'PUT',
+            body: updateData
+        });
+    }
+    
+    /**
+     * Удалить геолокацию
+     * @param {number} geoId - ID геолокации
+     * @returns {Promise<Object>} Результат операции
+     */
+    async function deleteGeolocation(geoId) {
+        return makeApiRequest(`/geolocations/${geoId}`, {
+            method: 'DELETE'
+        });
     }
     
     /**
@@ -159,15 +273,7 @@
      * @returns {Promise<Object>} Результат проверки
      */
     async function testServerConnection(serverId) {
-        try {
-            // В API документации не указан точный эндпоинт для тестирования соединения
-            // Поэтому используем запрос статуса сервера
-            const response = await fetch(`${API_BASE_URL}/status?server_id=${serverId}`);
-            return await response.json();
-        } catch (error) {
-            console.error(`Ошибка при проверке соединения с сервером ${serverId}:`, error);
-            throw error;
-        }
+        return makeApiRequest(`/servers/${serverId}/test`);
     }
     
     /**
@@ -187,25 +293,9 @@
         return result;
     }
     
-    /**
-     * Функция для анализа и обработки ошибок API
-     * @param {Object} response - Ответ API
-     * @returns {Object} Обработанная ошибка
-     */
-    function handleApiError(response) {
-        if (response.status === 'error') {
-            return {
-                status: 'error',
-                message: response.message || 'Неизвестная ошибка',
-                details: response.details || null
-            };
-        }
-        
-        return response;
-    }
-    
     // Экспортируем API функции в глобальное пространство имен
     window.Api = {
+        makeApiRequest,
         fetchServers,
         fetchServerDetails,
         addServer,
@@ -213,8 +303,12 @@
         deleteServer,
         fetchServerMetrics,
         fetchGeolocations,
+        addGeolocation,
+        updateGeolocation,
+        deleteGeolocation,
         testServerConnection,
-        generateApiKey,
-        handleApiError
+        generateApiKey
     };
+    
+    console.log('API модуль успешно загружен');
 })();

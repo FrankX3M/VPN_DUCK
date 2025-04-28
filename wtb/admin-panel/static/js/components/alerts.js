@@ -2,14 +2,17 @@
  * Модуль для отображения уведомлений
  */
 (function() {
+    console.log('Загружен модуль alerts.js');
+    
     /**
      * Показывает уведомление
      * @param {string} message - Сообщение для отображения
      * @param {string} type - Тип уведомления (success, danger, warning, info)
-     * @param {number} timeout - Время в мс до автоскрытия сообщения
+     * @param {number} timeout - Время в мс до автоскрытия сообщения (по умолчанию 5000)
      */
-   // Модифицируйте функцию showAlert в вашем коде:
-    function showAlert(message, type) {
+    function showAlert(message, type = 'info', timeout = 5000) {
+        console.log(`Отображение уведомления (${type}): ${message}`);
+        
         // Пытаемся найти контейнер
         let alertsContainer = document.querySelector('.flash-messages');
         
@@ -27,30 +30,49 @@
         }
         
         // Создаем уведомление
-        const alertHTML = `
-            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.role = 'alert';
+        
+        // Добавляем HTML содержимое уведомления
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         `;
         
-        alertsContainer.innerHTML += alertHTML;
+        // Добавляем уведомление в контейнер
+        alertsContainer.appendChild(alertDiv);
         
-        // Автоматически скрываем уведомление через 5 секунд
+        // Автоматически скрываем уведомление через указанное время
         setTimeout(() => {
-            const alerts = alertsContainer.querySelectorAll('.alert');
-            alerts.forEach(alert => {
-                try {
-                    const bsAlert = new bootstrap.Alert(alert);
+            try {
+                // Пробуем использовать Bootstrap API если доступен
+                if (window.bootstrap && bootstrap.Alert) {
+                    const bsAlert = new bootstrap.Alert(alertDiv);
                     bsAlert.close();
-                } catch (e) {
-                    // Если bootstrap не загружен или возникла ошибка, удаляем элемент вручную
-                    alert.remove();
+                } else {
+                    // Ручное удаление, если Bootstrap недоступен
+                    alertDiv.classList.remove('show');
+                    setTimeout(() => {
+                        if (alertsContainer.contains(alertDiv)) {
+                            alertsContainer.removeChild(alertDiv);
+                        }
+                    }, 300);
                 }
-            });
-        }, 5000);
+            } catch (e) {
+                console.error('Ошибка при закрытии уведомления:', e);
+                // Запасной вариант
+                if (alertsContainer.contains(alertDiv)) {
+                    alertsContainer.removeChild(alertDiv);
+                }
+            }
+        }, timeout);
+        
+        return alertDiv;
     }
 
     // Экспортируем функцию в глобальное пространство имен
     window.showAlert = showAlert;
+    
+    console.log('Модуль alerts.js успешно загружен');
 })();

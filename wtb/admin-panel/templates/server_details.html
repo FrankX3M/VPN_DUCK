@@ -385,7 +385,7 @@
 </div>
 {% endblock %}
 
-{% block scripts %}
+<!-- {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     $(document).ready(function() {
@@ -522,5 +522,137 @@
             alert(message);
         }
     }
+</script>
+{% endblock %} -->
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const ServerPage = {
+        init() {
+            this.initDataTable();
+            this.initChart();
+            this.bindEvents();
+            this.initToastr();
+            this.toggleEditAuthFields();
+        },
+
+        initDataTable() {
+            $('#peersTable').DataTable();
+        },
+
+        initChart() {
+            const ctx = document.getElementById('serverMetricsChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: {{ metrics_dates|safe }},
+                    datasets: [
+                        {
+                            label: 'Peers Count',
+                            data: {{ metrics_peers|safe }},
+                            borderColor: 'rgba(78, 115, 223, 1)',
+                            backgroundColor: 'rgba(78, 115, 223, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'CPU Load (%)',
+                            data: {{ metrics_cpu|safe }},
+                            borderColor: 'rgba(246, 194, 62, 1)',
+                            backgroundColor: 'rgba(246, 194, 62, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Memory Usage (%)',
+                            data: {{ metrics_memory|safe }},
+                            borderColor: 'rgba(54, 185, 204, 1)',
+                            backgroundColor: 'rgba(54, 185, 204, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        },
+
+        bindEvents() {
+            $('#removePeerModal').on('show.bs.modal', this.handleRemovePeerModal);
+            $('#edit_auth_type').on('change', this.toggleEditAuthFields);
+            window.testConnection = this.testConnection.bind(this); // Экспортируем глобально
+        },
+
+        handleRemovePeerModal(event) {
+            const button = $(event.relatedTarget);
+            const peerKey = button.data('peer-key');
+            const peerUser = button.data('peer-user');
+            const modal = $(this);
+
+            modal.find('#remove_peer_key').val(peerKey);
+            modal.find('#remove_peer_user').text(peerUser);
+        },
+
+        toggleEditAuthFields() {
+            const authType = $('#edit_auth_type').val();
+            $('#edit_api_key_auth, #edit_oauth_auth, #edit_hmac_auth').hide();
+            $(`#edit_${authType}_auth`).show();
+        },
+
+        initToastr() {
+            if (typeof toastr !== 'undefined') {
+                toastr.options = {
+                    closeButton: true,
+                    progressBar: true,
+                    positionClass: 'toast-top-right',
+                    timeOut: 5000
+                };
+            }
+        },
+
+        showToast(message, type = 'info') {
+            if (typeof toastr !== 'undefined') {
+                toastr[type] ? toastr[type](message) : toastr.info(message);
+            } else {
+                alert(message);
+            }
+        },
+
+        testConnection() {
+            $.ajax({
+                url: '/servers/test_connection/{{ server.id }}',
+                type: 'GET',
+                beforeSend: () => this.showToast('Testing connection to server...', 'info'),
+                success: (data) => {
+                    if (data.success) {
+                        this.showToast(`Connection successful! Response time: ${data.response_time.toFixed(2)}ms`, 'success');
+                    } else {
+                        this.showToast(`Connection failed: ${data.error}`, 'error');
+                    }
+                },
+                error: (jqXHR, textStatus) => {
+                    this.showToast(`Connection test failed: ${textStatus}`, 'error');
+                }
+            });
+        }
+    };
+
+    ServerPage.init();
+});
 </script>
 {% endblock %}

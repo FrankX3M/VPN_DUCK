@@ -1,31 +1,8 @@
 /**
  * Основной JavaScript для страницы серверов
  */
-console.log('Загружена новая версия index.js - v1.0.2');
-
-// Определяем функции-заглушки до DOMContentLoaded
-window.initServerModal = window.initServerModal || function() {
-    console.log('Вызвана заглушка для initServerModal');
-};
-window.updateStatistics = window.updateStatistics || function(servers) {
-    console.log('Вызвана заглушка для updateStatistics', servers);
-};
-
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM загружен, инициализация страницы серверов');
-    
-    // Проверяем наличие API функций
-    if (typeof window.Api === 'undefined') {
-        console.warn('API модуль не загружен, используем резервные функции');
-        window.Api = createBackupApiFunctions();
-    }
-    
-    // Используем API функции
-    const { 
-        fetchServers, 
-        fetchGeolocations, 
-        deleteServer 
-    } = window.Api;
+(function() {
+    console.log('Загружен модуль servers/index.js');
     
     // Глобальные переменные
     let serversData = [];
@@ -33,46 +10,9 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedServerId = null;
     let viewMode = 'table';  // 'table' или 'card'
     let showAdvanced = false;
-    let retryCount = 0;
-    const MAX_RETRIES = 3;
     
-    // Инициализация страницы
-    initPage();
-    
-
-    function setViewMode(mode) {
-        console.log(`Переключение режима отображения на: ${mode}`);
-        
-        viewMode = mode;
-        
-        // Обновляем активную кнопку
-        const tableBtn = document.getElementById('tableViewBtn');
-        const cardBtn = document.getElementById('cardViewBtn');
-        
-        if (tableBtn) tableBtn.classList.toggle('active', mode === 'table');
-        if (cardBtn) cardBtn.classList.toggle('active', mode === 'card');
-        
-        // Обновляем видимость контейнеров (исправленный код)
-        const tableContainer = document.getElementById('tableView');
-        const cardContainer = document.getElementById('cardView');
-        
-        if (tableContainer) {
-            tableContainer.style.display = mode === 'table' ? 'block' : 'none';
-            console.log('Установлен display для tableView:', tableContainer.style.display);
-        }
-        
-        if (cardContainer) {
-            cardContainer.style.display = mode === 'card' ? 'block' : 'none';
-            console.log('Установлен display для cardView:', cardContainer.style.display);
-        }
-        
-        // Обновляем отображение серверов
-        updateServersView();
-    }
-
-
     /**
-     * Инициализирует страницу
+     * Инициализация страницы
      */
     function initPage() {
         console.log('Инициализация страницы серверов');
@@ -86,43 +26,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Инициализация подсказок
         setupTooltips();
-    }
-    
-    /**
-     * Создает резервные API функции в случае отсутствия основного API
-     * @returns {Object} Объект с резервными API функциями
-     */
-    function createBackupApiFunctions() {
-        return {
-            fetchServers: () => {
-                console.warn('Используется резервная функция fetchServers');
-                return Promise.resolve({ 
-                    status: 'success', 
-                    servers: [] 
-                });
-            },
-            fetchGeolocations: () => {
-                console.warn('Используется резервная функция fetchGeolocations');
-                return Promise.resolve({ 
-                    status: 'success', 
-                    geolocations: [] 
-                });
-            },
-            deleteServer: (id) => {
-                console.warn('Используется резервная функция deleteServer', id);
-                return Promise.resolve({ 
-                    status: 'error', 
-                    message: 'API для удаления не реализован' 
-                });
-            },
-            addServer: (data) => {
-                console.warn('Используется резервная функция addServer', data);
-                return Promise.resolve({ 
-                    status: 'error', 
-                    message: 'API для добавления не реализован' 
-                });
-            }
-        };
+        
+        // Добавление модального окна удаления
+        ensureDeleteModalExists();
     }
     
     /**
@@ -185,84 +91,54 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
         
-        // Инициализация модальных окон
-        if (typeof window.initServerModal === 'function') {
-            window.initServerModal();
-        } else {
-            initLocalServerModal(); // Используем внутреннюю реализацию, если глобальная недоступна
-        }
-    }
-    
-    /**
-     * Инициализирует модальные окна на странице (локальная версия)
-     */
-    function initLocalServerModal() {
-        console.log('Инициализация модальных окон (локальная версия)');
-        
-        // Находим модальное окно, если оно есть на странице
-        const serverModal = document.getElementById('serverModal') || document.getElementById('addServerModal');
-        if (!serverModal) {
-            console.log('Модальные окна не найдены на странице');
-            return;
-        }
-        
-        // Например, добавить обработчики для кнопок в модальном окне
-        const submitButton = serverModal.querySelector('button[type="submit"]');
-        if (submitButton) {
-            submitButton.addEventListener('click', function(event) {
-                // Предотвращаем стандартную отправку формы
-                event.preventDefault();
-                
-                // Получаем данные формы
-                const form = serverModal.querySelector('form');
-                if (form) {
-                    // Проверка валидности формы
-                    if (!form.checkValidity()) {
-                        form.reportValidity();
-                        return;
-                    }
-                    
-                    const formData = new FormData(form);
-                    const serverData = {};
-                    
-                    // Преобразуем FormData в объект
-                    formData.forEach((value, key) => {
-                        serverData[key] = value;
-                    });
-                    
-                    // Дополнительная валидация данных
-                    if (!validateServerData(serverData)) {
-                        showAlert('Ошибка валидации данных. Проверьте все поля.', 'danger');
-                        return;
-                    }
-                    
-                    // Отправляем данные на сервер
-                    addServer(serverData);
-                }
+        // Добавить обработчик для кнопки "Добавить сервер"
+        const addServerBtn = document.getElementById('addServerBtn');
+        if (addServerBtn) {
+            addServerBtn.addEventListener('click', function() {
+                window.location.href = '/servers/add';
             });
         }
-        
-        console.log('Модальные окна инициализированы (локальная версия)');
     }
     
     /**
-     * Валидирует данные сервера перед отправкой
-     * @param {Object} data - Данные сервера
-     * @returns {boolean} - Результат валидации
+     * Обеспечивает наличие модального окна удаления
      */
-    function validateServerData(data) {
-        // Проверяем обязательные поля
-        if (!data.endpoint || !data.port) {
-            return false;
+    function ensureDeleteModalExists() {
+        if (!document.getElementById('deleteServerModal')) {
+            const modalHtml = `
+            <div class="modal fade" id="deleteServerModal" tabindex="-1" aria-labelledby="deleteServerModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="deleteServerModalLabel">Подтверждение удаления</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Вы действительно хотите удалить сервер <strong id="deleteServerName"></strong>?</p>
+                            <p id="deleteServerWarning" class="text-danger">Это действие нельзя отменить. Все пиры на этом сервере будут удалены.</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                            <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Удалить сервер</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+            
+            const modalDiv = document.createElement('div');
+            modalDiv.innerHTML = modalHtml;
+            document.body.appendChild(modalDiv.firstElementChild);
+            
+            // Добавляем обработчик для новой кнопки удаления
+            const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+            if (confirmDeleteBtn) {
+                confirmDeleteBtn.addEventListener('click', () => {
+                    if (selectedServerId) {
+                        handleDeleteServer(selectedServerId);
+                    }
+                });
+            }
         }
-        
-        // Проверяем корректность порта
-        const port = parseInt(data.port);
-        if (isNaN(port) || port < 1 || port > 65535) {
-            return false;
-        }
-        
-        return true;
     }
     
     /**
@@ -281,9 +157,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function loadGeolocations() {
         console.log('Загрузка списка геолокаций');
         
-        if (typeof window.Api.fetchGeolocations !== 'function') {
-            console.error('Функция fetchGeolocations не определена');
-            showAlert('Ошибка: функция загрузки геолокаций недоступна', 'danger');
+        if (typeof window.Api === 'undefined' || typeof window.Api.fetchGeolocations !== 'function') {
+            console.error('Функция fetchGeolocations не определена. Проверьте загрузку модуля API.');
+            showAlert('Ошибка: API модуль не загружен корректно', 'danger');
             return;
         }
         
@@ -308,7 +184,10 @@ document.addEventListener('DOMContentLoaded', function() {
      */
     function updateGeolocationFilter(geolocations) {
         const filterContainer = document.getElementById('geolocationFilter');
-        if (!filterContainer) return;
+        if (!filterContainer) {
+            console.warn('Элемент #geolocationFilter не найден на странице');
+            return;
+        }
         
         // Сохраняем текущее выбранное значение
         const selectedValue = filterContainer.value;
@@ -335,7 +214,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     /**
-     * Загружает список серверов с механизмом повторных попыток
+     * Загружает список серверов
      */
     function loadServers() {
         console.log('Загрузка списка серверов');
@@ -353,26 +232,20 @@ document.addEventListener('DOMContentLoaded', function() {
             loadingIndicator.style.display = '';
         }
         
-        if (typeof window.Api.fetchServers !== 'function') {
-            console.error('Функция fetchServers не определена');
+        if (typeof window.Api === 'undefined' || typeof window.Api.fetchServers !== 'function') {
+            console.error('Функция fetchServers не определена. Проверьте загрузку модуля API.');
+            showAlert('Ошибка: API модуль не загружен корректно', 'danger');
             showLoadingError(tableBody, loadingIndicator);
-            showAlert('Ошибка: функция загрузки серверов недоступна', 'danger');
             return;
         }
         
         window.Api.fetchServers()
             .then(data => {
-                retryCount = 0; // Сбрасываем счетчик повторов при успехе
-                
                 if (data.status === 'success') {
                     serversData = Array.isArray(data.servers) ? data.servers : [];
                     
                     // Обновляем статистику
-                    if (typeof window.updateStatistics === 'function') {
-                        window.updateStatistics(serversData);
-                    } else {
-                        updateLocalStatistics(serversData);
-                    }
+                    updateStatistics(serversData);
                     
                     // Обновляем UI
                     updateServersView();
@@ -385,22 +258,8 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .catch(error => {
                 console.error('Ошибка при загрузке серверов:', error);
-                
-                // Механизм повторных попыток
-                if (retryCount < MAX_RETRIES) {
-                    retryCount++;
-                    console.log(`Повторная попытка загрузки (${retryCount}/${MAX_RETRIES})...`);
-                    
-                    if (tableBody) {
-                        tableBody.innerHTML = `<tr><td colspan="8" class="text-center">Повторная попытка загрузки (${retryCount}/${MAX_RETRIES})...</td></tr>`;
-                    }
-                    
-                    setTimeout(() => loadServers(), 2000 * retryCount); // Увеличиваем интервал с каждой попыткой
-                } else {
-                    showAlert('Ошибка соединения с сервером при загрузке списка серверов', 'danger');
-                    showLoadingError(tableBody, loadingIndicator);
-                    retryCount = 0;
-                }
+                showAlert('Ошибка соединения с сервером при загрузке серверов', 'danger');
+                showLoadingError(tableBody, loadingIndicator);
             });
     }
     
@@ -412,18 +271,22 @@ document.addEventListener('DOMContentLoaded', function() {
             tableBody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Ошибка загрузки данных</td></tr>';
         }
         if (loadingIndicator) {
-            loadingIndicator.innerHTML = '<p class="text-danger">Ошибка загрузки данных</p>';
+            loadingIndicator.style.display = 'none';
+            const parent = loadingIndicator.parentElement;
+            if (parent) {
+                parent.innerHTML = '<p class="text-danger text-center">Ошибка загрузки данных</p>';
+            }
         }
     }
     
     /**
-     * Обновляет статистику серверов на странице (локальная версия)
+     * Обновляет статистику серверов на странице
      */
-    function updateLocalStatistics(servers) {
-        console.log('Обновление статистики серверов (локальная версия)');
+    function updateStatistics(servers) {
+        console.log('Обновление статистики серверов');
         
         if (!Array.isArray(servers)) {
-            console.warn('Нет данных или недопустимый формат для обновления статистики');
+            console.warn('Получены некорректные данные для обновления статистики');
             return;
         }
         
@@ -483,7 +346,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const matchesSearch = 
                 (server.endpoint && server.endpoint.toLowerCase().includes(searchTerm)) || 
                 (server.geolocation_name && server.geolocation_name.toLowerCase().includes(searchTerm)) ||
-                (server.name && server.name.toLowerCase().includes(searchTerm));
+                (server.name && server.name.toLowerCase().includes(searchTerm)) ||
+                (server.id && server.id.toString().includes(searchTerm));
             
             // Фильтр по геолокации
             const matchesGeo = geoId === 'all' || server.geolocation_id == geoId;
@@ -519,8 +383,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const tableContainer = document.getElementById('tableView');
         const cardContainer = document.getElementById('cardView');
         
-        if (tableContainer) tableContainer.style.display = mode === 'table' ? '' : 'none';
-        if (cardContainer) cardContainer.style.display = mode === 'card' ? '' : 'none';
+        if (tableContainer) {
+            tableContainer.style.display = mode === 'table' ? 'block' : 'none';
+            console.log(`Видимость tableView установлена: ${tableContainer.style.display}`);
+        }
+        
+        if (cardContainer) {
+            cardContainer.style.display = mode === 'card' ? 'block' : 'none';
+            console.log(`Видимость cardView установлена: ${cardContainer.style.display}`);
+        }
         
         // Обновляем отображение серверов
         updateServersView();
@@ -602,14 +473,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         });
-
-        // Добавить обработчик для кнопки "Добавить сервер"
-        const addServerBtn = document.getElementById('addServerBtn');
-        if (addServerBtn) {
-            addServerBtn.addEventListener('click', function() {
-                window.location.href = '/servers/add';
-            });
-        }
     }
     
     /**
@@ -627,16 +490,27 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Открываем модальное окно
         try {
-            const deleteModal = new bootstrap.Modal(document.getElementById('deleteServerModal'));
-            deleteModal.show();
+            if (window.bootstrap && bootstrap.Modal) {
+                const deleteModal = new bootstrap.Modal(document.getElementById('deleteServerModal'));
+                deleteModal.show();
+            } else {
+                // Резервный вариант, если bootstrap недоступен
+                const modal = document.getElementById('deleteServerModal');
+                if (modal) {
+                    modal.style.display = 'block';
+                    modal.classList.add('show');
+                    modal.setAttribute('aria-hidden', 'false');
+                    document.body.classList.add('modal-open');
+                    
+                    // Добавляем backdrop
+                    const backdrop = document.createElement('div');
+                    backdrop.className = 'modal-backdrop fade show';
+                    document.body.appendChild(backdrop);
+                }
+            }
         } catch (error) {
             console.error('Ошибка при открытии модального окна:', error);
-            // Резервный вариант, если bootstrap недоступен
-            const modal = document.getElementById('deleteServerModal');
-            if (modal) {
-                modal.style.display = 'block';
-                modal.classList.add('show');
-            }
+            showAlert(`Ошибка при открытии модального окна: ${error.message}`, 'danger');
         }
     }
     
@@ -653,7 +527,7 @@ document.addEventListener('DOMContentLoaded', function() {
             confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Удаление...';
         }
         
-        if (typeof window.Api.deleteServer !== 'function') {
+        if (!window.Api || typeof window.Api.deleteServer !== 'function') {
             console.error('Функция deleteServer не определена');
             showAlert('Ошибка: функция удаления не найдена', 'danger');
             
@@ -704,18 +578,29 @@ document.addEventListener('DOMContentLoaded', function() {
      */
     function closeDeleteModal() {
         try {
-            const deleteModal = bootstrap.Modal.getInstance(document.getElementById('deleteServerModal'));
-            if (deleteModal) {
-                deleteModal.hide();
+            if (window.bootstrap && bootstrap.Modal) {
+                const deleteModal = bootstrap.Modal.getInstance(document.getElementById('deleteServerModal'));
+                if (deleteModal) {
+                    deleteModal.hide();
+                }
+            } else {
+                // Резервный вариант, если bootstrap недоступен
+                const modal = document.getElementById('deleteServerModal');
+                if (modal) {
+                    modal.style.display = 'none';
+                    modal.classList.remove('show');
+                    modal.setAttribute('aria-hidden', 'true');
+                    document.body.classList.remove('modal-open');
+                    
+                    // Удаляем backdrop
+                    const backdrop = document.querySelector('.modal-backdrop');
+                    if (backdrop) {
+                        backdrop.remove();
+                    }
+                }
             }
         } catch (error) {
             console.error('Ошибка при закрытии модального окна:', error);
-            // Резервный вариант, если bootstrap недоступен
-            const modal = document.getElementById('deleteServerModal');
-            if (modal) {
-                modal.style.display = 'none';
-                modal.classList.remove('show');
-            }
         }
     }
     
@@ -727,15 +612,22 @@ document.addEventListener('DOMContentLoaded', function() {
     function showAlert(message, type = 'info') {
         console.log(`Показ уведомления (${type}): ${message}`);
         
+        // Проверяем наличие глобальной функции
+        if (typeof window.showAlert === 'function') {
+            window.showAlert(message, type);
+            return;
+        }
+        
         // Проверяем наличие контейнера для уведомлений
-        let alertContainer = document.getElementById('alertContainer');
+        let alertContainer = document.querySelector('.flash-messages');
         
         // Если контейнер не найден, создаем его
         if (!alertContainer) {
-            console.log('Контейнер для уведомлений не найден. Создаем новый.');
             alertContainer = document.createElement('div');
-            alertContainer.id = 'alertContainer';
-            alertContainer.className = 'position-fixed top-0 end-0 p-3';
+            alertContainer.className = 'flash-messages';
+            alertContainer.style.position = 'fixed';
+            alertContainer.style.top = '20px';
+            alertContainer.style.right = '20px';
             alertContainer.style.zIndex = '9999';
             document.body.appendChild(alertContainer);
         }
@@ -755,7 +647,7 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(() => {
             try {
                 // Пробуем использовать Bootstrap API если доступен
-                if (typeof bootstrap !== 'undefined' && bootstrap.Alert) {
+                if (window.bootstrap && bootstrap.Alert) {
                     const bsAlert = new bootstrap.Alert(alertElement);
                     bsAlert.close();
                 } else {
@@ -775,59 +667,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         }, 5000);
-    }
-    
-    /**
-     * Добавляет новый сервер
-     */
-    function addServer(serverData) {
-        console.log('Добавление нового сервера:', serverData);
-        
-        // Проверяем, что у нас есть API функция
-        if (!window.Api || typeof window.Api.addServer !== 'function') {
-            console.error('API функция addServer не найдена');
-            showAlert('Ошибка: функция добавления сервера не доступна', 'danger');
-            return;
-        }
-        
-        // Отключаем кнопку отправки, если она есть
-        const submitButton = document.querySelector('#addServerModal button[type="submit"]');
-        if (submitButton) {
-            submitButton.disabled = true;
-            submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Добавление...';
-        }
-        
-        // Отправляем запрос на добавление сервера
-        window.Api.addServer(serverData)
-            .then(result => {
-                if (result.status === 'success') {
-                    showAlert('Сервер успешно добавлен', 'success');
-                    
-                    // Закрываем модальное окно
-                    try {
-                        const modal = bootstrap.Modal.getInstance(document.getElementById('addServerModal'));
-                        if (modal) modal.hide();
-                    } catch (e) {
-                        console.error('Ошибка при закрытии модального окна:', e);
-                    }
-                    
-                    // Обновляем список серверов
-                    loadServers();
-                } else {
-                    showAlert(`Ошибка: ${result.message || 'Неизвестная ошибка при добавлении сервера'}`, 'danger');
-                }
-            })
-            .catch(error => {
-                console.error('Ошибка при добавлении сервера:', error);
-                showAlert('Ошибка соединения с сервером при добавлении сервера', 'danger');
-            })
-            .finally(() => {
-                // Восстанавливаем кнопку отправки
-                if (submitButton) {
-                    submitButton.disabled = false;
-                    submitButton.innerHTML = 'Добавить сервер';
-                }
-            });
     }
 
     /**
@@ -1044,23 +883,7 @@ document.addEventListener('DOMContentLoaded', function() {
             cardContainer.appendChild(cardCol);
         });
     }
-});
-// Обработчики событий для кнопок
-// document.addEventListener('click', function(e) {
-//     if (e.target.closest('.view-server-btn')) {
-//         const serverId = e.target.closest('.view-server-btn').dataset.serverId;
-//         viewServerDetails(serverId);
-//     } else if (e.target.closest('.edit-server-btn')) {
-//         const serverId = e.target.closest('.edit-server-btn').dataset.serverId;
-//         editServer(serverId);
-//     } else if (e.target.closest('.delete-server-btn')) {
-//         const serverId = e.target.closest('.delete-server-btn').dataset.serverId;
-//         const serverName = e.target.closest('.delete-server-btn').dataset.serverName;
-//         deleteServer(serverId, serverName);
-//     }
-// });
-// // Функции для обработки действий
-// function viewServerDetails(serverId) {
-//     // Реализация просмотра деталей сервера
-//     console.log(`View server details for ID: ${serverId}`);
-// }
+    
+    // Инициализация при загрузке страницы
+    document.addEventListener('DOMContentLoaded', initPage);
+})();

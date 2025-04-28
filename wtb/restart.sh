@@ -44,7 +44,7 @@ print_step "Скрипт завершен"
 
 # Очистка системы Docker
 print_step "Очистка системы Docker (включая неиспользуемые образы)"
-docker system prune -a -f
+
 
 # Очистка томов
 print_step "Очистка неиспользуемых томов Docker"
