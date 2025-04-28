@@ -225,12 +225,11 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <!-- Общие компоненты - всегда загружаются в правильном порядке -->
-    <script src="{{ url_for('static', filename='js/servers/index.js') }}?v=1.0.1"></script>
     <script src="{{ url_for('static', filename='js/components/api-integration.js') }}"></script>
     <script src="{{ url_for('static', filename='js/components/utils.js') }}"></script>
     <script src="{{ url_for('static', filename='js/components/alerts.js') }}"></script>
     <script src="{{ url_for('static', filename='js/components/modals.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/components/filters.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/components/filters.js') }}"></script>    
     
     <!-- Скрипты конкретных страниц -->
     {% block scripts %}{% endblock %}
