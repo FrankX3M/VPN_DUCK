@@ -1,0 +1,83 @@
+<!-- Add this code to templates/geolocations/add.html -->
+<!-- This is the geolocation add form template -->
+
+{% extends "base.html" %}
+
+{% block title %}Add Geolocation - VPN Duck{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-lg-6 offset-lg-3">
+            <div class="card">
+                <div class="card-header">
+                    <h1 class="h3 mb-0">Add New Geolocation</h1>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('add_geolocation') }}">
+                        {{ form.csrf_token }}
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.code.id }}" class="form-label">{{ form.code.label.text }} *</label>
+                            {{ form.code(class="form-control", placeholder="e.g. US, DE, JP") }}
+                            <small class="text-muted">Two or three letter country code</small>
+                            {% if form.code.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.code.errors %}
+                                {{ error }}
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.name.id }}" class="form-label">{{ form.name.label.text }} *</label>
+                            {{ form.name(class="form-control", placeholder="e.g. United States, Germany, Japan") }}
+                            {% if form.name.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.name.errors %}
+                                {{ error }}
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="form-check">
+                                {{ form.available(class="form-check-input") }}
+                                <label class="form-check-label" for="{{ form.available.id }}">
+                                    {{ form.available.label.text }}
+                                </label>
+                            </div>
+                            {% if form.available.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.available.errors %}
+                                {{ error }}
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.description.id }}" class="form-label">{{ form.description.label.text }}</label>
+                            {{ form.description(class="form-control", placeholder="Optional description") }}
+                            {% if form.description.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.description.errors %}
+                                {{ error }}
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{{ url_for('geolocations') }}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Add Geolocation</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}Мониторинг - VPN Duck{% endblock %}
+
+{% block head_extra %}
+<style>
+    .server-metrics-card {
+        margin-bottom: 1rem;
+    }
+    .metrics-chart-container {
+        height: 250px;
+        margin-bottom: 1rem;
+    }
+    .metrics-details {
+        border-left: 1px solid #dee2e6;
+    }
+    .time-filter {
+        margin-bottom: 20px;
+    }
+    .server-status-dot {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 5px;
+    }
+    .server-status-active {
+        background-color: #28a745;
+    }
+    .server-status-inactive {
+        background-color: #dc3545;
+    }
+    .server-status-degraded {
+        background-color: #ffc107;
+    }
+    .dashboard-card {
+        transition: all 0.3s ease;
+    }
+    .dashboard-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Заголовок страницы -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">Мониторинг системы</h1>
+        <div class="btn-group">
+            <button class="btn btn-outline-primary" id="refreshMetrics">
+                <i class="bi bi-arrow-clockwise"></i> Обновить
+            </button>
+            <button class="btn btn-outline-success" id="analyzeMetricsBtn">
+                <i class="bi bi-graph-up"></i> Анализировать
+            </button>
+        </div>
+    </div>
+
+    <!-- Общая статистика -->
+    <div class="row">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card dashboard-card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Активные серверы</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="dashActiveServers">0</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-hdd-rack fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card dashboard-card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Доступные локации</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="dashActiveLocations">0</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-globe fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card dashboard-card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Средняя задержка</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="dashAvgLatency">0 мс</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-speedometer2 fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card dashboard-card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">WireGuard статус</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="dashWireguardStatus">
+                                <span class="badge bg-secondary">Неизвестно</span>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-shield-check fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Фильтры времени -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Временной период</h6>
+        </div>
+        <div class="card-body">
+            <div class="btn-group time-filter" role="group">
+                <button type="button" class="btn btn-outline-primary time-selector" data-hours="6">6 часов</button>
+                <button type="button" class="btn btn-outline-primary time-selector active" data-hours="24">24 часа</button>
+                <button type="button" class="btn btn-outline-primary time-selector" data-hours="72">3 дня</button>
+                <button type="button" class="btn btn-outline-primary time-selector" data-hours="168">7 дней</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Графики метрик -->
+    <div class="row">
+        <div class="col-xl-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Средняя задержка по геолокациям</h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="latencyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Потеря пакетов по геолокациям</h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="packetLossChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Фильтр геолокаций -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Фильтр по геолокациям</h6>
+        </div>
+        <div class="card-body">
+            <div id="geolocationFilter" class="d-flex flex-wrap gap-2">
+                <button class="btn btn-sm btn-outline-primary geo-filter-btn active" data-geo-id="all">Все геолокации</button>
+                <!-- Другие кнопки геолокаций будут добавлены через JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Список серверов с метриками -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Метрики серверов</h6>
+        </div>
+        <div class="card-body">
+            <div class="row" id="serverMetricsContainer">
+                <div class="col-12 text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Загрузка...</span>
+                    </div>
+                    <p class="mt-2">Загрузка метрик серверов...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- В конец body -->
+<div id="debug-info" class="container mt-3" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <h5>Отладочная информация</h5>
+            <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('debug-info').style.display='none'">Скрыть</button>
+        </div>
+        <div class="card-body">
+            <pre id="debug-output" style="max-height: 300px; overflow: auto;"></pre>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Функция для отображения отладочной информации
+    function showDebugInfo(info) {
+        const debugOutput = document.getElementById('debug-output');
+        const debugInfo = document.getElementById('debug-info');
+        
+        if (debugOutput && debugInfo) {
+            debugOutput.textContent += JSON.stringify(info, null, 2) + '\n\n';
+            debugInfo.style.display = 'block';
+        }
+    }
+
+    // Перехватываем ошибки fetch
+    const originalFetch = window.fetch;
+    window.fetch = function() {
+        showDebugInfo({
+            type: 'fetch-request',
+            url: arguments[0],
+            options: arguments[1],
+            timestamp: new Date().toISOString()
+        });
+        
+        return originalFetch.apply(this, arguments)
+            .then(response => {
+                // Клонируем ответ перед чтением, чтобы не потерять данные
+                const clone = response.clone();
+                clone.text().then(text => {
+                    showDebugInfo({
+                        type: 'fetch-response',
+                        url: response.url,
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: text.substring(0, 1000), // Ограничиваем размер для больших ответов
+                        timestamp: new Date().toISOString()
+                    });
+                });
+                return response;
+            })
+            .catch(error => {
+                showDebugInfo({
+                    type: 'fetch-error',
+                    message: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                });
+                throw error;
+            });
+    };
+</script>
+<script src="{{ url_for('static', filename='js/components/alerts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/components/modals.js') }}"></script>
+<script src="{{ url_for('static', filename='js/components/utils.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard/index.js') }}"></script>
+{% endblock %}

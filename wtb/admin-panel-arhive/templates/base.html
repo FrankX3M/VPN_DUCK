@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>{% block title %}VPN Duck - Панель администратора{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <!-- Пользовательские стили -->
+    <link href="{{ url_for('static', filename='css/servers.css') }}" rel="stylesheet">
+    
+    <!-- Дополнительные стили из блоков -->
+    {% block head_extra %}{% endblock %}
+    
+    <style>
+        /* Общие стили для всех страниц */
+        body {
+            padding-top: 56px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .main-content {
+            flex: 1;
+            padding: 20px 0;
+        }
+        
+        .sidebar {
+            min-height: calc(100vh - 56px);
+            position: fixed;
+            top: 56px;
+            bottom: 0;
+            left: 0;
+            z-index: 100;
+            padding: 20px 0;
+            background-color: #f8f9fa;
+        }
+        
+        .sidebar-sticky {
+            position: sticky;
+            top: 0;
+            height: calc(100vh - 56px);
+            padding-top: 0.5rem;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+        
+        .nav-link {
+            color: #495057;
+            font-weight: 500;
+        }
+        
+        .nav-link:hover {
+            color: #007bff;
+        }
+        
+        .nav-link.active {
+            color: #007bff;
+            font-weight: 700;
+        }
+        
+        /* Стили для уведомлений */
+        .flash-messages {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+            max-width: 350px;
+        }
+        
+        /* Дополнительные стили для карточек */
+        .card {
+            margin-bottom: 20px;
+        }
+        
+        .card-header h5, .card-header h6 {
+            margin-bottom: 0;
+        }
+        
+        footer {
+            padding: 1rem 0;
+            margin-top: auto;
+            background-color: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+        }
+    </style>
+</head>
+<body>
+    <!-- Верхняя навигационная панель -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="bi bi-shield-lock me-2"></i>VPN Duck
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="{{ url_for('index') }}">
+                            <i class="bi bi-house-door me-1"></i>Главная
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if '/servers' in request.path %}active{% endif %}" href="{{ url_for('servers') }}">
+                            <i class="bi bi-hdd-rack me-1"></i>Серверы
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if '/geolocations' in request.path %}active{% endif %}" href="{{ url_for('geolocations_page') }}">
+                            <i class="bi bi-globe me-1"></i>Геолокации
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if '/dashboard' in request.path %}active{% endif %}" href="{{ url_for('dashboard') }}">
+                            <i class="bi bi-speedometer2 me-1"></i>Мониторинг
+                        </a>
+                    </li>
+                </ul>
+                <div class="d-flex">
+                    {% if session.logged_in %}
+                    <span class="navbar-text me-3">
+                        <i class="bi bi-person-circle me-1"></i>{{ session.username }}
+                    </span>
+                    <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">
+                        <i class="bi bi-box-arrow-right me-1"></i>Выход
+                    </a>
+                    {% else %}
+                    <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-sm">
+                        <i class="bi bi-box-arrow-in-right me-1"></i>Вход
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Основной контент -->
+    <div class="container-fluid main-content">
+        <div class="row">
+            {% if session.logged_in and request.path != '/login' %}
+            <!-- Боковая панель (если пользователь авторизован и не на странице входа) -->
+            <div class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+                <div class="sidebar-sticky">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="{{ url_for('index') }}">
+                                <i class="bi bi-house-door me-2"></i>Главная
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if '/servers' in request.path %}active{% endif %}" href="{{ url_for('servers') }}">
+                                <i class="bi bi-hdd-rack me-2"></i>Серверы
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if '/geolocations' in request.path %}active{% endif %}" href="{{ url_for('geolocations_page') }}">
+                                <i class="bi bi-globe me-2"></i>Геолокации
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if '/dashboard' in request.path %}active{% endif %}" href="{{ url_for('dashboard') }}">
+                                <i class="bi bi-speedometer2 me-2"></i>Мониторинг
+                            </a>
+                        </li>
+                        
+                        <li class="nav-item mt-3">
+                            <div class="nav-link text-muted">
+                                <i class="bi bi-gear me-2"></i>Настройки
+                            </div>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#">
+                                <i class="bi bi-box-arrow-right me-2"></i>Выход
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+            {% else %}
+            <main class="col-12">
+            {% endif %}
+                <!-- Сообщения из сессии -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endwith %}
+                
+                <!-- Основной контент страницы -->
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <!-- Подвал сайта -->
+    <footer class="footer">
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col-12 text-center">
+                    <p class="text-muted mb-0">© 2023 VPN Duck. Все права защищены.</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript Bootstrap -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Общие компоненты - всегда загружаются в правильном порядке -->
+    <script src="{{ url_for('static', filename='js/components/api-integration.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/components/utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/components/alerts.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/components/modals.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/components/filters.js') }}"></script>    
+    
+    <!-- Скрипты конкретных страниц -->
+    {% block scripts %}{% endblock %}
+</body>
+</html>

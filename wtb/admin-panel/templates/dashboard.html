@@ -1,268 +1,246 @@
+<!-- Add this code to templates/dashboard.html -->
+<!-- This should be the entire content of the file -->
+
 {% extends "base.html" %}
 
-{% block title %}Мониторинг - VPN Duck{% endblock %}
-
-{% block head_extra %}
-<style>
-    .server-metrics-card {
-        margin-bottom: 1rem;
-    }
-    .metrics-chart-container {
-        height: 250px;
-        margin-bottom: 1rem;
-    }
-    .metrics-details {
-        border-left: 1px solid #dee2e6;
-    }
-    .time-filter {
-        margin-bottom: 20px;
-    }
-    .server-status-dot {
-        display: inline-block;
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        margin-right: 5px;
-    }
-    .server-status-active {
-        background-color: #28a745;
-    }
-    .server-status-inactive {
-        background-color: #dc3545;
-    }
-    .server-status-degraded {
-        background-color: #ffc107;
-    }
-    .dashboard-card {
-        transition: all 0.3s ease;
-    }
-    .dashboard-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-    }
-</style>
-{% endblock %}
+{% block title %}Dashboard - VPN Duck{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <!-- Заголовок страницы -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h3">Мониторинг системы</h1>
-        <div class="btn-group">
-            <button class="btn btn-outline-primary" id="refreshMetrics">
-                <i class="bi bi-arrow-clockwise"></i> Обновить
-            </button>
-            <button class="btn btn-outline-success" id="analyzeMetricsBtn">
-                <i class="bi bi-graph-up"></i> Анализировать
-            </button>
+<div class="container-fluid mt-4">
+    <h1 class="mb-4">System Dashboard</h1>
+    
+    <!-- Time range selector -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Time Range</h5>
+        </div>
+        <div class="card-body">
+            <div class="btn-group" role="group">
+                <a href="{{ url_for('dashboard', hours=6) }}" class="btn btn-outline-primary {% if current_hours == 6 %}active{% endif %}">
+                    Last 6 Hours
+                </a>
+                <a href="{{ url_for('dashboard', hours=24) }}" class="btn btn-outline-primary {% if current_hours == 24 %}active{% endif %}">
+                    Last 24 Hours
+                </a>
+                <a href="{{ url_for('dashboard', hours=72) }}" class="btn btn-outline-primary {% if current_hours == 72 %}active{% endif %}">
+                    Last 3 Days
+                </a>
+                <a href="{{ url_for('dashboard', hours=168) }}" class="btn btn-outline-primary {% if current_hours == 168 %}active{% endif %}">
+                    Last Week
+                </a>
+            </div>
         </div>
     </div>
-
-    <!-- Общая статистика -->
+    
+    <!-- System overview -->
     <div class="row">
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card dashboard-card border-left-primary shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Активные серверы</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="dashActiveServers">0</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="bi bi-hdd-rack fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
+        <div class="col-lg-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Server Status</h5>
                 </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card dashboard-card border-left-success shadow h-100 py-2">
                 <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Доступные локации</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="dashActiveLocations">0</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="bi bi-globe fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card dashboard-card border-left-info shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Средняя задержка</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="dashAvgLatency">0 мс</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="bi bi-speedometer2 fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card dashboard-card border-left-warning shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">WireGuard статус</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="dashWireguardStatus">
-                                <span class="badge bg-secondary">Неизвестно</span>
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <div class="p-3">
+                                <h3>{{ servers|selectattr('status', 'equalto', 'active')|list|length }}</h3>
+                                <p class="text-success">Active</p>
                             </div>
                         </div>
-                        <div class="col-auto">
-                            <i class="bi bi-shield-check fa-2x text-gray-300"></i>
+                        <div class="col-4">
+                            <div class="p-3">
+                                <h3>{{ servers|selectattr('status', 'equalto', 'inactive')|list|length }}</h3>
+                                <p class="text-danger">Inactive</p>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="p-3">
+                                <h3>{{ servers|selectattr('status', 'equalto', 'degraded')|list|length }}</h3>
+                                <p class="text-warning">Degraded</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="progress" style="height: 25px;">
+                            {% set active_count = servers|selectattr('status', 'equalto', 'active')|list|length %}
+                            {% set inactive_count = servers|selectattr('status', 'equalto', 'inactive')|list|length %}
+                            {% set degraded_count = servers|selectattr('status', 'equalto', 'degraded')|list|length %}
+                            {% set total = servers|length %}
+                            
+                            {% if total > 0 %}
+                                <div class="progress-bar bg-success" style="width: {{ (active_count / total * 100)|round }}%">
+                                    {{ (active_count / total * 100)|round }}%
+                                </div>
+                                <div class="progress-bar bg-warning" style="width: {{ (degraded_count / total * 100)|round }}%">
+                                    {{ (degraded_count / total * 100)|round }}%
+                                </div>
+                                <div class="progress-bar bg-danger" style="width: {{ (inactive_count / total * 100)|round }}%">
+                                    {{ (inactive_count / total * 100)|round }}%
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Geolocation Status</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group">
+                        {% for geo in geolocations %}
+                        {% set geo_servers = servers|selectattr('geolocation_id', 'equalto', geo.id)|list %}
+                        {% set active_servers = geo_servers|selectattr('status', 'equalto', 'active')|list|length %}
+                        {% set total_servers = geo_servers|length %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            {{ geo.name }}
+                            <div>
+                                <span class="badge bg-primary rounded-pill">{{ active_servers }}/{{ total_servers }}</span>
+                                {% if active_servers == 0 and total_servers > 0 %}
+                                    <span class="badge bg-danger">Offline</span>
+                                {% elif active_servers < total_servers and active_servers > 0 %}
+                                    <span class="badge bg-warning text-dark">Partial</span>
+                                {% elif active_servers > 0 %}
+                                    <span class="badge bg-success">Online</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">No Servers</span>
+                                {% endif %}
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">System Metrics</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Server-side generated charts -->
+                    <div class="row">
+                        <div class="col-md-6 mb-4">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Average Latency (ms)</h6>
+                                </div>
+                                <div class="card-body">
+                                    {% if all_metrics %}
+                                        {% for server in all_metrics %}
+                                            {% if loop.first %}
+                                                {% if server.metrics.history %}
+                                                    {% set latency_data = [] %}
+                                                    {% for item in server.metrics.history %}
+                                                        {% set _ = latency_data.append(item.avg_latency|default(0)) %}
+                                                    {% endfor %}
+                                                    
+                                                    {% set avg_latency = (latency_data|sum / latency_data|length)|round(1) %}
+                                                    <div class="text-center mb-3">
+                                                        <h3>{{ avg_latency }} ms</h3>
+                                                        <p class="text-muted">System Average</p>
+                                                    </div>
+                                                {% endif %}
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="alert alert-info">No metrics data available</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Average Packet Loss (%)</h6>
+                                </div>
+                                <div class="card-body">
+                                    {% if all_metrics %}
+                                        {% for server in all_metrics %}
+                                            {% if loop.first %}
+                                                {% if server.metrics.history %}
+                                                    {% set packet_loss_data = [] %}
+                                                    {% for item in server.metrics.history %}
+                                                        {% set _ = packet_loss_data.append(item.avg_packet_loss|default(0)) %}
+                                                    {% endfor %}
+                                                    
+                                                    {% set avg_packet_loss = (packet_loss_data|sum / packet_loss_data|length)|round(2) %}
+                                                    <div class="text-center mb-3">
+                                                        <h3>{{ avg_packet_loss }}%</h3>
+                                                        <p class="text-muted">System Average</p>
+                                                    </div>
+                                                {% endif %}
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="alert alert-info">No metrics data available</div>
+                                    {% endif %}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Фильтры времени -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">Временной период</h6>
-        </div>
-        <div class="card-body">
-            <div class="btn-group time-filter" role="group">
-                <button type="button" class="btn btn-outline-primary time-selector" data-hours="6">6 часов</button>
-                <button type="button" class="btn btn-outline-primary time-selector active" data-hours="24">24 часа</button>
-                <button type="button" class="btn btn-outline-primary time-selector" data-hours="72">3 дня</button>
-                <button type="button" class="btn btn-outline-primary time-selector" data-hours="168">7 дней</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Графики метрик -->
+    
+    <!-- Geolocation charts -->
+    <h2 class="mt-4 mb-3">Geolocation Metrics</h2>
+    
+    {% if geolocation_charts %}
     <div class="row">
-        <div class="col-xl-6">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Средняя задержка по геолокациям</h6>
+        {% for geo_id, chart_data in geolocation_charts.items() %}
+        <div class="col-lg-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">{{ chart_data.geo_name }} ({{ chart_data.servers_count }} servers)</h5>
                 </div>
                 <div class="card-body">
-                    <div class="chart-container" style="height: 300px;">
-                        <canvas id="latencyChart"></canvas>
+                    <ul class="nav nav-tabs" id="geo-{{ geo_id }}-tabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="geo-{{ geo_id }}-latency-tab" data-bs-toggle="tab" 
+                                data-bs-target="#geo-{{ geo_id }}-latency" type="button" role="tab" 
+                                aria-controls="geo-{{ geo_id }}-latency" aria-selected="true">
+                                Latency
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="geo-{{ geo_id }}-packet-loss-tab" data-bs-toggle="tab" 
+                                data-bs-target="#geo-{{ geo_id }}-packet-loss" type="button" role="tab" 
+                                aria-controls="geo-{{ geo_id }}-packet-loss" aria-selected="false">
+                                Packet Loss
+                            </button>
+                        </li>
+                    </ul>
+                    <div class="tab-content mt-3" id="geo-{{ geo_id }}-content">
+                        <div class="tab-pane fade show active" id="geo-{{ geo_id }}-latency" role="tabpanel" 
+                             aria-labelledby="geo-{{ geo_id }}-latency-tab">
+                            {% if chart_data.latency_chart %}
+                                <img src="data:image/png;base64,{{ chart_data.latency_chart }}" class="img-fluid" alt="{{ chart_data.geo_name }} Latency Chart">
+                            {% else %}
+                                <div class="alert alert-info">No latency data available.</div>
+                            {% endif %}
+                        </div>
+                        <div class="tab-pane fade" id="geo-{{ geo_id }}-packet-loss" role="tabpanel" 
+                             aria-labelledby="geo-{{ geo_id }}-packet-loss-tab">
+                            {% if chart_data.packet_loss_chart %}
+                                <img src="data:image/png;base64,{{ chart_data.packet_loss_chart }}" class="img-fluid" alt="{{ chart_data.geo_name }} Packet Loss Chart">
+                            {% else %}
+                                <div class="alert alert-info">No packet loss data available.</div>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-xl-6">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Потеря пакетов по геолокациям</h6>
-                </div>
-                <div class="card-body">
-                    <div class="chart-container" style="height: 300px;">
-                        <canvas id="packetLossChart"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
+        {% endfor %}
     </div>
-
-    <!-- Фильтр геолокаций -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">Фильтр по геолокациям</h6>
-        </div>
-        <div class="card-body">
-            <div id="geolocationFilter" class="d-flex flex-wrap gap-2">
-                <button class="btn btn-sm btn-outline-primary geo-filter-btn active" data-geo-id="all">Все геолокации</button>
-                <!-- Другие кнопки геолокаций будут добавлены через JavaScript -->
-            </div>
-        </div>
+    {% else %}
+    <div class="alert alert-info">
+        No geolocation metrics available. This could be due to a lack of active servers or missing metric data.
     </div>
-
-    <!-- Список серверов с метриками -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">Метрики серверов</h6>
-        </div>
-        <div class="card-body">
-            <div class="row" id="serverMetricsContainer">
-                <div class="col-12 text-center py-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Загрузка...</span>
-                    </div>
-                    <p class="mt-2">Загрузка метрик серверов...</p>
-                </div>
-            </div>
-        </div>
-    </div>
+    {% endif %}
 </div>
-<!-- В конец body -->
-<div id="debug-info" class="container mt-3" style="display: none;">
-    <div class="card">
-        <div class="card-header">
-            <h5>Отладочная информация</h5>
-            <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('debug-info').style.display='none'">Скрыть</button>
-        </div>
-        <div class="card-body">
-            <pre id="debug-output" style="max-height: 300px; overflow: auto;"></pre>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-    // Функция для отображения отладочной информации
-    function showDebugInfo(info) {
-        const debugOutput = document.getElementById('debug-output');
-        const debugInfo = document.getElementById('debug-info');
-        
-        if (debugOutput && debugInfo) {
-            debugOutput.textContent += JSON.stringify(info, null, 2) + '\n\n';
-            debugInfo.style.display = 'block';
-        }
-    }
-
-    // Перехватываем ошибки fetch
-    const originalFetch = window.fetch;
-    window.fetch = function() {
-        showDebugInfo({
-            type: 'fetch-request',
-            url: arguments[0],
-            options: arguments[1],
-            timestamp: new Date().toISOString()
-        });
-        
-        return originalFetch.apply(this, arguments)
-            .then(response => {
-                // Клонируем ответ перед чтением, чтобы не потерять данные
-                const clone = response.clone();
-                clone.text().then(text => {
-                    showDebugInfo({
-                        type: 'fetch-response',
-                        url: response.url,
-                        status: response.status,
-                        statusText: response.statusText,
-                        body: text.substring(0, 1000), // Ограничиваем размер для больших ответов
-                        timestamp: new Date().toISOString()
-                    });
-                });
-                return response;
-            })
-            .catch(error => {
-                showDebugInfo({
-                    type: 'fetch-error',
-                    message: error.message,
-                    stack: error.stack,
-                    timestamp: new Date().toISOString()
-                });
-                throw error;
-            });
-    };
-</script>
-<script src="{{ url_for('static', filename='js/components/alerts.js') }}"></script>
-<script src="{{ url_for('static', filename='js/components/modals.js') }}"></script>
-<script src="{{ url_for('static', filename='js/components/utils.js') }}"></script>
-<script src="{{ url_for('static', filename='js/dashboard/index.js') }}"></script>
 {% endblock %}

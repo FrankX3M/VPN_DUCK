@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+
+{% block title %}Главная - VPN Duck{% endblock %}
+
+{% block head_extra %}
+<style>
+    .welcome-card {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+        color: white;
+        border-radius: 15px;
+        overflow: hidden;
+        transition: all 0.3s ease;
+    }
+    
+    .welcome-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
+    }
+    
+    .stat-card {
+        transition: all 0.3s ease;
+        border-radius: 15px;
+        overflow: hidden;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
+    
+    .status-indicator {
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 8px;
+    }
+    
+    .status-green {
+        background-color: #1cc88a;
+    }
+    
+    .status-yellow {
+        background-color: #f6c23e;
+    }
+    
+    .status-red {
+        background-color: #e74a3b;
+    }
+    
+    .quick-links a {
+        transition: all 0.2s ease;
+    }
+    
+    .quick-links a:hover {
+        transform: translateX(5px);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Приветственная карточка -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card welcome-card shadow">
+                <div class="card-body p-5">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h1 class="h2 mb-4">Добро пожаловать, {{ session.username }}!</h1>
+                            <p class="lead mb-4">Это административная панель VPN Duck для управления серверами и отслеживания работы системы.</p>
+                            <div class="d-flex align-items-center">
+                                <div class="me-3">
+                                    <span class="status-indicator status-green" id="systemStatusIndicator"></span>
+                                    <span class="fw-bold" id="systemStatusText">Система работает нормально</span>
+                                </div>
+                                <button class="btn btn-light" id="refreshStatusBtn">
+                                    <i class="bi bi-arrow-repeat"></i> Обновить статус
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-4 text-center">
+                            <i class="bi bi-shield-lock display-1 text-white-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Статистика системы -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stat-card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Всего серверов</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="totalServersCount">0</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-hdd-rack fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stat-card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Активные серверы</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="activeServersCount">0</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-check-circle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stat-card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Доступные локации</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="activeLocationsCount">0</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-globe fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stat-card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Avg. Load</div>
+                            <div class="row no-gutters align-items-center">
+                                <div class="col-auto">
+                                    <div class="h5 mb-0 mr-3 font-weight-bold text-gray-800" id="averageLoadText">0%</div>
+                                </div>
+                                <div class="col">
+                                    <div class="progress progress-sm mr-2">
+                                        <div class="progress-bar bg-warning" role="progressbar" id="averageLoadBar"
+                                            style="width: 0%" aria-valuenow="0" aria-valuemin="0"
+                                            aria-valuemax="100"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-cpu fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Быстрые ссылки и последние действия -->
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Быстрые действия</h6>
+                </div>
+                <div class="card-body">
+                    <div class="quick-links">
+                        <div class="d-grid gap-2">
+                            <a href="{{ url_for('servers') }}" class="btn btn-primary btn-lg mb-2">
+                                <i class="bi bi-hdd-rack me-2"></i> Управление серверами
+                            </a>
+                            <a href="{{ url_for('geolocations_page') }}" class="btn btn-info btn-lg mb-2">
+                                <i class="bi bi-globe me-2"></i> Управление геолокациями
+                            </a>
+                            <a href="{{ url_for('dashboard') }}" class="btn btn-success btn-lg mb-2">
+                                <i class="bi bi-speedometer2 me-2"></i> Мониторинг
+                            </a>
+                            <button id="migrateUsersBtn" class="btn btn-warning btn-lg">
+                                <i class="bi bi-arrow-repeat me-2"></i> Миграция пользователей
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Статус системы</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <tbody>
+                            <tr>
+                                <th>Database Service</th>
+                                <td>
+                                    <span class="badge bg-success" id="databaseServiceStatus">Работает</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>WireGuard Proxy</th>
+                                <td>
+                                    <span class="badge bg-success" id="wireguardProxyStatus">Работает</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Metrics Collector</th>
+                                <td>
+                                    <span class="badge bg-success" id="metricsCollectorStatus">Работает</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Telegram Bot</th>
+                                <td>
+                                    <span class="badge bg-secondary" id="telegramBotStatus">Неизвестно</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Последнее обновление</th>
+                                <td id="lastUpdateTime">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- График активности -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 font-weight-bold text-primary">Активность системы</h6>
+                <div class="dropdown no-arrow">
+                    <a class="dropdown-toggle" href="#" role="button" id="dropdownMenuLink" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-three-dots-vertical text-gray-400"></i>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="dropdownMenuLink">
+                        <li><a class="dropdown-item" href="#" id="view6h">Последние 6 часов</a></li>
+                        <li><a class="dropdown-item" href="#" id="view24h">Последние 24 часа</a></li>
+                        <li><a class="dropdown-item" href="#" id="view7d">Последние 7 дней</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="#" id="refreshChart">Обновить данные</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="chart-area">
+                    <canvas id="activityChart" style="height: 320px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- Модальное окно миграции пользователей -->
+<div class="modal fade" id="migrateUsersModal" tabindex="-1" aria-labelledby="migrateUsersModalLabel" aria-hidden="true">
+<div class="modal-dialog">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title" id="migrateUsersModalLabel">Миграция пользователей</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <p>Вы собираетесь запустить процесс миграции пользователей с неактивных серверов на активные.</p>
+            <p>Этот процесс может занять некоторое время. Пользователи будут автоматически перенаправлены на новые серверы.</p>
+            <div class="alert alert-warning">
+                <i class="bi bi-exclamation-triangle me-2"></i> Убедитесь, что для каждой геолокации есть хотя бы один активный сервер.
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+            <button type="button" class="btn btn-primary" id="confirmMigrateBtn">Начать миграцию</button>
+        </div>
+    </div>
+</div>
+</div>
+<!-- В конец body -->
+<div id="debug-info" class="container mt-3" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <h5>Отладочная информация</h5>
+            <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('debug-info').style.display='none'">Скрыть</button>
+        </div>
+        <div class="card-body">
+            <pre id="debug-output" style="max-height: 300px; overflow: auto;"></pre>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Функция для отображения отладочной информации
+    function showDebugInfo(info) {
+        const debugOutput = document.getElementById('debug-output');
+        const debugInfo = document.getElementById('debug-info');
+        
+        if (debugOutput && debugInfo) {
+            debugOutput.textContent += JSON.stringify(info, null, 2) + '\n\n';
+            debugInfo.style.display = 'block';
+        }
+    }
+
+    // Перехватываем ошибки fetch
+    const originalFetch = window.fetch;
+    window.fetch = function() {
+        showDebugInfo({
+            type: 'fetch-request',
+            url: arguments[0],
+            options: arguments[1],
+            timestamp: new Date().toISOString()
+        });
+        
+        return originalFetch.apply(this, arguments)
+            .then(response => {
+                // Клонируем ответ перед чтением, чтобы не потерять данные
+                const clone = response.clone();
+                clone.text().then(text => {
+                    showDebugInfo({
+                        type: 'fetch-response',
+                        url: response.url,
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: text.substring(0, 1000), // Ограничиваем размер для больших ответов
+                        timestamp: new Date().toISOString()
+                    });
+                });
+                return response;
+            })
+            .catch(error => {
+                showDebugInfo({
+                    type: 'fetch-error',
+                    message: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                });
+                throw error;
+            });
+    };
+</script>
+<script src="{{ url_for('static', filename='js/components/alerts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/components/modals.js') }}"></script>
+<script src="{{ url_for('static', filename='js/components/utils.js') }}"></script>
+<script src="{{ url_for('static', filename='js/index/index.js') }}"></script>
+{% endblock %}

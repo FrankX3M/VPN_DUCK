@@ -1,284 +1,182 @@
+<!-- Add this code to templates/servers/add.html -->
+<!-- This should be the entire content of the file -->
+
 {% extends "base.html" %}
 
-{% block title %}Добавление сервера - VPN Duck{% endblock %}
-
-{% block head_extra %}
-<style>
-    .card {
-        transition: all 0.3s ease;
-    }
-    
-    .card:hover {
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-    }
-    
-    .required-field::after {
-        content: '*';
-        color: red;
-        margin-left: 4px;
-    }
-    
-    .api-key-section {
-        background-color: #f8f9fa;
-        border-radius: 0.25rem;
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-    
-    .location-preview {
-        font-size: 0.9rem;
-        color: #6c757d;
-    }
-</style>
-{% endblock %}
+{% block title %}Add New Server - VPN Duck{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <!-- Хлебные крошки -->
-    <nav aria-label="breadcrumb" class="mb-4">
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Главная</a></li>
-            <li class="breadcrumb-item"><a href="{{ url_for('servers') }}">Серверы</a></li>
-            <li class="breadcrumb-item active" aria-current="page">Добавление сервера</li>
-        </ol>
-    </nav>
-
-    <!-- Заголовок страницы -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h3">Добавление нового сервера</h1>
-        <a href="{{ url_for('servers') }}" class="btn btn-outline-secondary">
-            <i class="bi bi-arrow-left"></i> Вернуться к списку
-        </a>
-    </div>
-
-    <!-- Форма добавления сервера -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">Данные сервера</h6>
-        </div>
-        <div class="card-body">
-            <form id="addServerForm">
-                <!-- Основные параметры -->
-                <div class="row mb-4">
-                    <div class="col-lg-6">
-                        <h5 class="mb-3">Основные параметры</h5>
-                        
-                        <div class="mb-3">
-                            <label for="endpoint" class="form-label required-field">Endpoint (IP/Домен)</label>
-                            <input type="text" class="form-control" id="endpoint" name="endpoint" required>
-                            <div class="form-text">Внешний IP-адрес или доменное имя сервера</div>
-                        </div>
-                        <div class="col-md-6">
-                            <label for="server_name" class="form-label">Имя сервера</label>
-                            <input type="text" class="form-control" id="server_name" name="server_name" 
-                                   placeholder="Например: Сервер Россия">
-                            <div class="form-text">Произвольное имя для идентификации сервера (если не указано, будет сгенерировано автоматически)</div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="port" class="form-label required-field">Порт</label>
-                            <input type="number" class="form-control" id="port" name="port" value="51820" required min="1" max="65535">
-                            <div class="form-text">Порт для подключения WireGuard (обычно 51820)</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="address" class="form-label required-field">Внутренний IP</label>
-                            <input type="text" class="form-control" id="address" name="address" placeholder="10.0.0.1/24" required>
-                            <div class="form-text">Внутренний IP-адрес сервера с маской сети</div>
-                        </div>
-                    </div>
-                    
-                    <div class="col-lg-6">
-                        <h5 class="mb-3">WireGuard параметры</h5>
-                        
-                        <div class="mb-3">
-                            <label for="public_key" class="form-label required-field">Публичный ключ</label>
-                            <input type="text" class="form-control" id="public_key" name="public_key" required>
-                            <div class="form-text">Публичный ключ WireGuard сервера</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="geolocation_id" class="form-label required-field">Геолокация</label>
-                            <select class="form-select" id="geolocation_id" name="geolocation_id" required>
-                                <option value="">Выберите геолокацию</option>
-                                {% for geo in geolocations %}
-                                <option value="{{ geo.id }}">{{ geo.name }}</option>
-                                {% endfor %}
-                            </select>
-                            <div class="form-text">Геолокация сервера для группировки</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="max_peers" class="form-label">Максимум пиров</label>
-                            <input type="number" class="form-control" id="max_peers" name="max_peers" value="100" min="1">
-                            <div class="form-text">Максимальное количество подключений к серверу</div>
-                        </div>
-                    </div>
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-lg-8 offset-lg-2">
+            <div class="card">
+                <div class="card-header">
+                    <h1 class="h3 mb-0">Add New Server</h1>
                 </div>
-                
-                <!-- API ключ -->
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <h5 class="mb-3">Аутентификация API</h5>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('add_server') }}">
+                        {{ form.csrf_token }}
                         
-                        <div class="api-key-section">
-                            <div class="mb-3">
-                                <label for="api_key_display" class="form-label">API Ключ (генерируется автоматически)</label>
-                                <div class="input-group">
-                                    <input type="text" class="form-control" id="api_key_display" readonly>
-                                    <button class="btn btn-outline-secondary" type="button" id="copyApiKeyBtn">
-                                        <i class="bi bi-clipboard"></i> Копировать
-                                    </button>
-                                    <button class="btn btn-outline-primary" type="button" id="generateApiKeyBtn">
-                                        <i class="bi bi-arrow-repeat"></i> Генерировать
-                                    </button>
-                                </div>
-                                <div class="form-text">Этот ключ будет использоваться для аутентификации сервера в системе</div>
-                            </div>
-                            
-                            <!-- Скрытое поле для хранения API ключа -->
-                            <input type="hidden" id="api_key" name="api_key">
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Дополнительные параметры -->
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <h5 class="mb-3">Дополнительные параметры</h5>
-                        
-                        <div class="row">
-                            <div class="col-lg-6">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="name" class="form-label">Имя сервера</label>
-                                    <input type="text" class="form-control" id="name" name="name" placeholder="Автоматически из endpoint">
-                                    <div class="form-text">Имя для идентификации сервера (не обязательно)</div>
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" id="active" name="active" checked>
-                                        <label class="form-check-label" for="active">Активировать сервер</label>
+                                    <label for="{{ form.name.id }}" class="form-label">{{ form.name.label.text }}</label>
+                                    {{ form.name(class="form-control", placeholder="Optional - generated from endpoint if empty") }}
+                                    {% if form.name.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.name.errors %}
+                                        {{ error }}
+                                        {% endfor %}
                                     </div>
-                                    <div class="form-text">Если отключено, сервер не будет использоваться для подключений</div>
+                                    {% endif %}
                                 </div>
                             </div>
-                            
-                            <div class="col-lg-6">
+                            <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="keep_alive" class="form-label">Keep-Alive (секунды)</label>
-                                    <input type="number" class="form-control" id="keep_alive" name="keep_alive" value="25" min="0">
-                                    <div class="form-text">Интервал отправки keep-alive пакетов (0 - отключено)</div>
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label for="mtu" class="form-label">MTU</label>
-                                    <input type="number" class="form-control" id="mtu" name="mtu" value="1420" min="1280" max="1500">
-                                    <div class="form-text">Максимальный размер передаваемого пакета</div>
+                                    <label for="{{ form.endpoint.id }}" class="form-label">{{ form.endpoint.label.text }} *</label>
+                                    {{ form.endpoint(class="form-control", placeholder="IP address or hostname") }}
+                                    {% if form.endpoint.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.endpoint.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
                                 </div>
                             </div>
                         </div>
-                    </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.port.id }}" class="form-label">{{ form.port.label.text }} *</label>
+                                    {{ form.port(class="form-control") }}
+                                    {% if form.port.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.port.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.address.id }}" class="form-label">{{ form.address.label.text }} *</label>
+                                    {{ form.address(class="form-control", placeholder="10.0.0.1/24") }}
+                                    {% if form.address.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.address.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.public_key.id }}" class="form-label">{{ form.public_key.label.text }} *</label>
+                                    {{ form.public_key(class="form-control") }}
+                                    {% if form.public_key.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.public_key.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.geolocation_id.id }}" class="form-label">{{ form.geolocation_id.label.text }} *</label>
+                                    {{ form.geolocation_id(class="form-select") }}
+                                    {% if form.geolocation_id.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.geolocation_id.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.max_peers.id }}" class="form-label">{{ form.max_peers.label.text }}</label>
+                                    {{ form.max_peers(class="form-control") }}
+                                    {% if form.max_peers.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.max_peers.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.api_key.id }}" class="form-label">{{ form.api_key.label.text }}</label>
+                                    <div class="input-group">
+                                        {{ form.api_key(class="form-control") }}
+                                        <button type="button" class="btn btn-outline-secondary copy-btn" data-copy="{{ form.api_key.data }}">
+                                            <i class="bi bi-clipboard"></i>
+                                        </button>
+                                    </div>
+                                    <small class="text-muted">Auto-generated if left empty</small>
+                                    {% if form.api_key.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.api_key.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.status.id }}" class="form-label">{{ form.status.label.text }}</label>
+                                    {{ form.status(class="form-select") }}
+                                    {% if form.status.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.status.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.api_url.id }}" class="form-label">{{ form.api_url.label.text }}</label>
+                                    {{ form.api_url(class="form-control", placeholder="http://endpoint:port/api") }}
+                                    <small class="text-muted">Auto-generated if left empty</small>
+                                    {% if form.api_url.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.api_url.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{{ url_for('servers') }}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Add Server</button>
+                        </div>
+                    </form>
                 </div>
-                
-                <!-- Кнопки формы -->
-                <div class="d-flex justify-content-between">
-                    <a href="{{ url_for('servers') }}" class="btn btn-secondary">Отмена</a>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-plus-circle"></i> Добавить сервер
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Справочная информация -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">Справочная информация</h6>
-        </div>
-        <div class="card-body">
-            <h5>Получение публичного ключа WireGuard</h5>
-            <p>Для получения публичного ключа WireGuard выполните на сервере команды:</p>
-            <pre class="bg-light p-3"><code>wg genkey | tee privatekey | wg pubkey > publickey
-cat publickey</code></pre>
-            
-            <h5 class="mt-4">Настройка WireGuard сервера</h5>
-            <p>Пример конфигурации WireGuard сервера:</p>
-            <pre class="bg-light p-3"><code>[Interface]
-PrivateKey = PRIVATE_KEY_HERE
-Address = 10.0.0.1/24
-ListenPort = 51820
-PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE</code></pre>
+            </div>
         </div>
     </div>
 </div>
-<div id="debug-info" class="container mt-3" style="display: none;">
-    <div class="card">
-        <div class="card-header">
-            <h5>Отладочная информация</h5>
-            <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('debug-info').style.display='none'">Скрыть</button>
-        </div>
-        <div class="card-body">
-            <pre id="debug-output" style="max-height: 300px; overflow: auto;"></pre>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script src="{{ url_for('static', filename='js/components/alerts.js') }}"></script>
-<script src="{{ url_for('static', filename='js/components/modals.js') }}"></script>
-<script src="{{ url_for('static', filename='js/components/utils.js') }}"></script>
-<script src="{{ url_for('static', filename='js/servers/add.js') }}"></script>
-
-<script>
-    // Функция для отображения отладочной информации
-    function showDebugInfo(info) {
-        const debugOutput = document.getElementById('debug-output');
-        const debugInfo = document.getElementById('debug-info');
-        
-        if (debugOutput && debugInfo) {
-            debugOutput.textContent += JSON.stringify(info, null, 2) + '\n\n';
-            debugInfo.style.display = 'block';
-        }
-    }
-
-    // Перехватываем ошибки fetch
-    const originalFetch = window.fetch;
-    window.fetch = function() {
-        showDebugInfo({
-            type: 'fetch-request',
-            url: arguments[0],
-            options: arguments[1],
-            timestamp: new Date().toISOString()
-        });
-        
-        return originalFetch.apply(this, arguments)
-            .then(response => {
-                // Клонируем ответ перед чтением, чтобы не потерять данные
-                const clone = response.clone();
-                clone.text().then(text => {
-                    showDebugInfo({
-                        type: 'fetch-response',
-                        url: response.url,
-                        status: response.status,
-                        statusText: response.statusText,
-                        body: text.substring(0, 1000), // Ограничиваем размер для больших ответов
-                        timestamp: new Date().toISOString()
-                    });
-                });
-                return response;
-            })
-            .catch(error => {
-                showDebugInfo({
-                    type: 'fetch-error',
-                    message: error.message,
-                    stack: error.stack,
-                    timestamp: new Date().toISOString()
-                });
-                throw error;
-            });
-    };
-</script>
 {% endblock %}

@@ -1,297 +1,266 @@
+<!-- Add this code to templates/servers/details.html -->
+<!-- This should be the entire content of the file -->
+
 {% extends "base.html" %}
 
-{% block title %}Детали сервера - VPN Duck{% endblock %}
-
-{% block head_extra %}
-<style>
-    .status-dot {
-        display: inline-block;
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        margin-right: 8px;
-    }
-    
-    .status-active { background-color: #28a745; }
-    .status-inactive { background-color: #dc3545; }
-    .status-degraded { background-color: #ffc107; }
-    .status-unknown { background-color: #6c757d; }
-    
-    .metrics-chart { height: 300px; }
-    
-    .server-info-card {
-        transition: all 0.3s ease;
-    }
-    
-    .server-info-card:hover {
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-    }
-
-    .flash-messages {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 1050;
-        max-width: 350px;
-    }
-    
-    .mocked-data-indicator {
-        display: inline-block;
-        padding: 3px 8px;
-        background-color: #ffc107;
-        color: #000;
-        font-size: 0.8rem;
-        border-radius: 4px;
-        margin-left: 10px;
-    }
-</style>
-{% endblock %}
+{% block title %}{{ server.name }} - Server Details{% endblock %}
 
 {% block content %}
-<!-- Flash messages container -->
-<div class="flash-messages"></div>
-
 <div class="container mt-4">
-    <div class="row mb-4">
-        <div class="col-md-8">
-            <h1 class="h2" id="server-name">Загрузка данных сервера...</h1>
-        </div>
-        <div class="col-md-4 text-md-right">
-            <a href="/servers" class="btn btn-secondary mr-2">
-                <i class="fas fa-arrow-left"></i> Назад к списку
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>{{ server.name }} <span class="badge {% if server.status == 'active' %}bg-success{% elif server.status == 'inactive' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+            {{ server.status|title }}
+        </span></h1>
+        <div class="btn-group">
+            <a href="{{ url_for('edit_server', server_id=server.id) }}" class="btn btn-primary">
+                <i class="bi bi-pencil"></i> Edit
             </a>
-            <a href="#" id="edit-server-btn" class="btn btn-primary">
-                <i class="fas fa-edit"></i> Редактировать
+            <a href="{{ url_for('servers') }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Servers
             </a>
         </div>
     </div>
     
-    <div class="alert alert-warning d-none" id="mocked-data-alert">
-        <i class="fas fa-exclamation-triangle"></i> 
-        <strong>Внимание!</strong> Некоторые данные сервера симулируются из-за недоступности API.
-    </div>
-
     <div class="row">
-        <!-- Основная информация о сервере -->
-        <div class="col-md-4 mb-4">
-            <div class="card server-info-card h-100">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="card-title mb-0">Основная информация</h5>
+        <div class="col-lg-4">
+            <!-- Server Information Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Server Information</h5>
                 </div>
                 <div class="card-body">
-                    <div id="server-loading" class="text-center">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="sr-only">Загрузка...</span>
-                        </div>
-                        <p class="mt-2">Загрузка информации о сервере...</p>
-                    </div>
-                    
-                    <div id="server-info" class="d-none">
-                        <p>
-                            <strong>Статус:</strong> 
-                            <span id="server-status">
-                                <span class="status-dot status-unknown"></span>Неизвестно
-                            </span>
-                        </p>
-                        <p><strong>ID:</strong> <span id="server-id"></span></p>
-                        <p><strong>Расположение:</strong> <span id="server-location"></span></p>
-                        <p><strong>Endpoint:</strong> <span id="server-endpoint"></span></p>
-                        <p><strong>Тип аутентификации:</strong> <span id="server-auth-type"></span></p>
-                        <p><strong>Дата добавления:</strong> <span id="server-added-date"></span></p>
-                        <p><strong>Последняя проверка:</strong> <span id="server-last-check"></span></p>
-                    </div>
+                    <table class="table table-striped">
+                        <tbody>
+                            <tr>
+                                <th>ID</th>
+                                <td>{{ server.id }}</td>
+                            </tr>
+                            <tr>
+                                <th>Endpoint</th>
+                                <td>{{ server.endpoint }}:{{ server.port }}</td>
+                            </tr>
+                            <tr>
+                                <th>Internal IP</th>
+                                <td>{{ server.address }}</td>
+                            </tr>
+                            <tr>
+                                <th>Geolocation</th>
+                                <td>{{ server.geolocation_name or 'Unknown' }}</td>
+                            </tr>
+                            <tr>
+                                <th>Maximum Peers</th>
+                                <td>{{ server.max_peers }}</td>
+                            </tr>
+                            <tr>
+                                <th>Public Key</th>
+                                <td>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control form-control-sm" value="{{ server.public_key }}" readonly>
+                                        <button class="btn btn-sm btn-outline-secondary copy-btn" type="button" data-copy="{{ server.public_key }}">
+                                            <i class="bi bi-clipboard"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>API Key</th>
+                                <td>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control form-control-sm" value="{{ server.api_key }}" readonly>
+                                        <button class="btn btn-sm btn-outline-secondary copy-btn" type="button" data-copy="{{ server.api_key }}">
+                                            <i class="bi bi-clipboard"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
-                <div class="card-footer">
-                    <button class="btn btn-outline-primary btn-sm" id="test-connection-btn">
-                        <i class="fas fa-network-wired"></i> Проверить соединение
-                    </button>
+            </div>
+            
+            <!-- Server Actions Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Server Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('server_details', server_id=server.id, hours=6) }}" class="btn btn-outline-primary {% if hours == 6 %}active{% endif %}">
+                            Last 6 Hours
+                        </a>
+                        <a href="{{ url_for('server_details', server_id=server.id, hours=24) }}" class="btn btn-outline-primary {% if hours == 24 %}active{% endif %}">
+                            Last 24 Hours
+                        </a>
+                        <a href="{{ url_for('server_details', server_id=server.id, hours=72) }}" class="btn btn-outline-primary {% if hours == 72 %}active{% endif %}">
+                            Last 3 Days
+                        </a>
+                        <a href="{{ url_for('server_details', server_id=server.id, hours=168) }}" class="btn btn-outline-primary {% if hours == 168 %}active{% endif %}">
+                            Last Week
+                        </a>
+                        <hr>
+                        <form method="POST" action="{{ url_for('server_action', server_id=server.id, action='restart') }}" class="d-grid">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-warning" onclick="return confirm('Are you sure you want to restart the WireGuard service?')">
+                                <i class="bi bi-arrow-clockwise"></i> Restart WireGuard
+                            </button>
+                        </form>
+                        <form method="POST" action="{{ url_for('server_action', server_id=server.id, action='toggle_status') }}" class="d-grid">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn {% if server.status == 'active' %}btn-danger{% else %}btn-success{% endif %}">
+                                {% if server.status == 'active' %}
+                                <i class="bi bi-pause-circle"></i> Deactivate Server
+                                {% else %}
+                                <i class="bi bi-play-circle"></i> Activate Server
+                                {% endif %}
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
         
-        <!-- Текущие метрики сервера -->
-        <div class="col-md-8 mb-4">
-            <div class="card server-info-card h-100">
-                <div class="card-header bg-info text-white">
-                    <h5 class="card-title mb-0">Текущие метрики</h5>
+        <div class="col-lg-8">
+            <!-- Current Metrics Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Current Metrics</h5>
                 </div>
                 <div class="card-body">
-                    <div id="metrics-loading" class="text-center">
-                        <div class="spinner-border text-info" role="status">
-                            <span class="sr-only">Загрузка...</span>
-                        </div>
-                        <p class="mt-2">Загрузка метрик сервера...</p>
-                    </div>
-                    
-                    <div id="current-metrics" class="d-none">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="card mb-3 border-0">
-                                    <div class="card-body p-0">
-                                        <h6 class="card-title">Подключенные пиры</h6>
-                                        <h2 class="display-4" id="peers-count">0</h2>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="card mb-3 border-0">
-                                    <div class="card-body p-0">
-                                        <h6 class="card-title">Нагрузка</h6>
-                                        <h2 class="display-4" id="server-load">0%</h2>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="row mt-4">
-                            <div class="col-md-4">
-                                <div class="card mb-3 border-0">
-                                    <div class="card-body p-0">
-                                        <h6 class="card-title">CPU</h6>
-                                        <div class="progress">
-                                            <div class="progress-bar" id="cpu-usage-bar" role="progressbar" style="width: 0%"></div>
-                                        </div>
-                                        <p class="mt-2" id="cpu-usage">0%</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="card mb-3 border-0">
-                                    <div class="card-body p-0">
-                                        <h6 class="card-title">Память</h6>
-                                        <div class="progress">
-                                            <div class="progress-bar bg-success" id="memory-usage-bar" role="progressbar" style="width: 0%"></div>
-                                        </div>
-                                        <p class="mt-2" id="memory-usage">0%</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="card mb-3 border-0">
-                                    <div class="card-body p-0">
-                                        <h6 class="card-title">Потеря пакетов</h6>
-                                        <div class="progress">
-                                            <div class="progress-bar bg-warning" id="packet-loss-bar" role="progressbar" style="width: 0%"></div>
-                                        </div>
-                                        <p class="mt-2" id="packet-loss">0%</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="row mt-3">
-                            <div class="col-md-6">
-                                <p><strong>Время работы:</strong> <span id="uptime">Н/Д</span></p>
-                                <p><strong>Версия:</strong> <span id="wg-version">Н/Д</span></p>
-                            </div>
-                            <div class="col-md-6">
-                                <p><strong>Задержка:</strong> <span id="latency">0 мс</span></p>
-                                <p><strong>Последнее обновление:</strong> <span id="last-update">Н/Д</span></p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- График исторических метрик -->
-    <div class="row">
-        <div class="col-12 mb-4">
-            <div class="card server-info-card">
-                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
-                    <h5 class="card-title mb-0">История метрик</h5>
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-sm btn-light time-filter active" data-hours="24">24ч</button>
-                        <button type="button" class="btn btn-sm btn-light time-filter" data-hours="72">3 дня</button>
-                        <button type="button" class="btn btn-sm btn-light time-filter" data-hours="168">7 дней</button>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div id="history-loading" class="text-center">
-                        <div class="spinner-border text-success" role="status">
-                            <span class="sr-only">Загрузка...</span>
-                        </div>
-                        <p class="mt-2">Загрузка исторических данных...</p>
-                    </div>
-                    
-                    <div id="history-error" class="alert alert-warning d-none">
-                        <i class="fas fa-exclamation-triangle"></i> 
-                        Не удалось загрузить исторические данные. Метрики могут быть недоступны для этого сервера.
-                    </div>
-                    
-                    <div id="metrics-history" class="d-none">
-                        <div class="row">
-                            <div class="col-md-6 mb-4">
-                                <div class="card">
-                                    <div class="card-header">Количество пиров</div>
-                                    <div class="card-body">
-                                        <canvas id="peers-chart" class="metrics-chart"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6 mb-4">
-                                <div class="card">
-                                    <div class="card-header">Нагрузка сервера</div>
-                                    <div class="card-body">
-                                        <canvas id="load-chart" class="metrics-chart"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-4">
-                                <div class="card">
-                                    <div class="card-header">Использование CPU и памяти</div>
-                                    <div class="card-body">
-                                        <canvas id="resources-chart" class="metrics-chart"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6 mb-4">
-                                <div class="card">
-                                    <div class="card-header">Задержка и потеря пакетов</div>
-                                    <div class="card-body">
-                                        <canvas id="latency-chart" class="metrics-chart"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Управление сервером и действия -->
-    <div class="row">
-        <div class="col-md-12 mb-4">
-            <div class="card server-info-card">
-                <div class="card-header bg-dark text-white">
-                    <h5 class="card-title mb-0">Управление</h5>
-                </div>
-                <div class="card-body">
+                    {% if metrics and metrics.current %}
                     <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <div class="d-grid">
-                                <button class="btn btn-primary btn-block" id="refresh-btn">
-                                    <i class="fas fa-sync-alt"></i> Обновить данные
-                                </button>
+                        <div class="col-sm-6 col-md-4 mb-3">
+                            <div class="card h-100 bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">Connected Peers</h6>
+                                    <h2>{{ metrics.current.peers_count|default(0) }}</h2>
+                                    <p class="text-muted">Max: {{ server.max_peers }}</p>
+                                </div>
                             </div>
                         </div>
-                        <div class="col-md-4 mb-3">
-                            <div class="d-grid">
-                                <button class="btn btn-warning btn-block" id="restart-server-btn">
-                                    <i class="fas fa-redo"></i> Перезапустить сервер
-                                </button>
+                        <div class="col-sm-6 col-md-4 mb-3">
+                            <div class="card h-100 bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">CPU Usage</h6>
+                                    <h2>{{ metrics.current.cpu_usage|default(0) }}%</h2>
+                                    <div class="progress mt-2">
+                                        <div class="progress-bar {% if metrics.current.cpu_usage > 80 %}bg-danger{% elif metrics.current.cpu_usage > 60 %}bg-warning{% else %}bg-success{% endif %}" 
+                                             style="width: {{ metrics.current.cpu_usage|default(0) }}%"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div class="col-md-4 mb-3">
-                            <div class="d-grid">
-                                <button class="btn btn-danger btn-block" id="delete-server-btn">
-                                    <i class="fas fa-trash-alt"></i> Удалить сервер
-                                </button>
+                        <div class="col-sm-6 col-md-4 mb-3">
+                            <div class="card h-100 bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">Memory Usage</h6>
+                                    <h2>{{ metrics.current.memory_usage|default(0) }}%</h2>
+                                    <div class="progress mt-2">
+                                        <div class="progress-bar {% if metrics.current.memory_usage > 80 %}bg-danger{% elif metrics.current.memory_usage > 60 %}bg-warning{% else %}bg-success{% endif %}" 
+                                             style="width: {{ metrics.current.memory_usage|default(0) }}%"></div>
+                                    </div>
+                                </div>
                             </div>
+                        </div>
+                        <div class="col-sm-6 col-md-4 mb-3">
+                            <div class="card h-100 bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">Avg. Latency</h6>
+                                    <h2>{{ metrics.current.avg_latency|default(0)|round(1) }}ms</h2>
+                                    <div class="progress mt-2">
+                                        <div class="progress-bar {% if metrics.current.avg_latency > 100 %}bg-danger{% elif metrics.current.avg_latency > 50 %}bg-warning{% else %}bg-success{% endif %}" 
+                                             style="width: {{ (metrics.current.avg_latency|default(0) / 2)|min(100) }}%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-md-4 mb-3">
+                            <div class="card h-100 bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">Packet Loss</h6>
+                                    <h2>{{ metrics.current.avg_packet_loss|default(0)|round(2) }}%</h2>
+                                    <div class="progress mt-2">
+                                        <div class="progress-bar {% if metrics.current.avg_packet_loss > 5 %}bg-danger{% elif metrics.current.avg_packet_loss > 1 %}bg-warning{% else %}bg-success{% endif %}" 
+                                             style="width: {{ (metrics.current.avg_packet_loss|default(0) * 10)|min(100) }}%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-md-4 mb-3">
+                            <div class="card h-100 bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">Server Load</h6>
+                                    <h2>{{ metrics.current.load|default(0)|round(2) }}</h2>
+                                    <div class="progress mt-2">
+                                        <div class="progress-bar {% if metrics.current.load > 2 %}bg-danger{% elif metrics.current.load > 1 %}bg-warning{% else %}bg-success{% endif %}" 
+                                             style="width: {{ (metrics.current.load|default(0) * 33.3)|min(100) }}%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning">
+                        No current metrics available for this server.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Metrics Chart Tabs -->
+            <div class="card">
+                <div class="card-header">
+                    <ul class="nav nav-tabs card-header-tabs" id="serverChartTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="latency-tab" data-bs-toggle="tab" data-bs-target="#latency" type="button" role="tab" aria-controls="latency" aria-selected="true">
+                                Latency
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="packet-loss-tab" data-bs-toggle="tab" data-bs-target="#packet-loss" type="button" role="tab" aria-controls="packet-loss" aria-selected="false">
+                                Packet Loss
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="resources-tab" data-bs-toggle="tab" data-bs-target="#resources" type="button" role="tab" aria-controls="resources" aria-selected="false">
+                                Resources
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="interactive-tab" data-bs-toggle="tab" data-bs-target="#interactive" type="button" role="tab" aria-controls="interactive" aria-selected="false">
+                                Interactive Dashboard
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+                <div class="card-body">
+                    <div class="tab-content" id="serverChartTabsContent">
+                        <div class="tab-pane fade show active" id="latency" role="tabpanel" aria-labelledby="latency-tab">
+                            {% if charts.latency %}
+                                <img src="data:image/png;base64,{{ charts.latency }}" class="img-fluid" alt="Latency Chart">
+                            {% else %}
+                                <div class="alert alert-info">No latency data available.</div>
+                            {% endif %}
+                        </div>
+                        <div class="tab-pane fade" id="packet-loss" role="tabpanel" aria-labelledby="packet-loss-tab">
+                            {% if charts.packet_loss %}
+                                <img src="data:image/png;base64,{{ charts.packet_loss }}" class="img-fluid" alt="Packet Loss Chart">
+                            {% else %}
+                                <div class="alert alert-info">No packet loss data available.</div>
+                            {% endif %}
+                        </div>
+                        <div class="tab-pane fade" id="resources" role="tabpanel" aria-labelledby="resources-tab">
+                            {% if charts.resources %}
+                                <img src="data:image/png;base64,{{ charts.resources }}" class="img-fluid" alt="Resource Usage Chart">
+                            {% else %}
+                                <div class="alert alert-info">No resource usage data available.</div>
+                            {% endif %}
+                        </div>
+                        <div class="tab-pane fade" id="interactive" role="tabpanel" aria-labelledby="interactive-tab">
+                            {% if interactive_chart %}
+                                {{ interactive_chart|safe }}
+                            {% else %}
+                                <div class="alert alert-info">Interactive dashboard not available. This feature requires Plotly support.</div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -299,120 +268,4 @@
         </div>
     </div>
 </div>
-
-<!-- Модальное окно для подтверждения перезапуска сервера -->
-<div class="modal fade" id="restart-confirm-modal" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Подтверждение перезапуска</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>
-            <div class="modal-body">
-                <p>Вы уверены, что хотите перезапустить сервер <strong id="restart-server-name"></strong>?</p>
-                <p class="text-warning">Все текущие подключения будут сброшены.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Отмена</button>
-                <button type="button" class="btn btn-warning" id="confirm-restart-btn">Перезапустить</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Модальное окно для подтверждения удаления сервера -->
-<div class="modal fade" id="delete-confirm-modal" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Подтверждение удаления</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>
-            <div class="modal-body">
-                <p>Вы уверены, что хотите удалить сервер <strong id="delete-server-name"></strong>?</p>
-                <p class="text-danger">Это действие нельзя отменить. Все пиры на этом сервере будут удалены.</p>
-                <div class="form-group">
-                    <label for="delete-confirm-input">Введите "УДАЛИТЬ" для подтверждения:</label>
-                    <input type="text" class="form-control" id="delete-confirm-input">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Отмена</button>
-                <button type="button" class="btn btn-danger" id="confirm-delete-btn" disabled>Удалить</button>
-            </div>
-        </div>
-    </div>
-</div>
-<!-- В конец body -->
-<div id="debug-info" class="container mt-3" style="display: none;">
-    <div class="card">
-        <div class="card-header">
-            <h5>Отладочная информация</h5>
-            <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('debug-info').style.display='none'">Скрыть</button>
-        </div>
-        <div class="card-body">
-            <pre id="debug-output" style="max-height: 300px; overflow: auto;"></pre>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts %}<script>
-    // Функция для отображения отладочной информации
-    function showDebugInfo(info) {
-        const debugOutput = document.getElementById('debug-output');
-        const debugInfo = document.getElementById('debug-info');
-        
-        if (debugOutput && debugInfo) {
-            debugOutput.textContent += JSON.stringify(info, null, 2) + '\n\n';
-            debugInfo.style.display = 'block';
-        }
-    }
-
-    // Перехватываем ошибки fetch
-    const originalFetch = window.fetch;
-    window.fetch = function() {
-        showDebugInfo({
-            type: 'fetch-request',
-            url: arguments[0],
-            options: arguments[1],
-            timestamp: new Date().toISOString()
-        });
-        
-        return originalFetch.apply(this, arguments)
-            .then(response => {
-                // Клонируем ответ перед чтением, чтобы не потерять данные
-                const clone = response.clone();
-                clone.text().then(text => {
-                    showDebugInfo({
-                        type: 'fetch-response',
-                        url: response.url,
-                        status: response.status,
-                        statusText: response.statusText,
-                        body: text.substring(0, 1000), // Ограничиваем размер для больших ответов
-                        timestamp: new Date().toISOString()
-                    });
-                });
-                return response;
-            })
-            .catch(error => {
-                showDebugInfo({
-                    type: 'fetch-error',
-                    message: error.message,
-                    stack: error.stack,
-                    timestamp: new Date().toISOString()
-                });
-                throw error;
-            });
-    };
-</script> 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
-<script src="{{ url_for('static', filename='js/components/alerts.js') }}"></script>
-<script src="{{ url_for('static', filename='js/components/modals.js') }}"></script>
-<script src="{{ url_for('static', filename='js/components/utils.js') }}"></script>
-<script src="{{ url_for('static', filename='js/servers/details.js') }}"></script>
 {% endblock %}

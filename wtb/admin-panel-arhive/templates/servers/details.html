@@ -1,0 +1,418 @@
+{% extends "base.html" %}
+
+{% block title %}Детали сервера - VPN Duck{% endblock %}
+
+{% block head_extra %}
+<style>
+    .status-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    
+    .status-active { background-color: #28a745; }
+    .status-inactive { background-color: #dc3545; }
+    .status-degraded { background-color: #ffc107; }
+    .status-unknown { background-color: #6c757d; }
+    
+    .metrics-chart { height: 300px; }
+    
+    .server-info-card {
+        transition: all 0.3s ease;
+    }
+    
+    .server-info-card:hover {
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+
+    .flash-messages {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1050;
+        max-width: 350px;
+    }
+    
+    .mocked-data-indicator {
+        display: inline-block;
+        padding: 3px 8px;
+        background-color: #ffc107;
+        color: #000;
+        font-size: 0.8rem;
+        border-radius: 4px;
+        margin-left: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Flash messages container -->
+<div class="flash-messages"></div>
+
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1 class="h2" id="server-name">Загрузка данных сервера...</h1>
+        </div>
+        <div class="col-md-4 text-md-right">
+            <a href="/servers" class="btn btn-secondary mr-2">
+                <i class="fas fa-arrow-left"></i> Назад к списку
+            </a>
+            <a href="#" id="edit-server-btn" class="btn btn-primary">
+                <i class="fas fa-edit"></i> Редактировать
+            </a>
+        </div>
+    </div>
+    
+    <div class="alert alert-warning d-none" id="mocked-data-alert">
+        <i class="fas fa-exclamation-triangle"></i> 
+        <strong>Внимание!</strong> Некоторые данные сервера симулируются из-за недоступности API.
+    </div>
+
+    <div class="row">
+        <!-- Основная информация о сервере -->
+        <div class="col-md-4 mb-4">
+            <div class="card server-info-card h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">Основная информация</h5>
+                </div>
+                <div class="card-body">
+                    <div id="server-loading" class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="sr-only">Загрузка...</span>
+                        </div>
+                        <p class="mt-2">Загрузка информации о сервере...</p>
+                    </div>
+                    
+                    <div id="server-info" class="d-none">
+                        <p>
+                            <strong>Статус:</strong> 
+                            <span id="server-status">
+                                <span class="status-dot status-unknown"></span>Неизвестно
+                            </span>
+                        </p>
+                        <p><strong>ID:</strong> <span id="server-id"></span></p>
+                        <p><strong>Расположение:</strong> <span id="server-location"></span></p>
+                        <p><strong>Endpoint:</strong> <span id="server-endpoint"></span></p>
+                        <p><strong>Тип аутентификации:</strong> <span id="server-auth-type"></span></p>
+                        <p><strong>Дата добавления:</strong> <span id="server-added-date"></span></p>
+                        <p><strong>Последняя проверка:</strong> <span id="server-last-check"></span></p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-outline-primary btn-sm" id="test-connection-btn">
+                        <i class="fas fa-network-wired"></i> Проверить соединение
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Текущие метрики сервера -->
+        <div class="col-md-8 mb-4">
+            <div class="card server-info-card h-100">
+                <div class="card-header bg-info text-white">
+                    <h5 class="card-title mb-0">Текущие метрики</h5>
+                </div>
+                <div class="card-body">
+                    <div id="metrics-loading" class="text-center">
+                        <div class="spinner-border text-info" role="status">
+                            <span class="sr-only">Загрузка...</span>
+                        </div>
+                        <p class="mt-2">Загрузка метрик сервера...</p>
+                    </div>
+                    
+                    <div id="current-metrics" class="d-none">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card mb-3 border-0">
+                                    <div class="card-body p-0">
+                                        <h6 class="card-title">Подключенные пиры</h6>
+                                        <h2 class="display-4" id="peers-count">0</h2>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card mb-3 border-0">
+                                    <div class="card-body p-0">
+                                        <h6 class="card-title">Нагрузка</h6>
+                                        <h2 class="display-4" id="server-load">0%</h2>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-md-4">
+                                <div class="card mb-3 border-0">
+                                    <div class="card-body p-0">
+                                        <h6 class="card-title">CPU</h6>
+                                        <div class="progress">
+                                            <div class="progress-bar" id="cpu-usage-bar" role="progressbar" style="width: 0%"></div>
+                                        </div>
+                                        <p class="mt-2" id="cpu-usage">0%</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card mb-3 border-0">
+                                    <div class="card-body p-0">
+                                        <h6 class="card-title">Память</h6>
+                                        <div class="progress">
+                                            <div class="progress-bar bg-success" id="memory-usage-bar" role="progressbar" style="width: 0%"></div>
+                                        </div>
+                                        <p class="mt-2" id="memory-usage">0%</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card mb-3 border-0">
+                                    <div class="card-body p-0">
+                                        <h6 class="card-title">Потеря пакетов</h6>
+                                        <div class="progress">
+                                            <div class="progress-bar bg-warning" id="packet-loss-bar" role="progressbar" style="width: 0%"></div>
+                                        </div>
+                                        <p class="mt-2" id="packet-loss">0%</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <p><strong>Время работы:</strong> <span id="uptime">Н/Д</span></p>
+                                <p><strong>Версия:</strong> <span id="wg-version">Н/Д</span></p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Задержка:</strong> <span id="latency">0 мс</span></p>
+                                <p><strong>Последнее обновление:</strong> <span id="last-update">Н/Д</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- График исторических метрик -->
+    <div class="row">
+        <div class="col-12 mb-4">
+            <div class="card server-info-card">
+                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">История метрик</h5>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-light time-filter active" data-hours="24">24ч</button>
+                        <button type="button" class="btn btn-sm btn-light time-filter" data-hours="72">3 дня</button>
+                        <button type="button" class="btn btn-sm btn-light time-filter" data-hours="168">7 дней</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="history-loading" class="text-center">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="sr-only">Загрузка...</span>
+                        </div>
+                        <p class="mt-2">Загрузка исторических данных...</p>
+                    </div>
+                    
+                    <div id="history-error" class="alert alert-warning d-none">
+                        <i class="fas fa-exclamation-triangle"></i> 
+                        Не удалось загрузить исторические данные. Метрики могут быть недоступны для этого сервера.
+                    </div>
+                    
+                    <div id="metrics-history" class="d-none">
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <div class="card">
+                                    <div class="card-header">Количество пиров</div>
+                                    <div class="card-body">
+                                        <canvas id="peers-chart" class="metrics-chart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <div class="card">
+                                    <div class="card-header">Нагрузка сервера</div>
+                                    <div class="card-body">
+                                        <canvas id="load-chart" class="metrics-chart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <div class="card">
+                                    <div class="card-header">Использование CPU и памяти</div>
+                                    <div class="card-body">
+                                        <canvas id="resources-chart" class="metrics-chart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <div class="card">
+                                    <div class="card-header">Задержка и потеря пакетов</div>
+                                    <div class="card-body">
+                                        <canvas id="latency-chart" class="metrics-chart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Управление сервером и действия -->
+    <div class="row">
+        <div class="col-md-12 mb-4">
+            <div class="card server-info-card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="card-title mb-0">Управление</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <div class="d-grid">
+                                <button class="btn btn-primary btn-block" id="refresh-btn">
+                                    <i class="fas fa-sync-alt"></i> Обновить данные
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="d-grid">
+                                <button class="btn btn-warning btn-block" id="restart-server-btn">
+                                    <i class="fas fa-redo"></i> Перезапустить сервер
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="d-grid">
+                                <button class="btn btn-danger btn-block" id="delete-server-btn">
+                                    <i class="fas fa-trash-alt"></i> Удалить сервер
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для подтверждения перезапуска сервера -->
+<div class="modal fade" id="restart-confirm-modal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Подтверждение перезапуска</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Вы уверены, что хотите перезапустить сервер <strong id="restart-server-name"></strong>?</p>
+                <p class="text-warning">Все текущие подключения будут сброшены.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-warning" id="confirm-restart-btn">Перезапустить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для подтверждения удаления сервера -->
+<div class="modal fade" id="delete-confirm-modal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Подтверждение удаления</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Вы уверены, что хотите удалить сервер <strong id="delete-server-name"></strong>?</p>
+                <p class="text-danger">Это действие нельзя отменить. Все пиры на этом сервере будут удалены.</p>
+                <div class="form-group">
+                    <label for="delete-confirm-input">Введите "УДАЛИТЬ" для подтверждения:</label>
+                    <input type="text" class="form-control" id="delete-confirm-input">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" id="confirm-delete-btn" disabled>Удалить</button>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- В конец body -->
+<div id="debug-info" class="container mt-3" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <h5>Отладочная информация</h5>
+            <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('debug-info').style.display='none'">Скрыть</button>
+        </div>
+        <div class="card-body">
+            <pre id="debug-output" style="max-height: 300px; overflow: auto;"></pre>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}<script>
+    // Функция для отображения отладочной информации
+    function showDebugInfo(info) {
+        const debugOutput = document.getElementById('debug-output');
+        const debugInfo = document.getElementById('debug-info');
+        
+        if (debugOutput && debugInfo) {
+            debugOutput.textContent += JSON.stringify(info, null, 2) + '\n\n';
+            debugInfo.style.display = 'block';
+        }
+    }
+
+    // Перехватываем ошибки fetch
+    const originalFetch = window.fetch;
+    window.fetch = function() {
+        showDebugInfo({
+            type: 'fetch-request',
+            url: arguments[0],
+            options: arguments[1],
+            timestamp: new Date().toISOString()
+        });
+        
+        return originalFetch.apply(this, arguments)
+            .then(response => {
+                // Клонируем ответ перед чтением, чтобы не потерять данные
+                const clone = response.clone();
+                clone.text().then(text => {
+                    showDebugInfo({
+                        type: 'fetch-response',
+                        url: response.url,
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: text.substring(0, 1000), // Ограничиваем размер для больших ответов
+                        timestamp: new Date().toISOString()
+                    });
+                });
+                return response;
+            })
+            .catch(error => {
+                showDebugInfo({
+                    type: 'fetch-error',
+                    message: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                });
+                throw error;
+            });
+    };
+</script> 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+<script src="{{ url_for('static', filename='js/components/alerts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/components/modals.js') }}"></script>
+<script src="{{ url_for('static', filename='js/components/utils.js') }}"></script>
+<script src="{{ url_for('static', filename='js/servers/details.js') }}"></script>
+{% endblock %}

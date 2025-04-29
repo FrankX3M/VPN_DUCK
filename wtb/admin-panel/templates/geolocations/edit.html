@@ -1,0 +1,108 @@
+<!-- Add this code to templates/geolocations/edit.html -->
+<!-- This is the geolocation edit form template -->
+
+{% extends "base.html" %}
+
+{% block title %}Edit Geolocation - {{ geolocation.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-lg-6 offset-lg-3">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h1 class="h3 mb-0">Edit Geolocation</h1>
+                    <span class="badge {% if geolocation.available %}bg-success{% else %}bg-danger{% endif %}">
+                        {% if geolocation.available %}Available{% else %}Unavailable{% endif %}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('edit_geolocation', geo_id=geolocation.id) }}">
+                        {{ form.csrf_token }}
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.code.id }}" class="form-label">{{ form.code.label.text }} *</label>
+                            {{ form.code(class="form-control") }}
+                            <small class="text-muted">Two or three letter country code</small>
+                            {% if form.code.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.code.errors %}
+                                {{ error }}
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.name.id }}" class="form-label">{{ form.name.label.text }} *</label>
+                            {{ form.name(class="form-control") }}
+                            {% if form.name.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.name.errors %}
+                                {{ error }}
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="form-check">
+                                {{ form.available(class="form-check-input") }}
+                                <label class="form-check-label" for="{{ form.available.id }}">
+                                    {{ form.available.label.text }}
+                                </label>
+                            </div>
+                            <small class="text-muted">{% if server_count > 0 %}This geolocation has {{ server_count }} assigned servers{% else %}No servers are using this geolocation{% endif %}</small>
+                            {% if form.available.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.available.errors %}
+                                {{ error }}
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.description.id }}" class="form-label">{{ form.description.label.text }}</label>
+                            {{ form.description(class="form-control") }}
+                            {% if form.description.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.description.errors %}
+                                {{ error }}
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{{ url_for('geolocations') }}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </div>
+                    </form>
+                </div>
+                
+                {% if server_count > 0 %}
+                <div class="card-footer">
+                    <h5>Assigned Servers</h5>
+                    <ul class="list-group">
+                        {% for server in servers %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            {{ server.name }}
+                            <div>
+                                <span class="badge {% if server.status == 'active' %}bg-success{% elif server.status == 'inactive' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                    {{ server.status|title }}
+                                </span>
+                                <a href="{{ url_for('server_details', server_id=server.id) }}" class="btn btn-sm btn-info ms-2">
+                                    <i class="bi bi-arrow-right"></i>
+                                </a>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
