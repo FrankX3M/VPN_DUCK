@@ -1,6 +1,3 @@
-<!-- Add this code to templates/login.html -->
-<!-- This is the login page template -->
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -80,15 +77,21 @@
         {% endif %}
         
         <form method="POST" action="{{ url_for('login') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {{ form.csrf_token }}
             
             <div class="form-floating">
-                <input type="text" class="form-control" id="username" name="username" placeholder="Username" required autofocus>
+                {{ form.username(class="form-control", placeholder="Username", id="username", required=True, autofocus=True) }}
                 <label for="username">Username</label>
             </div>
             <div class="form-floating">
-                <input type="password" class="form-control" id="password" name="password" placeholder="Password" required>
+                {{ form.password(class="form-control", placeholder="Password", id="password", required=True) }}
                 <label for="password">Password</label>
+            </div>
+            
+            <div class="checkbox mb-3">
+                <label>
+                    {{ form.remember(type="checkbox") }} Remember me
+                </label>
             </div>
             
             <button class="w-100 btn btn-lg btn-primary mt-3" type="submit">Sign in</button>
