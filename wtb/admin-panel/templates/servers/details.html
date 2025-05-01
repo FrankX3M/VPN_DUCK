@@ -1,269 +1,232 @@
-<!-- Add this code to templates/servers/details.html -->
-<!-- This should be the entire content of the file -->
-
 {% extends "base.html" %}
 
-{% block title %}{{ server.name }} - Server Details{% endblock %}
+{% block title %}Server Details: {{ server.name }}{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>{{ server.name }} <span class="badge {% if server.status == 'active' %}bg-success{% elif server.status == 'inactive' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
-            {{ server.status|title }}
-        </span></h1>
-        <div class="btn-group">
-            <a href="{{ url_for('edit_server', server_id=server.id) }}" class="btn btn-primary">
-                <i class="bi bi-pencil"></i> Edit
-            </a>
-            <a href="{{ url_for('servers') }}" class="btn btn-secondary">
-                <i class="bi bi-arrow-left"></i> Back to Servers
-            </a>
+<div class="container-fluid">
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Server Details: {{ server.name }}</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <div class="btn-group mr-2">
+                <a href="{{ url_for('servers') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Servers
+                </a>
+                <a href="{{ url_for('edit_server', server_id=server.id) }}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-edit"></i> Edit
+                </a>
+                <a href="#" class="btn btn-sm btn-outline-danger" data-toggle="modal" data-target="#deleteModal">
+                    <i class="fas fa-trash"></i> Delete
+                </a>
+            </div>
+            <div class="dropdown">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="timeframeDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    <i class="fas fa-clock"></i> {{ hours }} Hours
+                </button>
+                <div class="dropdown-menu" aria-labelledby="timeframeDropdown">
+                    {% for h in [3, 6, 12, 24, 48, 72] %}
+                    <a class="dropdown-item {% if hours == h %}active{% endif %}" href="{{ url_for('server_details', server_id=server.id, hours=h) }}">{{ h }} Hours</a>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
     </div>
-    
-    <div class="row">
-        <div class="col-lg-4">
-            <!-- Server Information Card -->
-            <div class="card mb-4">
+
+    <!-- Server Overview -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">Server Information</h5>
+                    <h5 class="card-title mb-0">Server Information</h5>
                 </div>
                 <div class="card-body">
-                    <table class="table table-striped">
+                    <table class="table">
                         <tbody>
                             <tr>
-                                <th>ID</th>
-                                <td>{{ server.id }}</td>
+                                <th width="30%">Name</th>
+                                <td>{{ server.name }}</td>
+                            </tr>
+                            <tr>
+                                <th>Status</th>
+                                <td>
+                                    <span class="badge badge-{{ server.status|status_color }}">
+                                        {{ server.status|capitalize }}
+                                    </span>
+                                </td>
                             </tr>
                             <tr>
                                 <th>Endpoint</th>
                                 <td>{{ server.endpoint }}:{{ server.port }}</td>
                             </tr>
                             <tr>
-                                <th>Internal IP</th>
+                                <th>Address</th>
                                 <td>{{ server.address }}</td>
                             </tr>
                             <tr>
                                 <th>Geolocation</th>
-                                <td>{{ server.geolocation_name or 'Unknown' }}</td>
+                                <td>{{ server.geolocation_name }}</td>
                             </tr>
                             <tr>
-                                <th>Maximum Peers</th>
-                                <td>{{ server.max_peers }}</td>
-                            </tr>
-                            <tr>
-                                <th>Public Key</th>
-                                <td>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control form-control-sm" value="{{ server.public_key }}" readonly>
-                                        <button class="btn btn-sm btn-outline-secondary copy-btn" type="button" data-copy="{{ server.public_key }}">
-                                            <i class="bi bi-clipboard"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th>API Key</th>
-                                <td>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control form-control-sm" value="{{ server.api_key }}" readonly>
-                                        <button class="btn btn-sm btn-outline-secondary copy-btn" type="button" data-copy="{{ server.api_key }}">
-                                            <i class="bi bi-clipboard"></i>
-                                        </button>
-                                    </div>
-                                </td>
+                                <th>API URL</th>
+                                <td>{{ server.api_url }}</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
-            
-            <!-- Server Actions Card -->
-            <div class="card mb-4">
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">Server Actions</h5>
+                    <h5 class="card-title mb-0">Current Metrics</h5>
                 </div>
                 <div class="card-body">
-                    <div class="d-grid gap-2">
-                        <a href="{{ url_for('server_details', server_id=server.id, hours=6) }}" class="btn btn-outline-primary {% if hours == 6 %}active{% endif %}">
-                            Last 6 Hours
-                        </a>
-                        <a href="{{ url_for('server_details', server_id=server.id, hours=24) }}" class="btn btn-outline-primary {% if hours == 24 %}active{% endif %}">
-                            Last 24 Hours
-                        </a>
-                        <a href="{{ url_for('server_details', server_id=server.id, hours=72) }}" class="btn btn-outline-primary {% if hours == 72 %}active{% endif %}">
-                            Last 3 Days
-                        </a>
-                        <a href="{{ url_for('server_details', server_id=server.id, hours=168) }}" class="btn btn-outline-primary {% if hours == 168 %}active{% endif %}">
-                            Last Week
-                        </a>
-                        <hr>
-                        <form method="POST" action="{{ url_for('server_action', server_id=server.id, action='restart') }}" class="d-grid">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-warning" onclick="return confirm('Are you sure you want to restart the WireGuard service?')">
-                                <i class="bi bi-arrow-clockwise"></i> Restart WireGuard
+                    {% if metrics and metrics.current %}
+                    <div class="mb-4">
+                        <h6>Latency</h6>
+                        <div class="progress mb-2">
+                            <!-- Исправленный фильтр min - используем функцию min(a, b) вместо метода min() -->
+                            <div class="progress-bar {{ metrics.current.avg_latency|latency_color }}" role="progressbar" 
+                                style="width: {{ [metrics.current.avg_latency|default(0) / 2, 100]|min }}%"></div>
+                        </div>
+                        <small class="text-muted">Average: {{ metrics.current.avg_latency|default(0)|round(2) }}ms · Min: {{ metrics.current.min_latency|default(0)|round(2) }}ms · Max: {{ metrics.current.max_latency|default(0)|round(2) }}ms</small>
+                    </div>
+
+                    <div class="mb-4">
+                        <h6>Packet Loss</h6>
+                        <div class="progress mb-2">
+                            <!-- Исправленный фильтр min - используем функцию min(a, b) вместо метода min() -->
+                            <div class="progress-bar {{ metrics.current.packet_loss|packet_loss_color }}" role="progressbar" 
+                                style="width: {{ [metrics.current.packet_loss|default(0), 100]|min }}%"></div>
+                        </div>
+                        <small class="text-muted">Current: {{ metrics.current.packet_loss|default(0)|round(2) }}%</small>
+                    </div>
+
+                    <div>
+                        <h6>Resources</h6>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="progress mb-2">
+                                    <!-- Исправленный фильтр min - используем функцию min(a, b) вместо метода min() -->
+                                    <div class="progress-bar {{ metrics.current.cpu_usage|resource_color }}" role="progressbar" 
+                                        style="width: {{ [metrics.current.cpu_usage|default(0), 100]|min }}%"></div>
+                                </div>
+                                <small class="text-muted">CPU: {{ metrics.current.cpu_usage|default(0)|round(2) }}%</small>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="progress mb-2">
+                                    <!-- Исправленный фильтр min - используем функцию min(a, b) вместо метода min() -->
+                                    <div class="progress-bar {{ metrics.current.memory_usage|resource_color }}" role="progressbar" 
+                                        style="width: {{ [metrics.current.memory_usage|default(0), 100]|min }}%"></div>
+                                </div>
+                                <small class="text-muted">RAM: {{ metrics.current.memory_usage|default(0)|round(2) }}%</small>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="progress mb-2">
+                                    <!-- Исправленный фильтр min - используем функцию min(a, b) вместо метода min() -->
+                                    <div class="progress-bar {{ metrics.current.disk_usage|resource_color }}" role="progressbar" 
+                                        style="width: {{ [metrics.current.disk_usage|default(0), 100]|min }}%"></div>
+                                </div>
+                                <small class="text-muted">Disk: {{ metrics.current.disk_usage|default(0)|round(2) }}%</small>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">No current metrics available.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Performance Metrics (Last {{ hours }} Hours)</h5>
+                </div>
+                <div class="card-body">
+                    {% if interactive_chart %}
+                    <div class="mb-4">
+                        {{ interactive_chart|safe }}
+                    </div>
+                    {% endif %}
+
+                    {% if charts %}
+                    <div class="row">
+                        <div class="col-md-6 mb-4">
+                            <h6>Latency (ms)</h6>
+                            <img src="data:image/png;base64,{{ charts.latency }}" alt="Latency Chart" class="img-fluid" />
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <h6>Packet Loss (%)</h6>
+                            <img src="data:image/png;base64,{{ charts.packet_loss }}" alt="Packet Loss Chart" class="img-fluid" />
+                        </div>
+                        {% if charts.resources %}
+                        <div class="col-md-12">
+                            <h6>Resource Usage (%)</h6>
+                            <img src="data:image/png;base64,{{ charts.resources }}" alt="Resource Usage Chart" class="img-fluid" />
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% elif metrics.history|default([])|length > 0 %}
+                    <div class="alert alert-warning">
+                        Charts could not be generated. Raw metric data is available.
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        No historical data available for the selected timeframe.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Server Actions -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Server Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group">
+                        <form action="{{ url_for('server_action', server_id=server.id, action='restart') }}" method="post" class="d-inline">
+                            <button type="submit" class="btn btn-warning mr-2" onclick="return confirm('Are you sure you want to restart the WireGuard service?')">
+                                <i class="fas fa-sync"></i> Restart WireGuard Service
                             </button>
                         </form>
-                        <form method="POST" action="{{ url_for('server_action', server_id=server.id, action='toggle_status') }}" class="d-grid">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn {% if server.status == 'active' %}btn-danger{% else %}btn-success{% endif %}">
-                                {% if server.status == 'active' %}
-                                <i class="bi bi-pause-circle"></i> Deactivate Server
-                                {% else %}
-                                <i class="bi bi-play-circle"></i> Activate Server
-                                {% endif %}
+                        
+                        <form action="{{ url_for('server_action', server_id=server.id, action='toggle_status') }}" method="post" class="d-inline">
+                            <button type="submit" class="btn btn-{{ 'danger' if server.status == 'active' else 'success' }}" onclick="return confirm('Are you sure you want to {{ 'deactivate' if server.status == 'active' else 'activate' }} this server?')">
+                                <i class="fas fa-{{ 'stop' if server.status == 'active' else 'play' }}"></i> {{ 'Deactivate' if server.status == 'active' else 'Activate' }} Server
                             </button>
                         </form>
                     </div>
                 </div>
             </div>
         </div>
-        
-        <div class="col-lg-8">
-            <!-- Current Metrics Card -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0">Current Metrics</h5>
-                </div>
-                <div class="card-body">
-                    {% if metrics and metrics.current %}
-                    <div class="row">
-                        <div class="col-sm-6 col-md-4 mb-3">
-                            <div class="card h-100 bg-light">
-                                <div class="card-body text-center">
-                                    <h6 class="card-title">Connected Peers</h6>
-                                    <h2>{{ metrics.current.peers_count|default(0) }}</h2>
-                                    <p class="text-muted">Max: {{ server.max_peers }}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-sm-6 col-md-4 mb-3">
-                            <div class="card h-100 bg-light">
-                                <div class="card-body text-center">
-                                    <h6 class="card-title">CPU Usage</h6>
-                                    <h2>{{ metrics.current.cpu_usage|default(0) }}%</h2>
-                                    <div class="progress mt-2">
-                                        <div class="progress-bar {% if metrics.current.cpu_usage > 80 %}bg-danger{% elif metrics.current.cpu_usage > 60 %}bg-warning{% else %}bg-success{% endif %}" 
-                                             style="width: {{ metrics.current.cpu_usage|default(0) }}%"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-sm-6 col-md-4 mb-3">
-                            <div class="card h-100 bg-light">
-                                <div class="card-body text-center">
-                                    <h6 class="card-title">Memory Usage</h6>
-                                    <h2>{{ metrics.current.memory_usage|default(0) }}%</h2>
-                                    <div class="progress mt-2">
-                                        <div class="progress-bar {% if metrics.current.memory_usage > 80 %}bg-danger{% elif metrics.current.memory_usage > 60 %}bg-warning{% else %}bg-success{% endif %}" 
-                                             style="width: {{ metrics.current.memory_usage|default(0) }}%"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-sm-6 col-md-4 mb-3">
-                            <div class="card h-100 bg-light">
-                                <div class="card-body text-center">
-                                    <h6 class="card-title">Avg. Latency</h6>
-                                    <h2>{{ metrics.current.avg_latency|default(0)|round(1) }}ms</h2>
-                                    <div class="progress mt-2">
-                                        <div class="progress-bar {% if metrics.current.avg_latency > 100 %}bg-danger{% elif metrics.current.avg_latency > 50 %}bg-warning{% else %}bg-success{% endif %}" 
-                                             style="width: {{ (metrics.current.avg_latency|default(0) / 2)|min(100) }}%"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-sm-6 col-md-4 mb-3">
-                            <div class="card h-100 bg-light">
-                                <div class="card-body text-center">
-                                    <h6 class="card-title">Packet Loss</h6>
-                                    <h2>{{ metrics.current.avg_packet_loss|default(0)|round(2) }}%</h2>
-                                    <div class="progress mt-2">
-                                        <div class="progress-bar {% if metrics.current.avg_packet_loss > 5 %}bg-danger{% elif metrics.current.avg_packet_loss > 1 %}bg-warning{% else %}bg-success{% endif %}" 
-                                             style="width: {{ (metrics.current.avg_packet_loss|default(0) * 10)|min(100) }}%"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-sm-6 col-md-4 mb-3">
-                            <div class="card h-100 bg-light">
-                                <div class="card-body text-center">
-                                    <h6 class="card-title">Server Load</h6>
-                                    <h2>{{ metrics.current.load|default(0)|round(2) }}</h2>
-                                    <div class="progress mt-2">
-                                        <div class="progress-bar {% if metrics.current.load > 2 %}bg-danger{% elif metrics.current.load > 1 %}bg-warning{% else %}bg-success{% endif %}" 
-                                             style="width: {{ (metrics.current.load|default(0) * 33.3)|min(100) }}%"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {% else %}
-                    <div class="alert alert-warning">
-                        No current metrics available for this server.
-                    </div>
-                    {% endif %}
-                </div>
+    </div>
+</div>
+
+<!-- Delete Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" role="dialog" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">Confirm Delete</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
             </div>
-            
-            <!-- Metrics Chart Tabs -->
-            <div class="card">
-                <div class="card-header">
-                    <ul class="nav nav-tabs card-header-tabs" id="serverChartTabs" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="latency-tab" data-bs-toggle="tab" data-bs-target="#latency" type="button" role="tab" aria-controls="latency" aria-selected="true">
-                                Latency
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="packet-loss-tab" data-bs-toggle="tab" data-bs-target="#packet-loss" type="button" role="tab" aria-controls="packet-loss" aria-selected="false">
-                                Packet Loss
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="resources-tab" data-bs-toggle="tab" data-bs-target="#resources" type="button" role="tab" aria-controls="resources" aria-selected="false">
-                                Resources
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="interactive-tab" data-bs-toggle="tab" data-bs-target="#interactive" type="button" role="tab" aria-controls="interactive" aria-selected="false">
-                                Interactive Dashboard
-                            </button>
-                        </li>
-                    </ul>
-                </div>
-                <div class="card-body">
-                    <div class="tab-content" id="serverChartTabsContent">
-                        <div class="tab-pane fade show active" id="latency" role="tabpanel" aria-labelledby="latency-tab">
-                            {% if charts.latency %}
-                                <img src="data:image/png;base64,{{ charts.latency }}" class="img-fluid" alt="Latency Chart">
-                            {% else %}
-                                <div class="alert alert-info">No latency data available.</div>
-                            {% endif %}
-                        </div>
-                        <div class="tab-pane fade" id="packet-loss" role="tabpanel" aria-labelledby="packet-loss-tab">
-                            {% if charts.packet_loss %}
-                                <img src="data:image/png;base64,{{ charts.packet_loss }}" class="img-fluid" alt="Packet Loss Chart">
-                            {% else %}
-                                <div class="alert alert-info">No packet loss data available.</div>
-                            {% endif %}
-                        </div>
-                        <div class="tab-pane fade" id="resources" role="tabpanel" aria-labelledby="resources-tab">
-                            {% if charts.resources %}
-                                <img src="data:image/png;base64,{{ charts.resources }}" class="img-fluid" alt="Resource Usage Chart">
-                            {% else %}
-                                <div class="alert alert-info">No resource usage data available.</div>
-                            {% endif %}
-                        </div>
-                        <div class="tab-pane fade" id="interactive" role="tabpanel" aria-labelledby="interactive-tab">
-                            {% if interactive_chart %}
-                                {{ interactive_chart|safe }}
-                            {% else %}
-                                <div class="alert alert-info">Interactive dashboard not available. This feature requires Plotly support.</div>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
+            <div class="modal-body">
+                Are you sure you want to delete the server <strong>{{ server.name }}</strong>? This action cannot be undone.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <a href="{{ url_for('delete_server', server_id=server.id) }}" class="btn btn-danger">Delete Server</a>
             </div>
         </div>
     </div>
