@@ -1,212 +1,213 @@
-"""
-Mock data for development and testing when the API is not available.
-This should NOT be used in production.
-"""
-import datetime
 import random
-import uuid
+import time
+from datetime import datetime, timedelta
+from werkzeug.security import generate_password_hash, check_password_hash
 import math
 
-# Mock servers
-MOCK_SERVERS = [
-    {
-        "id": 1,
-        "name": "US-East Server",
-        "endpoint": "us-east.vpnduck.example.com",
-        "port": 51820,
-        "address": "10.0.1.1/24",
-        "public_key": "mK56Xc59gh2QI0U7K7YXpnV1aEIJK6qYYQ/mKQg9rVE=",
-        "geolocation_id": 1,
-        "geolocation_name": "United States",
-        "max_peers": 100,
-        "status": "active",
-        "api_key": "mock-api-key-us-east",
-        "api_url": "http://us-east.api.example.com"
-    },
-    {
-        "id": 2,
-        "name": "EU-West Server",
-        "endpoint": "eu-west.vpnduck.example.com",
-        "port": 51820,
-        "address": "10.0.2.1/24",
-        "public_key": "jQnXpZ4tB7QkEh6D8KcOPOj2W/YQtR8Lx5cNhsM6rwQ=",
-        "geolocation_id": 2,
-        "geolocation_name": "Germany",
-        "max_peers": 150,
-        "status": "active",
-        "api_key": "mock-api-key-eu-west",
-        "api_url": "http://eu-west.api.example.com"
-    },
-    {
-        "id": 3,
-        "name": "AS-SG Server",
-        "endpoint": "as-sg.vpnduck.example.com",
-        "port": 51820,
-        "address": "10.0.3.1/24",
-        "public_key": "KvCkdEF7hYGqjL5IuCX2d9LdKhNgbPtScUZ8j34c5rk=",
-        "geolocation_id": 3,
-        "geolocation_name": "Singapore",
-        "max_peers": 120,
-        "status": "degraded",
-        "api_key": "mock-api-key-as-sg",
-        "api_url": "http://as-sg.api.example.com"
-    },
-    {
-        "id": 4,
-        "name": "US-West Server",
-        "endpoint": "us-west.vpnduck.example.com",
-        "port": 51820,
-        "address": "10.0.4.1/24",
-        "public_key": "z9GhT7JfKcs2AyQv+UmgPT7rLtJNRkfBm7cHPo76TkY=",
-        "geolocation_id": 1,
-        "geolocation_name": "United States",
-        "max_peers": 100,
-        "status": "inactive",
-        "api_key": "mock-api-key-us-west",
-        "api_url": "http://us-west.api.example.com"
-    }
-]
-
-# Mock geolocations
-MOCK_GEOLOCATIONS = [
-    {
-        "id": 1,
-        "code": "US",
-        "name": "United States",
-        "available": True,
-        "description": "Servers located in the United States"
-    },
-    {
-        "id": 2,
-        "code": "DE",
-        "name": "Germany",
-        "available": True,
-        "description": "Servers located in Germany"
-    },
-    {
-        "id": 3,
-        "code": "SG",
-        "name": "Singapore",
-        "available": True,
-        "description": "Servers located in Singapore"
-    },
-    {
-        "id": 4,
-        "code": "JP",
-        "name": "Japan",
-        "available": False,
-        "description": "Servers located in Japan (currently unavailable)"
-    }
-]
-
-def generate_mock_metrics(server_id, hours=24):
-    """Generate mock metrics data for a server."""
-    now = datetime.datetime.now()
-    history = []
-    
-    # Base metrics values
-    base_latency = 30 + (server_id * 10)  # Different baseline for each server
-    base_packet_loss = 0.5 + (server_id * 0.2) 
-    base_cpu = 20 + (server_id * 5)
-    base_memory = 30 + (server_id * 7)
-    
-    # Generate history points
-    for i in range(hours):
-        timestamp = (now - datetime.timedelta(hours=hours-i)).isoformat() + 'Z'
-        
-        # Add some randomness and periodic fluctuation
-        time_factor = math.sin(i / 6) * 0.5  # 6-hour cycle
-        random_factor = random.random() * 0.3
-        
-        # Generate metrics with variation
-        latency = max(1, base_latency * (1 + time_factor + random_factor))
-        packet_loss = max(0, base_packet_loss * (1 + time_factor + random_factor))
-        cpu = min(95, base_cpu * (1 + (time_factor * 0.5) + random_factor))
-        memory = min(95, base_memory * (1 + (time_factor * 0.3) + random_factor))
-        
-        # More peers during "peak hours"
-        peak_factor = 0.5 + (0.5 * math.sin((i % 24) / 3.82))
-        peers = int(25 * peak_factor * (1 + random_factor))
-        
-        history.append({
-            "timestamp": timestamp,
-            "avg_latency": round(latency, 2),
-            "avg_packet_loss": round(packet_loss, 2),
-            "cpu_usage": round(cpu, 2),
-            "memory_usage": round(memory, 2),
-            "peers_count": peers,
-            "load": round(random.random() * 2, 2)
-        })
-    
-    # Current metrics (slightly different from last history point)
-    last = history[-1] if history else {}
-    current = {
-        "avg_latency": round(last.get("avg_latency", 30) * (1 + (random.random() * 0.1 - 0.05)), 2),
-        "avg_packet_loss": round(last.get("avg_packet_loss", 0.5) * (1 + (random.random() * 0.1 - 0.05)), 2),
-        "cpu_usage": round(last.get("cpu_usage", 20) * (1 + (random.random() * 0.1 - 0.05)), 2),
-        "memory_usage": round(last.get("memory_usage", 30) * (1 + (random.random() * 0.1 - 0.05)), 2),
-        "peers_count": last.get("peers_count", 10) + random.randint(-2, 2),
-        "load": round(last.get("load", 1.0) * (1 + (random.random() * 0.1 - 0.05)), 2)
-    }
-    
-    return {
-        "server_id": server_id,
-        "current": current,
-        "history": history
-    }
-
-# Mock user data
+# Mock user data for development mode
 MOCK_USERS = [
     {
-        "id": 1,
-        "username": "admin",
-        "email": "admin@vpnduck.example.com",
-        "role": "admin",
-        "password": "admin"  # In a real app, this would be hashed
+        'id': 1,
+        'username': 'admin',
+        'password_hash': generate_password_hash('admin'),
+        'email': 'admin@example.com',
+        'role': 'admin'
+    },
+    {
+        'id': 2,
+        'username': 'user',
+        'password_hash': generate_password_hash('user'),
+        'email': 'user@example.com',
+        'role': 'user'
     }
 ]
 
-# Helper functions for finding mock data
-def find_server(server_id):
-    """Find a server by ID."""
-    return next((s for s in MOCK_SERVERS if s["id"] == server_id), None)
+# Mock geolocation data
+MOCK_GEOLOCATIONS = [
+    {
+        'id': 1,
+        'code': 'US',
+        'name': 'United States',
+        'available': True,
+        'description': 'United States data centers'
+    },
+    {
+        'id': 2,
+        'code': 'EU',
+        'name': 'Europe',
+        'available': True,
+        'description': 'European data centers'
+    },
+    {
+        'id': 3,
+        'code': 'AP',
+        'name': 'Asia Pacific',
+        'available': True,
+        'description': 'Asia Pacific data centers'
+    },
+    {
+        'id': 4,
+        'code': 'SA',
+        'name': 'South America',
+        'available': False,
+        'description': 'South American data centers (coming soon)'
+    }
+]
 
-def find_geolocation(geo_id):
-    """Find a geolocation by ID."""
-    return next((g for g in MOCK_GEOLOCATIONS if g["id"] == geo_id), None)
-
-def find_user(username):
-    """Find a user by username."""
-    return next((u for u in MOCK_USERS if u["username"] == username), None)
+# Mock server data
+MOCK_SERVERS = [
+    {
+        'id': 1,
+        'name': 'US Server 1',
+        'endpoint': 'us1.example.com',
+        'port': 51820,
+        'address': '10.0.0.1/24',
+        'public_key': 'AcB6deHgjkR9zZR5yJnX0RBLa1KLMj/tU+SrM8Tx8DA=',
+        'geolocation_id': 1,
+        'geolocation_name': 'United States',
+        'status': 'active',
+        'api_key': 'a1b2c3d4e5f6',
+        'api_url': 'http://us1.example.com:51820/api',
+        'max_peers': 100
+    },
+    {
+        'id': 2,
+        'name': 'EU Server 1',
+        'endpoint': 'eu1.example.com',
+        'port': 51820,
+        'address': '10.0.1.1/24',
+        'public_key': 'FgD9uVsGIJm3bOHWnWCqSq0KLdkq0gFhVWB0yZ9lGlA=',
+        'geolocation_id': 2,
+        'geolocation_name': 'Europe',
+        'status': 'active',
+        'api_key': 'f6e5d4c3b2a1',
+        'api_url': 'http://eu1.example.com:51820/api',
+        'max_peers': 100
+    },
+    {
+        'id': 3,
+        'name': 'AP Server 1',
+        'endpoint': 'ap1.example.com',
+        'port': 51820,
+        'address': '10.0.2.1/24',
+        'public_key': 'JkL8mnoPqRs0tUv1wXyZ2AbC3dEfGhIjKlM+nOpQrSt=',
+        'geolocation_id': 3,
+        'geolocation_name': 'Asia Pacific',
+        'status': 'inactive',
+        'api_key': '1a2b3c4d5e6f',
+        'api_url': 'http://ap1.example.com:51820/api',
+        'max_peers': 50
+    }
+]
 
 def authenticate_user(username, password):
-    """Mock authentication function."""
-    user = find_user(username)
-    if user and user["password"] == password:
-        return user
+    """Authenticate user with mock data."""
+    for user in MOCK_USERS:
+        if user['username'] == username and check_password_hash(user['password_hash'], password):
+            return user
     return None
 
-def filter_servers(filters=None):
+def find_server(server_id):
+    """Find server by ID in mock data."""
+    for server in MOCK_SERVERS:
+        if server['id'] == server_id:
+            return server
+    return None
+
+def find_geolocation(geo_id):
+    """Find geolocation by ID in mock data."""
+    for geo in MOCK_GEOLOCATIONS:
+        if geo['id'] == geo_id:
+            return geo
+    return None
+
+def filter_servers(filters):
     """Filter servers based on criteria."""
-    if not filters:
-        return MOCK_SERVERS.copy()
-        
     result = MOCK_SERVERS.copy()
     
     # Apply filters
     if 'search' in filters and filters['search']:
-        search = filters['search'].lower()
-        result = [s for s in result if 
-                  search in s.get('name', '').lower() or
-                  search in s.get('endpoint', '').lower() or
-                  search in str(s.get('id', '')).lower()]
+        search_term = filters['search'].lower()
+        result = [s for s in result if search_term in s.get('name', '').lower() or 
+                                      search_term in s.get('endpoint', '').lower()]
     
-    if 'geolocation_id' in filters and filters['geolocation_id'] != 'all':
-        geo_id = int(filters['geolocation_id'])
-        result = [s for s in result if s.get('geolocation_id') == geo_id]
+    if 'geolocation_id' in filters:
+        result = [s for s in result if s.get('geolocation_id') == filters['geolocation_id']]
     
-    if 'status' in filters and filters['status'] != 'all':
-        status = filters['status']
-        result = [s for s in result if s.get('status') == status]
-        
+    if 'status' in filters:
+        result = [s for s in result if s.get('status') == filters['status']]
+    
     return result
+
+def generate_mock_metrics(server_id, hours=24):
+    """Generate mock metrics data for a server."""
+    # Seed random with server_id to get consistent data for the same server
+    random.seed(server_id)
+    
+    # Generate history data points
+    history = []
+    now = datetime.now()
+    
+    # Different baseline values for different servers
+    base_latency = 20 + (server_id * 5)  # ms
+    base_packet_loss = 0.5 + (server_id * 0.2)  # %
+    base_resource_usage = 10 + (server_id * 3)  # %
+    
+    # Generate data points at 5-minute intervals
+    for i in range(hours * 12):  # 12 points per hour (5-minute intervals)
+        timestamp = now - timedelta(minutes=5 * i)
+        
+        # Add some random variation
+        latency = max(1, base_latency + random.uniform(-10, 10))
+        packet_loss = max(0, min(100, base_packet_loss + random.uniform(-0.5, 1.5)))
+        resource_usage = max(0, min(100, base_resource_usage + random.uniform(-5, 15)))
+        
+        # Add periodic patterns
+        time_factor = i / 12  # Convert to hours
+        latency += 5 * math.sin(time_factor * math.pi / 6)  # 12-hour cycle
+        resource_usage += 10 * math.sin(time_factor * math.pi / 12)  # 24-hour cycle
+        
+        # Occasional spikes
+        if random.random() < 0.05:  # 5% chance of spike
+            latency *= random.uniform(1.5, 3)
+            packet_loss *= random.uniform(2, 5)
+        
+        history.append({
+            'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'ping_ms': round(latency, 1),
+            'packet_loss_percent': round(packet_loss, 2),
+            'resource_usage_percent': round(resource_usage, 1),
+            'connected_peers': random.randint(5, 20)
+        })
+    
+    # Ensure history is in chronological order (oldest to newest)
+    history.reverse()
+    
+    # Current stats (latest values)
+    current = history[-1] if history else {
+        'timestamp': now.strftime('%Y-%m-%d %H:%M:%S'),
+        'ping_ms': 0,
+        'packet_loss_percent': 0,
+        'resource_usage_percent': 0,
+        'connected_peers': 0
+    }
+    
+    # Calculate aggregates
+    latency_values = [entry['ping_ms'] for entry in history]
+    packet_loss_values = [entry['packet_loss_percent'] for entry in history]
+    resource_usage_values = [entry['resource_usage_percent'] for entry in history]
+    
+    aggregates = {
+        'avg_latency': round(sum(latency_values) / len(latency_values), 1) if latency_values else 0,
+        'min_latency': round(min(latency_values), 1) if latency_values else 0,
+        'max_latency': round(max(latency_values), 1) if latency_values else 0,
+        'avg_packet_loss': round(sum(packet_loss_values) / len(packet_loss_values), 2) if packet_loss_values else 0,
+        'avg_resource_usage': round(sum(resource_usage_values) / len(resource_usage_values), 1) if resource_usage_values else 0
+    }
+    
+    return {
+        'server_id': server_id,
+        'current': current,
+        'history': history,
+        'aggregates': aggregates
+    }

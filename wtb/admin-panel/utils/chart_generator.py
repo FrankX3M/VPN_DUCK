@@ -1,207 +1,182 @@
-# Fix the chart_generator.py implementation
-import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from io import BytesIO
-import base64
-import datetime
+import os
 import logging
-import json
-
-try:
-    import plotly.graph_objects as go
-    from plotly.subplots import make_subplots
-    PLOTLY_AVAILABLE = True
-except ImportError:
-    PLOTLY_AVAILABLE = False
+import base64
+from io import BytesIO
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 class ChartGenerator:
-    """Generator for server metrics charts"""
+    """Utility class for generating charts and visualizations."""
     
-    @staticmethod
-    def generate_metrics_image(metrics_data, chart_type='latency', hours=24):
-        """Creates a chart image of metrics
+    def __init__(self):
+        """Initialize chart generator."""
+        self.chart_directory = os.path.join('static', 'img', 'charts')
+        os.makedirs(self.chart_directory, exist_ok=True)
+    
+    def generate_metrics_image(self, metrics_data, chart_type, hours=24):
+        """Generate chart image for given metrics data."""
+        if not metrics_data or 'history' not in metrics_data or not metrics_data['history']:
+            logger.warning(f"No metrics data available for {chart_type} chart")
+            return None
         
-        Args:
-            metrics_data: Metrics data from API
-            chart_type: Chart type (latency, load, resources, packet_loss)
-            hours: Number of hours to display
-            
-        Returns:
-            Base64-encoded image string for HTML embedding
-        """
         try:
-            if not metrics_data or 'history' not in metrics_data or not metrics_data['history']:
-                logger.warning("No data for chart generation")
-                return None
-                
-            # Create the figure
-            fig, ax = plt.subplots(figsize=(10, 5))
+            import matplotlib
+            matplotlib.use('Agg')  # Use non-interactive backend
+            import matplotlib.pyplot as plt
             
-            # Convert timestamps to datetime
+            # Extract data points from history
             history = metrics_data['history']
-            timestamps = []
-            for item in history:
-                if 'timestamp' in item:
-                    ts = item['timestamp']
-                elif 'hour' in item:
-                    ts = item['hour']
-                else:
-                    continue
-                    
-                if isinstance(ts, str):
-                    # Handle ISO format with or without Z timezone marker
-                    if ts.endswith('Z'):
-                        ts = ts.replace('Z', '+00:00')
-                    timestamps.append(datetime.datetime.fromisoformat(ts))
-                else:
-                    # Assume it's already a datetime object
-                    timestamps.append(ts)
+            timestamps = [entry.get('timestamp') for entry in history]
             
-            # Select data based on chart type
             if chart_type == 'latency':
-                # Latency chart
-                latency_data = [item.get('avg_latency', item.get('latency_ms', 0)) for item in history]
-                ax.plot(timestamps, latency_data, 'b-', label='Latency (ms)')
-                ax.set_ylabel('Latency (ms)')
-                ax.set_title(f'Latency over last {hours} hours')
-                
-            elif chart_type == 'load':
-                # Load chart
-                load_data = [item.get('load', item.get('server_load', 0)) for item in history]
-                ax.plot(timestamps, load_data, 'g-', label='Load (%)')
-                ax.set_ylabel('Load (%)')
-                ax.set_title('Server Load')
-                ax.set_ylim(0, 100)
-                
-            elif chart_type == 'resources':
-                # Resources chart (CPU and memory)
-                cpu_data = [item.get('cpu_usage', 0) for item in history]
-                memory_data = [item.get('memory_usage', 0) for item in history]
-                
-                ax.plot(timestamps, cpu_data, 'r-', label='CPU (%)')
-                ax.plot(timestamps, memory_data, 'b-', label='Memory (%)')
-                ax.set_ylabel('Usage (%)')
-                ax.set_title('Resource Usage')
-                ax.set_ylim(0, 100)
-                ax.legend()
-                
+                values = [entry.get('ping_ms', 0) for entry in history]
+                title = 'Latency (ms)'
+                color = 'blue'
             elif chart_type == 'packet_loss':
-                # Packet loss chart
-                packet_loss_data = [item.get('avg_packet_loss', item.get('packet_loss_percent', 0)) for item in history]
-                ax.plot(timestamps, packet_loss_data, 'r-', label='Packet Loss (%)')
-                ax.set_ylabel('Packet Loss (%)')
-                ax.set_title('Packet Loss')
-                ax.set_ylim(0, 100)
-            
-            # Format X axis for date display
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M\n%d.%m'))
-            plt.xticks(rotation=0)
-            
-            # Add grid and legend
-            ax.grid(True, linestyle='--', alpha=0.7)
-            if chart_type != 'resources':  # Already added legend for resources
-                ax.legend()
-            
-            # Save chart to memory
-            buffer = BytesIO()
-            plt.savefig(buffer, format='png', dpi=100, bbox_inches='tight')
-            buffer.seek(0)
-            
-            # Encode as base64 for HTML embedding
-            image_png = buffer.getvalue()
-            buffer.close()
-            plt.close(fig)  # Close figure to free memory
-            
-            encoded = base64.b64encode(image_png).decode('utf-8')
-            return encoded
-        
-        except Exception as e:
-            logger.exception(f"Error generating chart: {str(e)}")
-            return None
-            
-    @staticmethod
-    def generate_plotly_chart(metrics_data, chart_type='dashboard'):
-        """Creates an interactive Plotly chart
-        
-        Args:
-            metrics_data: Metrics data from API
-            chart_type: Chart type (dashboard, server_detail)
-            
-        Returns:
-            HTML code for template embedding
-        """
-        if not PLOTLY_AVAILABLE:
-            logger.warning("Plotly not available, skipping interactive chart generation")
-            return None
-            
-        try:
-            if not metrics_data or 'history' not in metrics_data or not metrics_data['history']:
+                values = [entry.get('packet_loss_percent', 0) for entry in history]
+                title = 'Packet Loss (%)'
+                color = 'red'
+            elif chart_type == 'resources':
+                values = [entry.get('resource_usage_percent', 0) for entry in history]
+                title = 'Resource Usage (%)'
+                color = 'green'
+            else:
+                logger.error(f"Unknown chart type: {chart_type}")
                 return None
-                
-            # Create figure with subplots
-            fig = make_subplots(rows=2, cols=1, 
-                               subplot_titles=("Latency and Packet Loss", "Resource Usage"),
-                               shared_xaxes=True,
-                               vertical_spacing=0.1)
             
-            # Convert timestamps
+            # Create figure and plot
+            plt.figure(figsize=(10, 4))
+            plt.plot(timestamps, values, marker='o', linestyle='-', color=color, linewidth=2, markersize=4)
+            
+            # Set labels and title
+            plt.title(f"{title} - Last {hours} hours")
+            plt.xlabel('Time')
+            plt.ylabel(title)
+            
+            # Format x-axis dates
+            plt.gcf().autofmt_xdate()
+            
+            # Add grid
+            plt.grid(True, linestyle='--', alpha=0.7)
+            
+            # Improve layout
+            plt.tight_layout()
+            
+            # Save image to in-memory buffer
+            buf = BytesIO()
+            plt.savefig(buf, format='png', dpi=100)
+            plt.close()
+            
+            # Encode image to base64
+            buf.seek(0)
+            img_data = base64.b64encode(buf.getvalue()).decode('utf-8')
+            
+            return f"data:image/png;base64,{img_data}"
+            
+        except ImportError:
+            logger.warning("Matplotlib not available, cannot generate chart image")
+            return None
+        except Exception as e:
+            logger.exception(f"Error generating chart image: {str(e)}")
+            return None
+    
+    def generate_plotly_chart(self, metrics_data, chart_id, chart_type='combined'):
+        """Generate interactive Plotly chart for server metrics."""
+        if not metrics_data or 'history' not in metrics_data or not metrics_data['history']:
+            logger.warning(f"No metrics data available for interactive chart")
+            return None
+        
+        try:
+            import plotly
+            import plotly.graph_objects as go
+            from plotly.subplots import make_subplots
+            
+            # Extract data
             history = metrics_data['history']
-            timestamps = []
-            for item in history:
-                ts = item.get('timestamp', item.get('hour', ''))
-                if isinstance(ts, str) and ts.endswith('Z'):
-                    ts = ts.replace('Z', '+00:00')
-                timestamps.append(ts)
+            timestamps = [entry.get('timestamp') for entry in history]
             
-            # Extract metrics data
-            latency_data = [item.get('avg_latency', item.get('latency_ms', 0)) for item in history]
-            packet_loss_data = [item.get('avg_packet_loss', item.get('packet_loss_percent', 0)) for item in history]
-            cpu_data = [item.get('cpu_usage', 0) for item in history]
-            memory_data = [item.get('memory_usage', 0) for item in history]
+            # Create figure with subplots
+            fig = make_subplots(
+                rows=2, cols=1,
+                subplot_titles=('Latency (ms)', 'Packet Loss (%)'),
+                shared_xaxes=True,
+                vertical_spacing=0.1
+            )
             
-            # Add traces to chart
+            # Add traces
+            latency = [entry.get('ping_ms', 0) for entry in history]
+            packet_loss = [entry.get('packet_loss_percent', 0) for entry in history]
+            
+            # Add latency trace
             fig.add_trace(
-                go.Scatter(x=timestamps, y=latency_data,
-                          mode='lines+markers', name='Latency (ms)'),
+                go.Scatter(
+                    x=timestamps,
+                    y=latency,
+                    mode='lines+markers',
+                    name='Latency (ms)',
+                    line=dict(color='blue', width=2)
+                ),
                 row=1, col=1
             )
             
+            # Add packet loss trace
             fig.add_trace(
-                go.Scatter(x=timestamps, y=packet_loss_data,
-                          mode='lines+markers', name='Packet Loss (%)'),
-                row=1, col=1
-            )
-            
-            fig.add_trace(
-                go.Scatter(x=timestamps, y=cpu_data,
-                          mode='lines+markers', name='CPU (%)'),
-                row=2, col=1
-            )
-            
-            fig.add_trace(
-                go.Scatter(x=timestamps, y=memory_data,
-                          mode='lines+markers', name='Memory (%)'),
+                go.Scatter(
+                    x=timestamps,
+                    y=packet_loss,
+                    mode='lines+markers',
+                    name='Packet Loss (%)',
+                    line=dict(color='red', width=2)
+                ),
                 row=2, col=1
             )
             
             # Update layout
             fig.update_layout(
-                height=700,
-                title_text="Server Metrics",
-                hovermode="x unified"
+                height=600,
+                showlegend=True,
+                title_text="Server Performance Metrics",
+                hovermode="x unified",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                )
             )
             
-            # Set Y axis ranges
-            fig.update_yaxes(title_text="Latency (ms) / Loss (%)", row=1, col=1)
-            fig.update_yaxes(title_text="Usage (%)", range=[0, 100], row=2, col=1)
+            # Add range slider
+            fig.update_layout(
+                xaxis=dict(
+                    rangeselector=dict(
+                        buttons=list([
+                            dict(count=1, label="1h", step="hour", stepmode="backward"),
+                            dict(count=6, label="6h", step="hour", stepmode="backward"),
+                            dict(count=12, label="12h", step="hour", stepmode="backward"),
+                            dict(count=1, label="1d", step="day", stepmode="backward"),
+                            dict(step="all")
+                        ])
+                    ),
+                    rangeslider=dict(visible=True),
+                    type="date"
+                )
+            )
             
-            # Return HTML for template embedding
-            return fig.to_html(full_html=False, include_plotlyjs='cdn')
+            # Convert to HTML
+            chart_html = plotly.offline.plot(
+                fig, 
+                include_plotlyjs='cdn', 
+                output_type='div',
+                config={'responsive': True}
+            )
             
+            return chart_html
+            
+        except ImportError:
+            logger.warning("Plotly not available, cannot generate interactive chart")
+            return None
         except Exception as e:
             logger.exception(f"Error generating interactive chart: {str(e)}")
             return None

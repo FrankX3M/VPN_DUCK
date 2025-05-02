@@ -22,6 +22,7 @@ print_step "Остановка и удаление существующих ко
 docker compose down -v --remove-orphans
 
 docker compose build --no-cache
+# docker buildx build --no-cache
 
 docker compose up -d
 

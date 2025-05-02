@@ -1,21 +1,9 @@
 from flask_login import UserMixin
 
 class User(UserMixin):
-    """
-    User model for authentication.
-    This is a simple implementation for use with Flask-Login.
-    """
+    """User model for authentication."""
     
     def __init__(self, id, username, email, role='user'):
-        """
-        Initialize a User object.
-        
-        Args:
-            id (int): User ID
-            username (str): Username
-            email (str): User email
-            role (str): User role ('admin', 'user', etc.)
-        """
         self.id = id
         self.username = username
         self.email = email
@@ -25,18 +13,101 @@ class User(UserMixin):
         """Required for Flask-Login."""
         return str(self.id)
     
+    @property
     def is_admin(self):
-        """Check if user has admin privileges."""
+        """Check if user has admin role."""
         return self.role == 'admin'
     
-    def is_active(self):
-        """Required for Flask-Login."""
-        return True
+    def __repr__(self):
+        return f"<User {self.username}>"
+
+class Server:
+    """Server model for WireGuard servers."""
     
-    def is_anonymous(self):
-        """Required for Flask-Login."""
-        return False
+    def __init__(self, id, name, endpoint, port, address, public_key, geolocation_id, 
+                 status='active', api_key=None, api_url=None, max_peers=None, 
+                 geolocation_name=None):
+        self.id = id
+        self.name = name
+        self.endpoint = endpoint
+        self.port = port
+        self.address = address
+        self.public_key = public_key
+        self.geolocation_id = geolocation_id
+        self.geolocation_name = geolocation_name
+        self.status = status
+        self.api_key = api_key
+        self.api_url = api_url
+        self.max_peers = max_peers
     
-    def is_authenticated(self):
-        """Required for Flask-Login."""
-        return True
+    @classmethod
+    def from_dict(cls, data):
+        """Create server object from dictionary."""
+        return cls(
+            id=data.get('id'),
+            name=data.get('name'),
+            endpoint=data.get('endpoint'),
+            port=data.get('port'),
+            address=data.get('address'),
+            public_key=data.get('public_key'),
+            geolocation_id=data.get('geolocation_id'),
+            status=data.get('status', 'active'),
+            api_key=data.get('api_key'),
+            api_url=data.get('api_url'),
+            max_peers=data.get('max_peers'),
+            geolocation_name=data.get('geolocation_name')
+        )
+    
+    def to_dict(self):
+        """Convert server object to dictionary."""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'endpoint': self.endpoint,
+            'port': self.port,
+            'address': self.address,
+            'public_key': self.public_key,
+            'geolocation_id': self.geolocation_id,
+            'status': self.status,
+            'api_key': self.api_key,
+            'api_url': self.api_url,
+            'max_peers': self.max_peers,
+            'geolocation_name': self.geolocation_name
+        }
+    
+    def __repr__(self):
+        return f"<Server {self.name} ({self.endpoint}:{self.port})>"
+
+class Geolocation:
+    """Geolocation model for server locations."""
+    
+    def __init__(self, id, code, name, available=True, description=None):
+        self.id = id
+        self.code = code
+        self.name = name
+        self.available = available
+        self.description = description
+    
+    @classmethod
+    def from_dict(cls, data):
+        """Create geolocation object from dictionary."""
+        return cls(
+            id=data.get('id'),
+            code=data.get('code'),
+            name=data.get('name'),
+            available=data.get('available', True),
+            description=data.get('description')
+        )
+    
+    def to_dict(self):
+        """Convert geolocation object to dictionary."""
+        return {
+            'id': self.id,
+            'code': self.code,
+            'name': self.name,
+            'available': self.available,
+            'description': self.description
+        }
+    
+    def __repr__(self):
+        return f"<Geolocation {self.code} - {self.name}>"
