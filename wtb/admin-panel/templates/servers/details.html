@@ -1,209 +1,131 @@
 {% extends "base.html" %}
 
-{% block title %}Server Details: {{ server.name }}{% endblock %}
+{% block title %}Server Details{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">Server Details: {{ server.name }}</h1>
-        <div class="btn-toolbar mb-2 mb-md-0">
-            <div class="btn-group mr-2">
-                <a href="{{ url_for('servers') }}" class="btn btn-sm btn-outline-secondary">
-                    <i class="fas fa-arrow-left"></i> Back to Servers
-                </a>
-                <a href="{{ url_for('edit_server', server_id=server.id) }}" class="btn btn-sm btn-outline-primary">
-                    <i class="fas fa-edit"></i> Edit
-                </a>
-                <a href="#" class="btn btn-sm btn-outline-danger" data-toggle="modal" data-target="#deleteModal">
-                    <i class="fas fa-trash"></i> Delete
-                </a>
-            </div>
-            <div class="dropdown">
-                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="timeframeDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                    <i class="fas fa-clock"></i> {{ hours }} Hours
-                </button>
-                <div class="dropdown-menu" aria-labelledby="timeframeDropdown">
-                    {% for h in [3, 6, 12, 24, 48, 72] %}
-                    <a class="dropdown-item {% if hours == h %}active{% endif %}" href="{{ url_for('server_details', server_id=server.id, hours=h) }}">{{ h }} Hours</a>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Server Overview -->
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="card-title mb-0">Server Information</h5>
-                </div>
-                <div class="card-body">
-                    <table class="table">
-                        <tbody>
-                            <tr>
-                                <th width="30%">Name</th>
-                                <td>{{ server.name }}</td>
-                            </tr>
-                            <tr>
-                                <th>Status</th>
-                                <td>
-                                    <span class="badge badge-{{ server.status|status_color }}">
-                                        {{ server.status|capitalize }}
-                                    </span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th>Endpoint</th>
-                                <td>{{ server.endpoint }}:{{ server.port }}</td>
-                            </tr>
-                            <tr>
-                                <th>Address</th>
-                                <td>{{ server.address }}</td>
-                            </tr>
-                            <tr>
-                                <th>Geolocation</th>
-                                <td>{{ server.geolocation_name }}</td>
-                            </tr>
-                            <tr>
-                                <th>API URL</th>
-                                <td>{{ server.api_url }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="card-title mb-0">Current Metrics</h5>
-                </div>
-                <div class="card-body">
-                    {% if metrics and metrics.current %}
-                    <div class="mb-4">
-                        <h6>Latency</h6>
-                        <div class="progress mb-2">
-                            <!-- Исправленный фильтр min - используем функцию min(a, b) вместо метода min() -->
-                            <div class="progress-bar {{ metrics.current.avg_latency|latency_color }}" role="progressbar" 
-                                style="width: {{ [metrics.current.avg_latency|default(0) / 2, 100]|min }}%"></div>
-                        </div>
-                        <small class="text-muted">Average: {{ metrics.current.avg_latency|default(0)|round(2) }}ms · Min: {{ metrics.current.min_latency|default(0)|round(2) }}ms · Max: {{ metrics.current.max_latency|default(0)|round(2) }}ms</small>
-                    </div>
-
-                    <div class="mb-4">
-                        <h6>Packet Loss</h6>
-                        <div class="progress mb-2">
-                            <!-- Исправленный фильтр min - используем функцию min(a, b) вместо метода min() -->
-                            <div class="progress-bar {{ metrics.current.packet_loss|packet_loss_color }}" role="progressbar" 
-                                style="width: {{ [metrics.current.packet_loss|default(0), 100]|min }}%"></div>
-                        </div>
-                        <small class="text-muted">Current: {{ metrics.current.packet_loss|default(0)|round(2) }}%</small>
-                    </div>
-
-                    <div>
-                        <h6>Resources</h6>
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="progress mb-2">
-                                    <!-- Исправленный фильтр min - используем функцию min(a, b) вместо метода min() -->
-                                    <div class="progress-bar {{ metrics.current.cpu_usage|resource_color }}" role="progressbar" 
-                                        style="width: {{ [metrics.current.cpu_usage|default(0), 100]|min }}%"></div>
-                                </div>
-                                <small class="text-muted">CPU: {{ metrics.current.cpu_usage|default(0)|round(2) }}%</small>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="progress mb-2">
-                                    <!-- Исправленный фильтр min - используем функцию min(a, b) вместо метода min() -->
-                                    <div class="progress-bar {{ metrics.current.memory_usage|resource_color }}" role="progressbar" 
-                                        style="width: {{ [metrics.current.memory_usage|default(0), 100]|min }}%"></div>
-                                </div>
-                                <small class="text-muted">RAM: {{ metrics.current.memory_usage|default(0)|round(2) }}%</small>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="progress mb-2">
-                                    <!-- Исправленный фильтр min - используем функцию min(a, b) вместо метода min() -->
-                                    <div class="progress-bar {{ metrics.current.disk_usage|resource_color }}" role="progressbar" 
-                                        style="width: {{ [metrics.current.disk_usage|default(0), 100]|min }}%"></div>
-                                </div>
-                                <small class="text-muted">Disk: {{ metrics.current.disk_usage|default(0)|round(2) }}%</small>
-                            </div>
-                        </div>
-                    </div>
-                    {% else %}
-                    <div class="alert alert-info">No current metrics available.</div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Charts -->
-    <div class="row mb-4">
+    <div class="row">
         <div class="col-md-12">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="card-title mb-0">Performance Metrics (Last {{ hours }} Hours)</h5>
+                    <h3 class="card-title">Server Details: {{ server.name }}</h3>
+                    <div class="card-tools">
+                        <a href="{{ url_for('servers.edit', server_id=server.id) }}" class="btn btn-primary btn-sm">
+                            <i class="fas fa-edit"></i> Edit
+                        </a>
+                        <button type="button" class="btn btn-danger btn-sm" data-toggle="modal" data-target="#deleteModal">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body">
-                    {% if interactive_chart %}
-                    <div class="mb-4">
-                        {{ interactive_chart|safe }}
-                    </div>
-                    {% endif %}
-
-                    {% if charts %}
                     <div class="row">
-                        <div class="col-md-6 mb-4">
-                            <h6>Latency (ms)</h6>
-                            <img src="data:image/png;base64,{{ charts.latency }}" alt="Latency Chart" class="img-fluid" />
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h3 class="card-title">Basic Information</h3>
+                                </div>
+                                <div class="card-body">
+                                    <table class="table table-bordered">
+                                        <tr>
+                                            <th>Status</th>
+                                            <td>
+                                                <span class="badge badge-{{ server.status|lower == 'active' and 'success' or 'danger' }}">
+                                                    {{ server.status }}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th>Endpoint</th>
+                                            <td>{{ server.endpoint }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Port</th>
+                                            <td>{{ server.port }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>API URL</th>
+                                            <td>{{ server.api_url }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Address</th>
+                                            <td>{{ server.address }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Location</th>
+                                            <td>{{ geo.name }} ({{ geo.code }})</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Created At</th>
+                                            <td>{{ server.created_at|datetime }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Last Updated</th>
+                                            <td>{{ server.updated_at|datetime }}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-md-6 mb-4">
-                            <h6>Packet Loss (%)</h6>
-                            <img src="data:image/png;base64,{{ charts.packet_loss }}" alt="Packet Loss Chart" class="img-fluid" />
-                        </div>
-                        {% if charts.resources %}
-                        <div class="col-md-12">
-                            <h6>Resource Usage (%)</h6>
-                            <img src="data:image/png;base64,{{ charts.resources }}" alt="Resource Usage Chart" class="img-fluid" />
-                        </div>
-                        {% endif %}
-                    </div>
-                    {% elif metrics.history|default([])|length > 0 %}
-                    <div class="alert alert-warning">
-                        Charts could not be generated. Raw metric data is available.
-                    </div>
-                    {% else %}
-                    <div class="alert alert-info">
-                        No historical data available for the selected timeframe.
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h3 class="card-title">Performance Metrics</h3>
+                                </div>
+                                <div class="card-body">
+                                    {% if metrics and metrics.current %}
+                                        <h5>Network Latency</h5>
+                                        <div class="progress mb-3">
+                                            {% if 'avg_latency' in metrics.current %}
+                                                <div class="progress-bar {% if metrics.current.avg_latency < 50 %}bg-success{% elif metrics.current.avg_latency < 100 %}bg-warning{% else %}bg-danger{% endif %}" role="progressbar"
+                                                     style="width: {{ min(metrics.current.avg_latency / 2, 100) }}%"
+                                                     aria-valuenow="{{ metrics.current.avg_latency }}" aria-valuemin="0" aria-valuemax="200">
+                                                    {{ metrics.current.avg_latency }} ms
+                                                </div>
+                                            {% else %}
+                                                <div class="progress-bar bg-secondary" role="progressbar" style="width: 100%">
+                                                    No latency data available
+                                                </div>
+                                            {% endif %}
+                                        </div>
 
-    <!-- Server Actions -->
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="card-title mb-0">Server Actions</h5>
-                </div>
-                <div class="card-body">
-                    <div class="btn-group">
-                        <form action="{{ url_for('server_action', server_id=server.id, action='restart') }}" method="post" class="d-inline">
-                            <button type="submit" class="btn btn-warning mr-2" onclick="return confirm('Are you sure you want to restart the WireGuard service?')">
-                                <i class="fas fa-sync"></i> Restart WireGuard Service
-                            </button>
-                        </form>
-                        
-                        <form action="{{ url_for('server_action', server_id=server.id, action='toggle_status') }}" method="post" class="d-inline">
-                            <button type="submit" class="btn btn-{{ 'danger' if server.status == 'active' else 'success' }}" onclick="return confirm('Are you sure you want to {{ 'deactivate' if server.status == 'active' else 'activate' }} this server?')">
-                                <i class="fas fa-{{ 'stop' if server.status == 'active' else 'play' }}"></i> {{ 'Deactivate' if server.status == 'active' else 'Activate' }} Server
-                            </button>
-                        </form>
+                                        <h5>Bandwidth Availability</h5>
+                                        <div class="progress mb-3">
+                                            {% if 'bandwidth' in metrics.current %}
+                                                <div class="progress-bar bg-info" role="progressbar"
+                                                     style="width: {{ min(metrics.current.bandwidth / 10, 100) }}%"
+                                                     aria-valuenow="{{ metrics.current.bandwidth }}" aria-valuemin="0" aria-valuemax="1000">
+                                                    {{ metrics.current.bandwidth }} Mbps
+                                                </div>
+                                            {% else %}
+                                                <div class="progress-bar bg-secondary" role="progressbar" style="width: 100%">
+                                                    No bandwidth data available
+                                                </div>
+                                            {% endif %}
+                                        </div>
+
+                                        <h5>Uptime</h5>
+                                        <div class="progress mb-3">
+                                            {% if 'uptime' in metrics.current %}
+                                                <div class="progress-bar bg-success" role="progressbar"
+                                                     style="width: {{ metrics.current.uptime }}%"
+                                                     aria-valuenow="{{ metrics.current.uptime }}" aria-valuemin="0" aria-valuemax="100">
+                                                    {{ metrics.current.uptime }}%
+                                                </div>
+                                            {% else %}
+                                                <div class="progress-bar bg-secondary" role="progressbar" style="width: 100%">
+                                                    No uptime data available
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    {% else %}
+                                        <div class="alert alert-info">
+                                            No performance metrics available for this server.
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -216,17 +138,19 @@
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="deleteModalLabel">Confirm Delete</h5>
+                <h5 class="modal-title" id="deleteModalLabel">Delete Server</h5>
                 <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <div class="modal-body">
-                Are you sure you want to delete the server <strong>{{ server.name }}</strong>? This action cannot be undone.
+                Are you sure you want to delete this server? This action cannot be undone.
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-                <a href="{{ url_for('delete_server', server_id=server.id) }}" class="btn btn-danger">Delete Server</a>
+                <form action="{{ url_for('servers.delete', server_id=server.id) }}" method="post">
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
             </div>
         </div>
     </div>

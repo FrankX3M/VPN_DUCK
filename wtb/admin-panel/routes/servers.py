@@ -1,98 +1,174 @@
+# import os
+# import logging
+# import secrets
+# from datetime import datetime
+# from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app, jsonify
+# from flask_login import login_required
+
+# from forms import ServerForm, FilterForm
+# from utils.chart_generator import ChartGenerator
+# from config import USE_MOCK_DATA
+
+# logger = logging.getLogger(__name__)
+
+# # Create blueprint
+# servers_bp = Blueprint('servers', __name__)
+
+# @servers_bp.route('/')
+# @login_required
+# def index():
+#     """Display list of servers with filtering options."""
+#     # Initialize filter form
+#     filter_form = FilterForm()
+    
+#     # Get query parameters for filtering
+#     search = request.args.get('search', '')
+#     geolocation = request.args.get('geolocation', 'all')
+#     status = request.args.get('status', 'all')
+#     view_mode = request.args.get('view', 'table')
+    
+#     if USE_MOCK_DATA:
+#         # Use mock data for development
+#         from utils.mock_data import MOCK_GEOLOCATIONS, filter_servers
+#         geolocations = MOCK_GEOLOCATIONS
+        
+#         # Update filter form choices
+#         filter_form.geolocation.choices = [('all', 'All Geolocations')] + [
+#             (str(geo['id']), geo['name']) for geo in geolocations
+#         ]
+        
+#         # Prepare filter params
+#         filters = {}
+#         if search:
+#             filters['search'] = search
+#         if geolocation != 'all':
+#             filters['geolocation_id'] = int(geolocation)
+#         if status != 'all':
+#             filters['status'] = status
+            
+#         # Filter servers
+#         servers = filter_servers(filters)
+#     else:
+#         # Load geolocations for the filter dropdown from API
+#         from utils.db_client import DatabaseClient
+        
+#         db_client = DatabaseClient(
+#             base_url=current_app.config['API_BASE_URL'],
+#             api_key=current_app.config['API_KEY']
+#         )
+        
+#         try:
+#             geo_response = db_client.get('/api/geolocations')
+#             if geo_response.status_code == 200:
+#                 geolocations = geo_response.json()
+#                 filter_form.geolocation.choices = [('all', 'All Geolocations')] + [
+#                     (str(geo['id']), geo['name']) for geo in geolocations
+#                 ]
+#             else:
+#                 filter_form.geolocation.choices = [('all', 'All Geolocations')]
+#                 flash('Failed to load geolocation filter options', 'warning')
+#         except Exception as e:
+#             logger.exception(f"Error loading geolocations: {str(e)}")
+#             filter_form.geolocation.choices = [('all', 'All Geolocations')]
+        
+#         # Prepare filter params for API request
+#         filter_params = {}
+#         if search:
+#             filter_params['search'] = search
+#         if geolocation != 'all':
+#             filter_params['geolocation_id'] = geolocation
+#         if status != 'all':
+#             filter_params['status'] = status
+
+#         # Fetch servers from API
+#         try:
+#             response = db_client.get('/api/servers', params=filter_params)
+#             if response.status_code == 200:
+#                 servers = response.json()
+#             else:
+#                 servers = []
+#                 flash('Failed to fetch server list', 'warning')
+#         except Exception as e:
+#             logger.exception(f"Error fetching servers: {str(e)}")
+#             servers = []
+#             flash('Service unavailable', 'danger')
 import os
 import logging
-import secrets
-from datetime import datetime
-from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app, jsonify
+import requests  # Add this import
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_required
-
-from forms import ServerForm, FilterForm
-from utils.chart_generator import ChartGenerator
-from config import USE_MOCK_DATA
-
-logger = logging.getLogger(__name__)
+# Import any other modules you need
 
 # Create blueprint
 servers_bp = Blueprint('servers', __name__)
 
-@servers_bp.route('/')
+# Your other routes...
+
+@servers_bp.route('/<int:server_id>', methods=['GET'])
 @login_required
-def index():
-    """Display list of servers with filtering options."""
-    # Initialize filter form
-    filter_form = FilterForm()
-    
-    # Get query parameters for filtering
-    search = request.args.get('search', '')
-    geolocation = request.args.get('geolocation', 'all')
-    status = request.args.get('status', 'all')
-    view_mode = request.args.get('view', 'table')
-    
-    if USE_MOCK_DATA:
-        # Use mock data for development
-        from utils.mock_data import MOCK_GEOLOCATIONS, filter_servers
-        geolocations = MOCK_GEOLOCATIONS
-        
-        # Update filter form choices
-        filter_form.geolocation.choices = [('all', 'All Geolocations')] + [
-            (str(geo['id']), geo['name']) for geo in geolocations
-        ]
-        
-        # Prepare filter params
-        filters = {}
-        if search:
-            filters['search'] = search
-        if geolocation != 'all':
-            filters['geolocation_id'] = int(geolocation)
-        if status != 'all':
-            filters['status'] = status
-            
-        # Filter servers
-        servers = filter_servers(filters)
-    else:
-        # Load geolocations for the filter dropdown from API
-        from utils.db_client import DatabaseClient
-        
-        db_client = DatabaseClient(
-            base_url=current_app.config['API_BASE_URL'],
-            api_key=current_app.config['API_KEY']
+def details(server_id):
+    """Show server details."""
+    try:
+        # Get server information
+        server_response = requests.get(
+            f"{current_app.config['DATABASE_SERVICE_URL']}/api/servers/{server_id}",
+            timeout=10
         )
         
-        try:
-            geo_response = db_client.get('/api/geolocations')
-            if geo_response.status_code == 200:
-                geolocations = geo_response.json()
-                filter_form.geolocation.choices = [('all', 'All Geolocations')] + [
-                    (str(geo['id']), geo['name']) for geo in geolocations
-                ]
-            else:
-                filter_form.geolocation.choices = [('all', 'All Geolocations')]
-                flash('Failed to load geolocation filter options', 'warning')
-        except Exception as e:
-            logger.exception(f"Error loading geolocations: {str(e)}")
-            filter_form.geolocation.choices = [('all', 'All Geolocations')]
+        if server_response.status_code != 200:
+            flash(f"Error retrieving server information: {server_response.text}", "danger")
+            return redirect(url_for('servers.index'))
+            
+        server = server_response.json()
         
-        # Prepare filter params for API request
-        filter_params = {}
-        if search:
-            filter_params['search'] = search
-        if geolocation != 'all':
-            filter_params['geolocation_id'] = geolocation
-        if status != 'all':
-            filter_params['status'] = status
-
-        # Fetch servers from API
+        # Get geolocation information
+        geo_id = server.get('geolocation_id')
+        geo = None
+        if geo_id:
+            geo_response = requests.get(
+                f"{current_app.config['DATABASE_SERVICE_URL']}/api/geolocations/{geo_id}",
+                timeout=10
+            )
+            if geo_response.status_code == 200:
+                geo = geo_response.json()
+        
+        # Get metrics if available
+        metrics = {
+            'current': {},
+            'history': []
+        }
+        
         try:
-            response = db_client.get('/api/servers', params=filter_params)
-            if response.status_code == 200:
-                servers = response.json()
-            else:
-                servers = []
-                flash('Failed to fetch server list', 'warning')
-        except Exception as e:
-            logger.exception(f"Error fetching servers: {str(e)}")
-            servers = []
-            flash('Service unavailable', 'danger')
+            metrics_response = requests.get(
+                f"{current_app.config['METRICS_SERVICE_URL']}/api/metrics/server/{server_id}",
+                timeout=5  # Shorter timeout for metrics as they're not critical
+            )
+            
+            if metrics_response.status_code == 200:
+                metrics = metrics_response.json()
+                # Ensure the metrics structure is valid
+                if not isinstance(metrics, dict):
+                    metrics = {'current': {}, 'history': []}
+                elif 'current' not in metrics:
+                    metrics['current'] = {}
+                elif not isinstance(metrics['current'], dict):
+                    metrics['current'] = {}
+        except requests.RequestException as e:
+            current_app.logger.warning(f"Failed to retrieve metrics for server {server_id}: {str(e)}")
+        
+        return render_template(
+            'servers/details.html',
+            server=server,
+            geo=geo or {'name': 'Unknown', 'code': 'N/A'},
+            metrics=metrics
+        )
     
+    except Exception as e:
+        current_app.logger.exception(f"Error showing server details: {str(e)}")
+        flash(f"An error occurred: {str(e)}", "danger")
+        return redirect(url_for('servers.index'))
+
+
     # Calculate server stats
     stats = {
         'total': len(servers),
@@ -110,91 +186,154 @@ def index():
         now=datetime.now()
     )
 
-@servers_bp.route('/<int:server_id>')
+# @servers_bp.route('/<int:server_id>')
+# @login_required
+# def details(server_id):
+#     """Show detailed information about a server."""
+#     hours = request.args.get('hours', 24, type=int)
+    
+#     if USE_MOCK_DATA:
+#         # Use mock data for development
+#         from utils.mock_data import find_server, generate_mock_metrics
+#         server = find_server(server_id)
+#         if not server:
+#             flash('Server not found', 'danger')
+#             return redirect(url_for('servers.index'))
+            
+#         # Generate mock metrics
+#         metrics = generate_mock_metrics(server_id, hours)
+        
+#         # Generate charts
+#         charts = {}
+#         if metrics and 'history' in metrics and metrics['history']:
+#             chart_generator = ChartGenerator()
+#             charts['latency'] = chart_generator.generate_metrics_image(metrics, 'latency', hours)
+#             charts['packet_loss'] = chart_generator.generate_metrics_image(metrics, 'packet_loss', hours)
+#             charts['resources'] = chart_generator.generate_metrics_image(metrics, 'resources', hours)
+            
+#             # Generate interactive chart if plotly is available
+#             interactive_chart = chart_generator.generate_plotly_chart(metrics, 'server_detail')
+#         else:
+#             interactive_chart = None
+#     else:
+#         # Fetch server details from API
+#         from utils.db_client import DatabaseClient
+        
+#         db_client = DatabaseClient(
+#             base_url=current_app.config['API_BASE_URL'],
+#             api_key=current_app.config['API_KEY']
+#         )
+        
+#         try:
+#             response = db_client.get(f'/api/servers/{server_id}')
+#             if response.status_code == 200:
+#                 server = response.json()
+#             else:
+#                 flash('Server not found', 'danger')
+#                 return redirect(url_for('servers.index'))
+#         except Exception as e:
+#             logger.exception(f"Error fetching server details: {str(e)}")
+#             flash('Service unavailable', 'danger')
+#             return redirect(url_for('servers.index'))
+        
+#         # Fetch metrics from API
+#         try:
+#             metrics_response = db_client.get(f'/api/servers/{server_id}/metrics', 
+#                                            params={'hours': hours})
+            
+#             if metrics_response.status_code == 200:
+#                 metrics = metrics_response.json()
+#             else:
+#                 metrics = None
+#         except Exception as e:
+#             logger.exception(f"Error fetching server metrics: {str(e)}")
+#             metrics = None
+        
+#         # Generate charts
+#         charts = {}
+#         chart_generator = ChartGenerator()
+#         if metrics and 'history' in metrics and metrics['history']:
+#             charts['latency'] = chart_generator.generate_metrics_image(metrics, 'latency', hours)
+#             charts['packet_loss'] = chart_generator.generate_metrics_image(metrics, 'packet_loss', hours)
+#             charts['resources'] = chart_generator.generate_metrics_image(metrics, 'resources', hours)
+            
+#             # Generate interactive chart if plotly is available
+#             interactive_chart = chart_generator.generate_plotly_chart(metrics, 'server_detail')
+#         else:
+#             interactive_chart = None
+    
+#     return render_template(
+#         'servers/details.html',
+#         server=server,
+#         metrics=metrics,
+#         charts=charts,
+#         interactive_chart=interactive_chart,
+#         hours=hours,
+#         now=datetime.now()
+#     )
+@servers_bp.route('/<int:server_id>', methods=['GET'])
 @login_required
 def details(server_id):
-    """Show detailed information about a server."""
-    hours = request.args.get('hours', 24, type=int)
-    
-    if USE_MOCK_DATA:
-        # Use mock data for development
-        from utils.mock_data import find_server, generate_mock_metrics
-        server = find_server(server_id)
-        if not server:
-            flash('Server not found', 'danger')
-            return redirect(url_for('servers.index'))
-            
-        # Generate mock metrics
-        metrics = generate_mock_metrics(server_id, hours)
-        
-        # Generate charts
-        charts = {}
-        if metrics and 'history' in metrics and metrics['history']:
-            chart_generator = ChartGenerator()
-            charts['latency'] = chart_generator.generate_metrics_image(metrics, 'latency', hours)
-            charts['packet_loss'] = chart_generator.generate_metrics_image(metrics, 'packet_loss', hours)
-            charts['resources'] = chart_generator.generate_metrics_image(metrics, 'resources', hours)
-            
-            # Generate interactive chart if plotly is available
-            interactive_chart = chart_generator.generate_plotly_chart(metrics, 'server_detail')
-        else:
-            interactive_chart = None
-    else:
-        # Fetch server details from API
-        from utils.db_client import DatabaseClient
-        
-        db_client = DatabaseClient(
-            base_url=current_app.config['API_BASE_URL'],
-            api_key=current_app.config['API_KEY']
+    """Show server details."""
+    try:
+        # Get server information
+        server_response = requests.get(
+            f"{current_app.config['DATABASE_SERVICE_URL']}/api/servers/{server_id}",
+            timeout=10
         )
         
-        try:
-            response = db_client.get(f'/api/servers/{server_id}')
-            if response.status_code == 200:
-                server = response.json()
-            else:
-                flash('Server not found', 'danger')
-                return redirect(url_for('servers.index'))
-        except Exception as e:
-            logger.exception(f"Error fetching server details: {str(e)}")
-            flash('Service unavailable', 'danger')
+        if server_response.status_code != 200:
+            flash(f"Error retrieving server information: {server_response.text}", "danger")
             return redirect(url_for('servers.index'))
+            
+        server = server_response.json()
         
-        # Fetch metrics from API
+        # Get geolocation information
+        geo_id = server.get('geolocation_id')
+        geo = None
+        if geo_id:
+            geo_response = requests.get(
+                f"{current_app.config['DATABASE_SERVICE_URL']}/api/geolocations/{geo_id}",
+                timeout=10
+            )
+            if geo_response.status_code == 200:
+                geo = geo_response.json()
+        
+        # Get metrics if available
+        metrics = {
+            'current': {},
+            'history': []
+        }
+        
         try:
-            metrics_response = db_client.get(f'/api/servers/{server_id}/metrics', 
-                                           params={'hours': hours})
+            metrics_response = requests.get(
+                f"{current_app.config['METRICS_SERVICE_URL']}/api/metrics/server/{server_id}",
+                timeout=5  # Shorter timeout for metrics as they're not critical
+            )
             
             if metrics_response.status_code == 200:
                 metrics = metrics_response.json()
-            else:
-                metrics = None
-        except Exception as e:
-            logger.exception(f"Error fetching server metrics: {str(e)}")
-            metrics = None
+                # Ensure the metrics structure is valid
+                if not isinstance(metrics, dict):
+                    metrics = {'current': {}, 'history': []}
+                elif 'current' not in metrics:
+                    metrics['current'] = {}
+                elif not isinstance(metrics['current'], dict):
+                    metrics['current'] = {}
+        except requests.RequestException as e:
+            current_app.logger.warning(f"Failed to retrieve metrics for server {server_id}: {str(e)}")
         
-        # Generate charts
-        charts = {}
-        chart_generator = ChartGenerator()
-        if metrics and 'history' in metrics and metrics['history']:
-            charts['latency'] = chart_generator.generate_metrics_image(metrics, 'latency', hours)
-            charts['packet_loss'] = chart_generator.generate_metrics_image(metrics, 'packet_loss', hours)
-            charts['resources'] = chart_generator.generate_metrics_image(metrics, 'resources', hours)
-            
-            # Generate interactive chart if plotly is available
-            interactive_chart = chart_generator.generate_plotly_chart(metrics, 'server_detail')
-        else:
-            interactive_chart = None
+        return render_template(
+            'servers/details.html',
+            server=server,
+            geo=geo or {'name': 'Unknown', 'code': 'N/A'},
+            metrics=metrics
+        )
     
-    return render_template(
-        'servers/details.html',
-        server=server,
-        metrics=metrics,
-        charts=charts,
-        interactive_chart=interactive_chart,
-        hours=hours,
-        now=datetime.now()
-    )
+    except Exception as e:
+        current_app.logger.exception(f"Error showing server details: {str(e)}")
+        flash(f"An error occurred: {str(e)}", "danger")
+        return redirect(url_for('servers.index'))
 
 @servers_bp.route('/add', methods=['GET', 'POST'])
 @login_required

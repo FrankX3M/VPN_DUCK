@@ -1,6 +1,3 @@
-<!-- Add this code to templates/geolocations/add.html -->
-<!-- This is the geolocation add form template -->
-
 {% extends "base.html" %}
 
 {% block title %}Add Geolocation - VPN Duck{% endblock %}
@@ -14,7 +11,7 @@
                     <h1 class="h3 mb-0">Add New Geolocation</h1>
                 </div>
                 <div class="card-body">
-                    <form method="POST" action="{{ url_for('add_geolocation') }}">
+                    <form method="POST" action="{{ url_for('geolocations.add') }}">
                         {{ form.csrf_token }}
                         
                         <div class="mb-3">
@@ -71,7 +68,7 @@
                         </div>
                         
                         <div class="d-flex justify-content-between mt-4">
-                            <a href="{{ url_for('geolocations') }}" class="btn btn-secondary">Cancel</a>
+                            <a href="{{ url_for('geolocations.index') }}" class="btn btn-secondary">Cancel</a>
                             <button type="submit" class="btn btn-primary">Add Geolocation</button>
                         </div>
                     </form>

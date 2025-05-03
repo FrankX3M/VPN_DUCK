@@ -1,6 +1,3 @@
-<!-- Add this code to templates/servers/add.html -->
-<!-- This should be the entire content of the file -->
-
 {% extends "base.html" %}
 
 {% block title %}Add New Server - VPN Duck{% endblock %}
@@ -14,7 +11,7 @@
                     <h1 class="h3 mb-0">Add New Server</h1>
                 </div>
                 <div class="card-body">
-                    <form method="POST" action="{{ url_for('add_server') }}">
+                    <form method="POST" action="{{ url_for('servers.add') }}">
                         {{ form.csrf_token }}
                         
                         <div class="row mb-3">
@@ -170,7 +167,7 @@
                         </div>
                         
                         <div class="d-flex justify-content-between mt-4">
-                            <a href="{{ url_for('servers') }}" class="btn btn-secondary">Cancel</a>
+                            <a href="{{ url_for('servers.index') }}" class="btn btn-secondary">Cancel</a>
                             <button type="submit" class="btn btn-primary">Add Server</button>
                         </div>
                     </form>

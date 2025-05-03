@@ -134,21 +134,34 @@ def create_error_templates():
 </body>
 </html>
 ''')
-
 def create_favicon():
     """Creates a simple favicon.ico if it doesn't exist."""
     favicon_dir = os.path.join('static', 'img')
     os.makedirs(favicon_dir, exist_ok=True)
     
     favicon_path = os.path.join(favicon_dir, 'favicon.ico')
-    if not os.path.exists(favicon_path):
+    if not os.path.exists(favicon_path) or os.path.getsize(favicon_path) == 0:
         try:
-            # Create minimal ico file
+            # Create minimal ICO file with actual content
             with open(favicon_path, 'wb') as f:
-                # Minimal ICO file structure
-                f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00 \x00h\x04\x00\x00\x16\x00\x00\x00(\x00\x00\x00\x10\x00\x00\x00 \x00\x00\x00\x01\x00 \x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')
+                f.write(b'\x00\x00\x01\x00\x01\x00\x01\x01\x00\x00\x01\x00\x18\x00\x30\x00\x00\x00\x16\x00\x00\x00\x28\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00\x01\x00\x18\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xFF\xFF\xFF\x00')
         except Exception as e:
             logger.error(f"Error creating favicon: {str(e)}")
+
+# def create_favicon():
+#     """Creates a simple favicon.ico if it doesn't exist."""
+#     favicon_dir = os.path.join('static', 'img')
+#     os.makedirs(favicon_dir, exist_ok=True)
+    
+#     favicon_path = os.path.join(favicon_dir, 'favicon.ico')
+#     if not os.path.exists(favicon_path):
+#         try:
+#             # Create minimal ico file
+#             with open(favicon_path, 'wb') as f:
+#                 # Minimal ICO file structure
+#                 f.write(b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00 \x00h\x04\x00\x00\x16\x00\x00\x00(\x00\x00\x00\x10\x00\x00\x00 \x00\x00\x00\x01\x00 \x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')
+#         except Exception as e:
+#             logger.error(f"Error creating favicon: {str(e)}")
 
 def download_bootstrap_resources(app_root_path):
     """Downloads Bootstrap, jQuery and Chart.js for offline use."""

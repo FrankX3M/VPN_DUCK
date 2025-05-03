@@ -54,16 +54,33 @@ def create_app(config_class=Config):
     create_favicon()
 
     # Custom static file handling to prevent sendfile issues
+    # @app.route('/static/<path:filename>')
+    # def custom_static(filename):
+    #     try:
+    #         cache_timeout = app.get_send_file_max_age(filename)
+    #         from flask import send_from_directory
+    #         return send_from_directory('static', filename, cache_timeout=cache_timeout)
+    #     except Exception as e:
+    #         logger.warning(f"Static file not found: {filename}, Error: {str(e)}")
+    #         return '', 404
     @app.route('/static/<path:filename>')
     def custom_static(filename):
         try:
             cache_timeout = app.get_send_file_max_age(filename)
             from flask import send_from_directory
+            
+            # Check if file exists and has content
+            filepath = os.path.join(app.root_path, 'static', filename)
+            if os.path.exists(filepath) and os.path.getsize(filepath) == 0:
+                logger.warning(f"Static file is empty: {filename}")
+                # Return a simple response for empty files instead of using send_file
+                return '', 204  # No Content status code
+            
             return send_from_directory('static', filename, cache_timeout=cache_timeout)
         except Exception as e:
             logger.warning(f"Static file not found: {filename}, Error: {str(e)}")
             return '', 404
-
+            
     # Add favicon handler to prevent 404 errors
     @app.route('/favicon.ico')
     def favicon():

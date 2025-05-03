@@ -43,12 +43,27 @@ class ChartGenerator:
             fig, ax = plt.subplots(figsize=(10, 5))
             
             # Convert timestamps to datetime
+            # history = metrics_data['history']
+            # timestamps = [datetime.datetime.fromisoformat(item['timestamp'].replace('Z', '+00:00')) 
+            #              if 'timestamp' in item else 
+            #              datetime.datetime.fromisoformat(item['hour'].replace('Z', '+00:00')) 
+            #              for item in history]
+            # In generate_metrics_image method, update the timestamps conversion:
             history = metrics_data['history']
-            timestamps = [datetime.datetime.fromisoformat(item['timestamp'].replace('Z', '+00:00')) 
-                         if 'timestamp' in item else 
-                         datetime.datetime.fromisoformat(item['hour'].replace('Z', '+00:00')) 
-                         for item in history]
-            
+            timestamps = []
+            for item in history:
+                ts = item.get('timestamp', item.get('hour', ''))
+                if isinstance(ts, str):
+                    try:
+                        # Try to convert strings to datetime objects
+                        timestamps.append(datetime.datetime.fromisoformat(ts.replace('Z', '+00:00')))
+                    except ValueError:
+                        # If conversion fails, use the string as is
+                        timestamps.append(ts)
+                else:
+                    # If it's already a datetime or something else, use it as is
+                    timestamps.append(ts)
+
             # Select data based on chart type
             if chart_type == 'latency':
                 # Latency chart

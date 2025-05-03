@@ -1,6 +1,3 @@
-<!-- Add this code to templates/dashboard.html -->
-<!-- This should be the entire content of the file -->
-
 {% extends "base.html" %}
 
 {% block title %}Dashboard - VPN Duck{% endblock %}
@@ -16,16 +13,16 @@
         </div>
         <div class="card-body">
             <div class="btn-group" role="group">
-                <a href="{{ url_for('dashboard', hours=6) }}" class="btn btn-outline-primary {% if current_hours == 6 %}active{% endif %}">
+                <a href="{{ url_for('main.dashboard', hours=6) }}" class="btn btn-outline-primary {% if current_hours == 6 %}active{% endif %}">
                     Last 6 Hours
                 </a>
-                <a href="{{ url_for('dashboard', hours=24) }}" class="btn btn-outline-primary {% if current_hours == 24 %}active{% endif %}">
+                <a href="{{ url_for('main.dashboard', hours=24) }}" class="btn btn-outline-primary {% if current_hours == 24 %}active{% endif %}">
                     Last 24 Hours
                 </a>
-                <a href="{{ url_for('dashboard', hours=72) }}" class="btn btn-outline-primary {% if current_hours == 72 %}active{% endif %}">
+                <a href="{{ url_for('main.dashboard', hours=72) }}" class="btn btn-outline-primary {% if current_hours == 72 %}active{% endif %}">
                     Last 3 Days
                 </a>
-                <a href="{{ url_for('dashboard', hours=168) }}" class="btn btn-outline-primary {% if current_hours == 168 %}active{% endif %}">
+                <a href="{{ url_for('main.dashboard', hours=168) }}" class="btn btn-outline-primary {% if current_hours == 168 %}active{% endif %}">
                     Last Week
                 </a>
             </div>

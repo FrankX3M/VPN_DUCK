@@ -42,4 +42,7 @@ RUN chmod +x /entrypoint.sh
 
 # Run the application with Gunicorn with appropriate timeout settings
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "120", "--workers", "2", "app:app"]
+# CMD ["gunicorn", "--config", "gunicorn.conf.py", "app:app"]
+# CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "120", "--workers", "2", "app:app"]
+# CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "120", "--workers", "2", "--log-level", "debug", "--disable-redirect-access-to-syslog", "--access-logfile", "-", "--error-logfile", "-", "--capture-output", "app:app"]
+CMD ["gunicorn", "--config", "gunicorn.conf.py", "--bind", "0.0.0.0:5000", "--timeout", "120", "--workers", "2", "--log-level", "debug", "--disable-redirect-access-to-syslog", "--access-logfile", "-", "--error-logfile", "-", "--capture-output", "--worker-tmp-dir", "/dev/shm", "app:app"]
