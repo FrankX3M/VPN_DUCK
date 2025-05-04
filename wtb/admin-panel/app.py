@@ -219,6 +219,21 @@ def create_app(config_class=Config):
 # Create app instance
 app = create_app()
 
+
+@app.template_filter('datetime')
+def datetime_filter(value, format='%Y-%m-%d %H:%M:%S'):
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        try:
+            value = datetime.strptime(value, '%Y-%m-%dT%H:%M:%S')
+        except ValueError:
+            try:
+                value = datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                return value
+    return value.strftime(format)
+
 # Run application
 if __name__ == '__main__':
     # Set debug mode

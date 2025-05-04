@@ -4,6 +4,7 @@ import secrets
 # Flag for using mock data in development mode
 USE_MOCK_DATA = os.environ.get('USE_MOCK_DATA', 'false').lower() == 'true'
 
+METRICS_SERVICE_URL = os.environ.get('METRICS_SERVICE_URL', 'http://localhost:5003')
 # Import mock data for development mode
 if USE_MOCK_DATA:
     from utils.mock_data import (MOCK_SERVERS, MOCK_GEOLOCATIONS, 
