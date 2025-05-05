@@ -14,7 +14,6 @@ from utils.errors import RemoteServerError, DatabaseError
 from utils.retry import with_retry
 
 
-
 from config.settings import (
     DATABASE_SERVICE_URL,
     USE_MOCK_DATA,
