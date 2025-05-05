@@ -11,13 +11,13 @@ import time
 import signal
 import sys
 # Добавляем текущую директорию в PYTHONPATH
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from route_manager import RouteManager
 from server_manager import ServerManager
 from cache_manager import CacheManager
 from connection_manager import ConnectionManager
 from utils.errors import RemoteServerError, NoAvailableServerError, DatabaseError
-from config.settings import (
+from app_config.settings import (
     SERVER_HOST, 
     SERVER_PORT, 
     DEBUG, 

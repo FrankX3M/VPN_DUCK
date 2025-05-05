@@ -8,13 +8,15 @@ from datetime import datetime
 import threading
 import random
 # Добавляем текущую директорию в PYTHONPATH
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from utils.errors import RemoteServerError, DatabaseError
 from utils.retry import with_retry
+# Load the settings module directly from its filepath
+# settings_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config')
+# sys.path.insert(0, settings_path)
 
-
-from config.settings import (
+from app_config.settings import (
     DATABASE_SERVICE_URL,
     USE_MOCK_DATA,
     SERVER_STATUS_CHECK_TIMEOUT,

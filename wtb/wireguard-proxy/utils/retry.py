@@ -14,7 +14,7 @@ from tenacity import (
     Retrying
 )
 # Добавляем текущую директорию в PYTHONPATH
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from utils.errors import RemoteServerError, DatabaseError
 
 logger = logging.getLogger('wireguard-proxy.retry')

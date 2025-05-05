@@ -9,11 +9,11 @@ import hashlib
 import requests
 
 # Добавляем текущую директорию в PYTHONPATH
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from utils.errors import AuthenticationError
 from utils.retry import retry_on_connection_error
-from config.settings import USE_MOCK_DATA
+from app_config.settings import USE_MOCK_DATA
 
 logger = logging.getLogger('wireguard-proxy.auth_handler')
 

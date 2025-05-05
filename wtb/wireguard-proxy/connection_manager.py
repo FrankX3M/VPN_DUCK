@@ -5,7 +5,7 @@ import requests
 import time
 
 # Добавляем текущую директорию в PYTHONPATH
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from utils.errors import RemoteServerError, NoAvailableServerError
 from auth.auth_handler import get_auth_headers
