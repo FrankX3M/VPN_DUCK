@@ -1,5 +1,10 @@
+import os
+import sys
 import logging
 import time
+
+# Добавляем текущую директорию в PYTHONPATH
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from utils.errors import NoAvailableServerError, RemoteServerError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 

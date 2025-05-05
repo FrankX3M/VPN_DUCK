@@ -1,5 +1,8 @@
 import os
 import yaml
+import json
+import logging
+import requests  # Добавлен импорт
 import logging.config
 from dotenv import load_dotenv
 
@@ -14,8 +17,15 @@ SERVER_HOST = os.environ.get('SERVER_HOST', '0.0.0.0')
 SERVER_PORT = int(os.environ.get('PORT', 5001))
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
+# Режим работы - использовать ли тестовые данные вместо реального API
+USE_MOCK_DATA = os.environ.get('USE_MOCK_DATA', 'false').lower() == 'true'
+
 # Настройки подключения к database-service
 DATABASE_SERVICE_URL = os.environ.get('DATABASE_SERVICE_URL', 'http://database-service:5002')
+
+# Настройки для серверов
+SERVER_CACHE_TTL = 300  # TTL кэша серверов в секундах
+SERVER_TIMEOUT = 5  # Timeout для запросов к серверам
 
 # Настройки кэширования
 CACHE_MAX_SIZE = int(os.environ.get('CACHE_MAX_SIZE', 1000))
@@ -25,10 +35,18 @@ CACHE_TTL = int(os.environ.get('CACHE_TTL', 300))  # 5 минут
 HTTP_TIMEOUT = int(os.environ.get('HTTP_TIMEOUT', 10))
 HTTP_MAX_RETRIES = int(os.environ.get('HTTP_MAX_RETRIES', 3))
 HTTP_RETRY_BACKOFF = float(os.environ.get('HTTP_RETRY_BACKOFF', 1.5))
+SERVER_STATUS_CHECK_TIMEOUT = int(os.environ.get('SERVER_STATUS_CHECK_TIMEOUT', 3))
 
 # Настройки маршрутизации
 ROUTING_STRATEGY = os.environ.get('ROUTING_STRATEGY', 'load_balanced')  # load_balanced, round_robin, random
 ROUTING_GEOLOCATION_PRIORITY = os.environ.get('ROUTING_GEOLOCATION_PRIORITY', 'True').lower() == 'true'
+
+# Настройки отказоустойчивости
+FALLBACK_MODE_ENABLED = os.environ.get('FALLBACK_MODE_ENABLED', 'true').lower() == 'true'
+MAX_RETRY_ATTEMPTS = int(os.environ.get('MAX_RETRY_ATTEMPTS', 10))
+RETRY_BACKOFF_FACTOR = float(os.environ.get('RETRY_BACKOFF_FACTOR', 1.5))
+HEALTH_CHECK_TIMEOUT = int(os.environ.get('HEALTH_CHECK_TIMEOUT', 5))
+STARTUP_WAIT_TIMEOUT = int(os.environ.get('STARTUP_WAIT_TIMEOUT', 60))
 
 # Настройки логирования
 LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
@@ -39,33 +57,45 @@ LOG_FILE = os.environ.get('LOG_FILE', None)
 CONFIG_PATH = os.environ.get('CONFIG_PATH', '/app/config')
 MAIN_CONFIG_FILE = os.path.join(CONFIG_PATH, 'config.yml')
 
-
-def get_user_config(user_id):
-    """
-    Получает конфигурацию для пользователя из базы данных.
-    
-    Args:
-        user_id (int): ID пользователя
-    
-    Returns:
-        dict: Конфигурация пользователя или None при ошибке
-    """
-    try:
-        logger.info(f"Получение конфигурации для пользователя {user_id}")
-        url = f"{DATABASE_SERVICE_URL}/api/config/{user_id}"
-        logger.info(f"Используем URL: {url}")
-        
-        response = requests.get(url, timeout=5)
-        logger.info(f"Ответ API: код {response.status_code}")
-        
-        if response.status_code == 200:
-            return response.json()
-        else:
-            logger.info(f"Конфигурация для пользователя {user_id} не найдена ({response.status_code})")
-            return None
-    except Exception as e:
-        logger.error(f"Ошибка при получении конфигурации: {e}")
-        return None
+# Настройка тестовых серверов
+MOCK_SERVERS = [
+    {
+        'id': 'test-server-1',
+        'name': 'Test Server US',
+        'endpoint': 'test-us.example.com',
+        'port': 51820,
+        'api_url': 'http://localhost:5002',
+        'location': 'US/New York',
+        'geolocation_id': 1,
+        'auth_type': 'api_key',
+        'api_key': 'test-server-key-1',
+        'status': 'active'
+    },
+    {
+        'id': 'test-server-2',
+        'name': 'Test Server EU',
+        'endpoint': 'test-eu.example.com',
+        'port': 51820,
+        'api_url': 'http://localhost:5002',
+        'location': 'EU/Amsterdam',
+        'geolocation_id': 2,
+        'auth_type': 'api_key',
+        'api_key': 'test-server-key-2',
+        'status': 'active'
+    },
+    {
+        'id': 'test-server-3',
+        'name': 'Test Server Asia',
+        'endpoint': 'test-asia.example.com',
+        'port': 51820,
+        'api_url': 'http://localhost:5002',
+        'location': 'Asia/Tokyo',
+        'geolocation_id': 3,
+        'auth_type': 'api_key',
+        'api_key': 'test-server-key-3',
+        'status': 'degraded'
+    }
+]
 
 def load_config_from_file():
     """
@@ -82,8 +112,12 @@ def load_config_from_file():
             print(f"Error loading config file: {e}")
     return {}
 
-# Загрузка конфигурации из файла
+# Загрузка конфигурации из файла и объединение с настройками из переменных окружения
 file_config = load_config_from_file()
+
+# Если в файле конфигурации есть секция mock_servers, заменяем тестовые серверы
+if 'mock_servers' in file_config and isinstance(file_config['mock_servers'], list):
+    MOCK_SERVERS = file_config['mock_servers']
 
 # Настройка логирования
 logging_config = {
@@ -131,3 +165,53 @@ if LOG_FILE:
 
 # Применение конфигурации логирования
 logging.config.dictConfig(logging_config)
+
+# Логирование конфигурации при старте
+logger = logging.getLogger('wireguard-proxy.settings')
+logger.info(f"Server configuration: HOST={SERVER_HOST}, PORT={SERVER_PORT}")
+logger.info(f"Mock data mode: {USE_MOCK_DATA}")
+logger.info(f"Database service URL: {DATABASE_SERVICE_URL}")
+logger.info(f"Cache settings: MAX_SIZE={CACHE_MAX_SIZE}, TTL={CACHE_TTL}")
+logger.info(f"Routing strategy: {ROUTING_STRATEGY}, Geolocation priority: {ROUTING_GEOLOCATION_PRIORITY}")
+
+def wait_for_services():
+    """
+    Ожидание запуска зависимых сервисов
+    
+    Returns:
+        bool: True если все сервисы успешно запустились, иначе False
+    """
+    if USE_MOCK_DATA:
+        logger.info("Mock data mode enabled, skipping service availability check")
+        return True
+        
+    logger.info("Checking service availability...")
+    
+    # Проверка доступности database-service
+    import requests
+    from requests.exceptions import RequestException
+    import time
+    
+    max_attempts = 12  # 1 минута при интервале в 5 секунд
+    attempt = 0
+    
+    while attempt < max_attempts:
+        try:
+            logger.info(f"Checking database service at {DATABASE_SERVICE_URL}...")
+            response = requests.get(f"{DATABASE_SERVICE_URL}/health", timeout=HEALTH_CHECK_TIMEOUT)
+            
+            if response.status_code == 200:
+                logger.info("Database service is available!")
+                return True
+                
+            logger.warning(f"Database service returned status code {response.status_code}, waiting...")
+        except RequestException as e:
+            logger.warning(f"Database service not available yet: {e}")
+        
+        attempt += 1
+        if attempt < max_attempts:
+            logger.info(f"Retrying in 5 seconds... ({attempt}/{max_attempts})")
+            time.sleep(5)
+    
+    logger.warning("Could not connect to database service, continuing in fallback mode")
+    return False

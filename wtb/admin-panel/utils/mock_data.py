@@ -2,7 +2,7 @@ import random
 import time
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
-import math
+import numpy as np  # Use NumPy instead of math
 
 # Mock user data for development mode
 MOCK_USERS = [
@@ -142,6 +142,7 @@ def filter_servers(filters):
 def generate_mock_metrics(server_id, hours=24):
     """Generate mock metrics data for a server."""
     # Seed random with server_id to get consistent data for the same server
+    np.random.seed(server_id)
     random.seed(server_id)
     
     # Generate history data points
@@ -158,19 +159,19 @@ def generate_mock_metrics(server_id, hours=24):
         timestamp = now - timedelta(minutes=5 * i)
         
         # Add some random variation
-        latency = max(1, base_latency + random.uniform(-10, 10))
-        packet_loss = max(0, min(100, base_packet_loss + random.uniform(-0.5, 1.5)))
-        resource_usage = max(0, min(100, base_resource_usage + random.uniform(-5, 15)))
+        latency = max(1, base_latency + np.random.uniform(-10, 10))
+        packet_loss = max(0, min(100, base_packet_loss + np.random.uniform(-0.5, 1.5)))
+        resource_usage = max(0, min(100, base_resource_usage + np.random.uniform(-5, 15)))
         
         # Add periodic patterns
         time_factor = i / 12  # Convert to hours
-        latency += 5 * math.sin(time_factor * math.pi / 6)  # 12-hour cycle
-        resource_usage += 10 * math.sin(time_factor * math.pi / 12)  # 24-hour cycle
+        latency += 5 * np.sin(time_factor * np.pi / 6)  # 12-hour cycle
+        resource_usage += 10 * np.sin(time_factor * np.pi / 12)  # 24-hour cycle
         
         # Occasional spikes
-        if random.random() < 0.05:  # 5% chance of spike
-            latency *= random.uniform(1.5, 3)
-            packet_loss *= random.uniform(2, 5)
+        if np.random.random() < 0.05:  # 5% chance of spike
+            latency *= np.random.uniform(1.5, 3)
+            packet_loss *= np.random.uniform(2, 5)
         
         history.append({
             'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
@@ -193,16 +194,16 @@ def generate_mock_metrics(server_id, hours=24):
     }
     
     # Calculate aggregates
-    latency_values = [entry['ping_ms'] for entry in history]
-    packet_loss_values = [entry['packet_loss_percent'] for entry in history]
-    resource_usage_values = [entry['resource_usage_percent'] for entry in history]
+    latency_values = np.array([entry['ping_ms'] for entry in history])
+    packet_loss_values = np.array([entry['packet_loss_percent'] for entry in history])
+    resource_usage_values = np.array([entry['resource_usage_percent'] for entry in history])
     
     aggregates = {
-        'avg_latency': round(sum(latency_values) / len(latency_values), 1) if latency_values else 0,
-        'min_latency': round(min(latency_values), 1) if latency_values else 0,
-        'max_latency': round(max(latency_values), 1) if latency_values else 0,
-        'avg_packet_loss': round(sum(packet_loss_values) / len(packet_loss_values), 2) if packet_loss_values else 0,
-        'avg_resource_usage': round(sum(resource_usage_values) / len(resource_usage_values), 1) if resource_usage_values else 0
+        'avg_latency': round(np.mean(latency_values), 1) if len(latency_values) > 0 else 0,
+        'min_latency': round(np.min(latency_values), 1) if len(latency_values) > 0 else 0,
+        'max_latency': round(np.max(latency_values), 1) if len(latency_values) > 0 else 0,
+        'avg_packet_loss': round(np.mean(packet_loss_values), 2) if len(packet_loss_values) > 0 else 0,
+        'avg_resource_usage': round(np.mean(resource_usage_values), 1) if len(resource_usage_values) > 0 else 0
     }
     
     return {
