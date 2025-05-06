@@ -115,15 +115,124 @@ def add():
     
     return render_template('geolocations/add.html', form=form, now=datetime.now())
 
+# @geolocations_bp.route('/<int:geo_id>/edit', methods=['GET', 'POST'])
+# @login_required
+# def edit(geo_id):
+#     """Edit geolocation information."""
+#     # Fetch geolocation to edit
+#     if USE_MOCK_DATA:
+#         from utils.mock_data import find_geolocation, MOCK_SERVERS, MOCK_GEOLOCATIONS
+#         geolocation = find_geolocation(geo_id)
+#         if not geolocation:
+#             flash('Geolocation not found', 'danger')
+#             return redirect(url_for('geolocations.index'))
+            
+#         # Count servers using this geolocation
+#         geo_servers = [s for s in MOCK_SERVERS if s.get('geolocation_id') == geo_id]
+#         server_count = len(geo_servers)
+        
+#         form = GeolocationForm(obj=geolocation)
+        
+#         if form.validate_on_submit():
+#             try:
+#                 # Update geolocation in mock data
+#                 for geo in MOCK_GEOLOCATIONS:
+#                     if geo['id'] == geo_id:
+#                         geo.update({
+#                             'code': form.code.data.upper(),
+#                             'name': form.name.data,
+#                             'available': form.available.data,
+#                             'description': form.description.data
+#                         })
+#                         break
+                
+#                 flash('Geolocation updated successfully', 'success')
+#                 return redirect(url_for('geolocations.index'))
+#             except Exception as e:
+#                 logger.exception(f"Error updating mock geolocation: {str(e)}")
+#                 flash('Error updating geolocation', 'danger')
+#     else:
+#         from utils.db_client import DatabaseClient
+        
+#         db_client = DatabaseClient(
+#             base_url=current_app.config['API_BASE_URL'],
+#             api_key=current_app.config['API_KEY']
+#         )
+        
+#         try:
+#             response = db_client.get(f'/api/geolocations/{geo_id}')
+#             if response.status_code == 200:
+#                 geolocation = response.json()
+#             else:
+#                 flash('Geolocation not found', 'danger')
+#                 return redirect(url_for('geolocations.index'))
+#         except Exception as e:
+#             logger.exception(f"Error fetching geolocation: {str(e)}")
+#             flash('Service unavailable', 'danger')
+#             return redirect(url_for('geolocations.index'))
+        
+#         form = GeolocationForm(obj=geolocation)
+        
+#         # Count servers using this geolocation
+#         try:
+#             server_response = db_client.get('/api/servers')
+#             if server_response.status_code == 200:
+#                 servers = server_response.json()
+#                 server_count = sum(1 for s in servers if s.get('geolocation_id') == geo_id)
+#                 geo_servers = [s for s in servers if s.get('geolocation_id') == geo_id]
+#             else:
+#                 server_count = 0
+#                 geo_servers = []
+#         except Exception as e:
+#             logger.exception(f"Error counting servers for geolocation: {str(e)}")
+#             server_count = 0
+#             geo_servers = []
+        
+#         if form.validate_on_submit():
+#             try:
+#                 # Prepare updated geolocation data
+#                 geo_data = {
+#                     'code': form.code.data.upper(),
+#                     'name': form.name.data,
+#                     'available': form.available.data,
+#                     'description': form.description.data
+#                 }
+                
+#                 # Update geolocation via API
+#                 response = db_client.put(f'/api/geolocations/{geo_id}', json=geo_data)
+                
+#                 if response.status_code == 200:
+#                     flash('Geolocation updated successfully', 'success')
+#                     return redirect(url_for('geolocations.index'))
+#                 else:
+#                     flash('Failed to update geolocation', 'danger')
+                    
+#             except Exception as e:
+#                 logger.exception(f"Error updating geolocation: {str(e)}")
+#                 flash('Service unavailable', 'danger')
+    
+#     return render_template(
+#         'geolocations/edit.html', 
+#         form=form, 
+#         geolocation=geolocation, 
+#         server_count=server_count,
+#         servers=geo_servers,
+#         now=datetime.now()
+#     )
+
 @geolocations_bp.route('/<int:geo_id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit(geo_id):
     """Edit geolocation information."""
+    # Логирование для отладки
+    logger.info(f"Получен запрос на редактирование геолокации ID: {geo_id}")
+    
     # Fetch geolocation to edit
     if USE_MOCK_DATA:
         from utils.mock_data import find_geolocation, MOCK_SERVERS, MOCK_GEOLOCATIONS
         geolocation = find_geolocation(geo_id)
         if not geolocation:
+            logger.error(f"Геолокация не найдена в моковых данных. ID: {geo_id}")
             flash('Geolocation not found', 'danger')
             return redirect(url_for('geolocations.index'))
             
@@ -136,6 +245,7 @@ def edit(geo_id):
         if form.validate_on_submit():
             try:
                 # Update geolocation in mock data
+                found = False
                 for geo in MOCK_GEOLOCATIONS:
                     if geo['id'] == geo_id:
                         geo.update({
@@ -144,7 +254,13 @@ def edit(geo_id):
                             'available': form.available.data,
                             'description': form.description.data
                         })
+                        found = True
                         break
+                
+                if not found:
+                    logger.error(f"Геолокация не найдена при обновлении моковых данных. ID: {geo_id}")
+                    flash('Geolocation not found for update', 'danger')
+                    return redirect(url_for('geolocations.index'))
                 
                 flash('Geolocation updated successfully', 'success')
                 return redirect(url_for('geolocations.index'))
@@ -160,10 +276,14 @@ def edit(geo_id):
         )
         
         try:
+            logger.info(f"Запрос к API для получения геолокации ID: {geo_id}")
             response = db_client.get(f'/api/geolocations/{geo_id}')
+            
             if response.status_code == 200:
+                logger.info(f"Геолокация успешно получена. ID: {geo_id}")
                 geolocation = response.json()
             else:
+                logger.error(f"Ошибка при получении геолокации. ID: {geo_id}, Код: {response.status_code}")
                 flash('Geolocation not found', 'danger')
                 return redirect(url_for('geolocations.index'))
         except Exception as e:
@@ -171,16 +291,21 @@ def edit(geo_id):
             flash('Service unavailable', 'danger')
             return redirect(url_for('geolocations.index'))
         
-        form = GeolocationForm(obj=geolocation)
+        # Создаем форму и заполняем ее данными
+        form = GeolocationForm()
+        if not form.is_submitted():  # Заполняем только если форма не отправлена
+            form = GeolocationForm(obj=geolocation)
         
         # Count servers using this geolocation
         try:
             server_response = db_client.get('/api/servers')
             if server_response.status_code == 200:
-                servers = server_response.json()
+                servers_data = server_response.json()
+                servers = servers_data.get('servers', [])
                 server_count = sum(1 for s in servers if s.get('geolocation_id') == geo_id)
                 geo_servers = [s for s in servers if s.get('geolocation_id') == geo_id]
             else:
+                logger.warning(f"Не удалось получить серверы. Код: {server_response.status_code}")
                 server_count = 0
                 geo_servers = []
         except Exception as e:
@@ -198,14 +323,18 @@ def edit(geo_id):
                     'description': form.description.data
                 }
                 
+                logger.info(f"Отправка запроса на обновление геолокации. ID: {geo_id}, Данные: {geo_data}")
+                
                 # Update geolocation via API
                 response = db_client.put(f'/api/geolocations/{geo_id}', json=geo_data)
                 
                 if response.status_code == 200:
+                    logger.info(f"Геолокация успешно обновлена. ID: {geo_id}")
                     flash('Geolocation updated successfully', 'success')
                     return redirect(url_for('geolocations.index'))
                 else:
-                    flash('Failed to update geolocation', 'danger')
+                    logger.error(f"Ошибка при обновлении геолокации. ID: {geo_id}, Код: {response.status_code}, Ответ: {response.text}")
+                    flash(f'Failed to update geolocation: {response.text}', 'danger')
                     
             except Exception as e:
                 logger.exception(f"Error updating geolocation: {str(e)}")

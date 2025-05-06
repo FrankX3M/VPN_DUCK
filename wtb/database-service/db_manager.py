@@ -3,7 +3,9 @@ import json
 import psycopg2
 import psycopg2.extras
 import logging
+from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
+
 
 app = Flask(__name__)
 
@@ -1031,6 +1033,389 @@ def add_server_metrics():
         logger.exception(f"Error adding server metrics: {e}")
         return jsonify({"error": str(e)}), 500
 
+# Анализ метрик серверов
+@app.route('/api/servers/metrics/analyze', methods=['POST'])
+def analyze_server_metrics():
+    """Анализ метрик серверов для выявления аномалий и тенденций"""
+    try:
+        data = request.json
+        
+        # Проверка наличия данных
+        if not data:
+            return jsonify({"error": "Отсутствуют данные для анализа"}), 400
+            
+        # Получение параметров запроса
+        server_ids = data.get('server_ids', [])
+        time_period = data.get('time_period', 24)  # часы
+        metrics_types = data.get('metrics_types', ['all'])
+        
+        results = {}
+        anomalies = []
+        
+        # Анализ метрик для выбранных серверов
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                for server_id in server_ids:
+                    # Проверка существования сервера
+                    cur.execute("SELECT id FROM remote_servers WHERE id = %s", (server_id,))
+                    if not cur.fetchone():
+                        results[server_id] = {"error": "Сервер не найден"}
+                        continue
+                    
+                    # Вычисляем временную метку для фильтрации по времени
+                    from datetime import datetime, timedelta
+                    time_threshold = datetime.now() - timedelta(hours=time_period)
+                    
+                    # Получение метрик сервера за указанный период
+                    query = """
+                    SELECT 
+                        server_id,
+                        AVG(cpu_load) as avg_cpu,
+                        MAX(cpu_load) as max_cpu,
+                        AVG(memory_usage) as avg_memory,
+                        MAX(memory_usage) as max_memory,
+                        AVG(network_in) as avg_network_in,
+                        AVG(network_out) as avg_network_out,
+                        COUNT(*) as data_points
+                    FROM 
+                        server_metrics
+                    WHERE 
+                        server_id = %s AND
+                        collected_at >= %s
+                    GROUP BY 
+                        server_id
+                    """
+                    
+                    cur.execute(query, (server_id, time_threshold))
+                    metrics_summary = cur.fetchone()
+                    
+                    if not metrics_summary:
+                        results[server_id] = {"status": "no_data"}
+                        continue
+                        
+                    # Анализ аномалий (пример: высокая загрузка CPU)
+                    if metrics_summary['max_cpu'] > 90:
+                        anomalies.append({
+                            "server_id": server_id,
+                            "metric": "cpu_load",
+                            "value": metrics_summary['max_cpu'],
+                            "severity": "high",
+                            "message": f"Высокая загрузка CPU: {metrics_summary['max_cpu']}%"
+                        })
+                    
+                    # Добавление результатов анализа
+                    results[server_id] = {
+                        "status": "analyzed",
+                        "summary": dict(metrics_summary),
+                        "anomalies": [a for a in anomalies if a['server_id'] == server_id]
+                    }
+        
+        return jsonify({
+            "results": results,
+            "anomalies": anomalies,
+            "analyzed_servers": len(server_ids),
+            "servers_with_data": len([s for s in results.values() if s.get('status') != 'no_data'])
+        })
+                
+    except Exception as e:
+        logger.exception(f"Ошибка при анализе метрик: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/geolocations/check', methods=['GET'])
+def check_geolocations():
+    """Проверка доступности геолокаций"""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # Получение списка геолокаций
+                cur.execute("""
+                    SELECT 
+                        g.id, 
+                        g.code, 
+                        g.name, 
+                        g.available,
+                        COUNT(rs.id) as server_count,
+                        SUM(CASE WHEN rs.is_active = TRUE THEN 1 ELSE 0 END) as active_servers
+                    FROM 
+                        geolocations g
+                    LEFT JOIN 
+                        remote_servers rs ON g.id = rs.geolocation_id
+                    GROUP BY 
+                        g.id, g.code, g.name, g.available
+                    ORDER BY 
+                        g.name
+                """)
+                
+                geolocations = []
+                for row in cur.fetchall():
+                    geolocations.append({
+                        "id": row['id'],
+                        "code": row['code'],
+                        "name": row['name'],
+                        "available": row['available'],
+                        "server_count": row['server_count'],
+                        "active_servers": row['active_servers'],
+                        "status": "operational" if row['active_servers'] > 0 else "unavailable"
+                    })
+                
+                return jsonify({"geolocations": geolocations})
+                
+    except Exception as e:
+        logger.exception(f"Ошибка при проверке геолокаций: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/configs/migrate_users', methods=['POST'])
+def migrate_users():
+    """Миграция пользователей между серверами"""
+    try:
+        data = request.json
+        
+        # Проверка обязательных параметров
+        required_fields = ['source_server_id', 'target_server_id']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Отсутствует обязательное поле: {field}"}), 400
+        
+        source_server_id = data['source_server_id']
+        target_server_id = data['target_server_id']
+        user_ids = data.get('user_ids', [])  # Если не указаны, мигрируем всех пользователей
+        
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Проверка существования серверов
+                cur.execute("SELECT id FROM remote_servers WHERE id = %s", (source_server_id,))
+                if not cur.fetchone():
+                    return jsonify({"error": f"Сервер-источник не найден: {source_server_id}"}), 404
+                
+                cur.execute("SELECT id FROM remote_servers WHERE id = %s", (target_server_id,))
+                if not cur.fetchone():
+                    return jsonify({"error": f"Сервер-назначение не найден: {target_server_id}"}), 404
+                
+                # Получение конфигураций для миграции
+                if user_ids:
+                    query = """
+                    SELECT id, user_id FROM configurations 
+                    WHERE server_id = %s AND active = TRUE AND user_id = ANY(%s)
+                    """
+                    cur.execute(query, (source_server_id, user_ids))
+                else:
+                    query = """
+                    SELECT id, user_id FROM configurations 
+                    WHERE server_id = %s AND active = TRUE
+                    """
+                    cur.execute(query, (source_server_id,))
+                
+                configs = cur.fetchall()
+                
+                if not configs:
+                    return jsonify({"message": "Нет конфигураций для миграции", "migrated": 0}), 200
+                
+                # Обновление конфигураций
+                migrated_count = 0
+                for config in configs:
+                    # Логируем миграцию
+                    cur.execute("""
+                    INSERT INTO server_migrations 
+                    (user_id, from_server_id, to_server_id, migration_reason, migration_time, success)
+                    VALUES (%s, %s, %s, %s, NOW(), TRUE)
+                    """, (config[1], source_server_id, target_server_id, data.get('reason', 'admin_request')))
+                    
+                    # Обновляем конфигурацию
+                    cur.execute("""
+                    UPDATE configurations
+                    SET server_id = %s, updated_at = NOW()
+                    WHERE id = %s
+                    """, (target_server_id, config[0]))
+                    
+                    migrated_count += 1
+                
+                conn.commit()
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Успешно мигрировано {migrated_count} пользователей",
+                    "migrated": migrated_count,
+                    "total": len(configs)
+                })
+                
+    except Exception as e:
+        logger.exception(f"Ошибка при миграции пользователей: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/geolocations/available', methods=['GET'])
+def get_available_geolocations():
+    """Получение списка доступных геолокаций"""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # Получение списка доступных геолокаций с активными серверами
+                cur.execute("""
+                    SELECT 
+                        g.id, 
+                        g.code, 
+                        g.name, 
+                        g.description,
+                        COUNT(rs.id) as server_count,
+                        SUM(CASE WHEN rs.is_active = TRUE THEN 1 ELSE 0 END) as active_servers
+                    FROM 
+                        geolocations g
+                    JOIN 
+                        remote_servers rs ON g.id = rs.geolocation_id
+                    WHERE 
+                        g.available = TRUE AND rs.is_active = TRUE
+                    GROUP BY 
+                        g.id, g.code, g.name, g.description
+                    HAVING 
+                        SUM(CASE WHEN rs.is_active = TRUE THEN 1 ELSE 0 END) > 0
+                    ORDER BY 
+                        g.name
+                """)
+                
+                geolocations = [dict(row) for row in cur.fetchall()]
+                
+                return jsonify({"geolocations": geolocations})
+                
+    except Exception as e:
+        logger.exception(f"Ошибка при получении доступных геолокаций: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/cleanup_expired', methods=['POST'])
+def cleanup_expired():
+    """Очистка просроченных данных (конфигурации, токены и т.д.)"""
+    try:
+        data = request.json or {}
+        
+        # Параметры для контроля очистки разных типов данных
+        cleanup_configs = data.get('cleanup_configs', True)
+        cleanup_metrics = data.get('cleanup_metrics', True)
+        metrics_retention_days = data.get('metrics_retention_days', 30)
+        
+        from datetime import datetime, timedelta
+        metrics_threshold = datetime.now() - timedelta(days=metrics_retention_days)
+        
+        cleaned_data = {
+            "expired_configs": 0,
+            "old_metrics": 0
+        }
+        
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Очистка просроченных конфигураций
+                if cleanup_configs:
+                    cur.execute("""
+                    UPDATE configurations
+                    SET active = FALSE
+                    WHERE expiry_time < NOW() AND active = TRUE
+                    """)
+                    cleaned_data["expired_configs"] = cur.rowcount
+                
+                # Очистка старых метрик
+                if cleanup_metrics:
+                    cur.execute("""
+                    DELETE FROM server_metrics
+                    WHERE collected_at < %s
+                    """, (metrics_threshold,))
+                    cleaned_data["old_metrics"] = cur.rowcount
+                
+                conn.commit()
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Очистка просроченных данных выполнена успешно",
+                    "cleaned_data": cleaned_data
+                })
+                
+    except Exception as e:
+        logger.exception(f"Ошибка при очистке просроченных данных: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/geolocations/<int:geo_id>', methods=['GET'])
+def get_geolocation(geo_id):
+    """Получение информации о геолокации по ID"""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                query = """
+                SELECT * FROM geolocations WHERE id = %s
+                """
+                cur.execute(query, (geo_id,))
+                geolocation = cur.fetchone()
+                
+                if not geolocation:
+                    logger.warning(f"Геолокация не найдена. ID: {geo_id}")
+                    return jsonify({"error": "Geolocation not found"}), 404
+                
+                return jsonify(dict(geolocation))
+    except Exception as e:
+        logger.exception(f"Ошибка при получении геолокации: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/geolocations/<int:geo_id>', methods=['PUT'])
+def update_geolocation(geo_id):
+    """Обновление информации о геолокации"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Проверка существования геолокации
+                cur.execute("SELECT id FROM geolocations WHERE id = %s", (geo_id,))
+                if not cur.fetchone():
+                    logger.warning(f"Геолокация не найдена при обновлении. ID: {geo_id}")
+                    return jsonify({"error": "Geolocation not found"}), 404
+                
+                # Подготовка запроса на обновление
+                update_fields = []
+                params = []
+                
+                if 'code' in data:
+                    update_fields.append("code = %s")
+                    params.append(data['code'])
+                
+                if 'name' in data:
+                    update_fields.append("name = %s")
+                    params.append(data['name'])
+                
+                if 'available' in data:
+                    update_fields.append("available = %s")
+                    params.append(data['available'])
+                
+                if 'description' in data:
+                    update_fields.append("description = %s")
+                    params.append(data['description'])
+                
+                if not update_fields:
+                    return jsonify({"message": "No fields to update"}), 400
+                
+                # Добавление ID в параметры
+                params.append(geo_id)
+                
+                # Выполнение запроса на обновление
+                query = f"""
+                UPDATE geolocations 
+                SET {', '.join(update_fields)}
+                WHERE id = %s
+                RETURNING id, code, name, available, description
+                """
+                
+                cur.execute(query, params)
+                updated_geo = cur.fetchone()
+                conn.commit()
+                
+                if updated_geo:
+                    logger.info(f"Геолокация успешно обновлена. ID: {geo_id}")
+                    column_names = [desc[0] for desc in cur.description]
+                    result = dict(zip(column_names, updated_geo))
+                    return jsonify(result)
+                else:
+                    logger.error(f"Не удалось обновить геолокацию. ID: {geo_id}")
+                    return jsonify({"error": "Failed to update geolocation"}), 500
+                
+    except Exception as e:
+        logger.exception(f"Ошибка при обновлении геолокации: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5002) 

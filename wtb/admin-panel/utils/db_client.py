@@ -222,3 +222,91 @@ class DatabaseClient:
         except Exception as e:
             logger.exception(f"Error during authentication: {str(e)}")
             return None
+    
+    def check_geolocations(self):
+        """Проверка доступности геолокаций"""
+        try:
+            response = self.get('/api/geolocations/check')
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning(f"Ошибка при проверке геолокаций: {response.status_code}")
+                return []
+        except Exception as e:
+            logger.exception(f"Ошибка при проверке геолокаций: {str(e)}")
+            return []
+
+    def migrate_users(self, source_server_id, target_server_id, user_ids=None, reason=None):
+        """Миграция пользователей между серверами"""
+        try:
+            data = {
+                "source_server_id": source_server_id,
+                "target_server_id": target_server_id
+            }
+            
+            if user_ids:
+                data["user_ids"] = user_ids
+            
+            if reason:
+                data["reason"] = reason
+                
+            response = self.post('/api/configs/migrate_users', json=data)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning(f"Ошибка при миграции пользователей: {response.status_code}")
+                return {"success": False, "error": f"HTTP error: {response.status_code}"}
+        except Exception as e:
+            logger.exception(f"Ошибка при миграции пользователей: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+    def get_available_geolocations(self):
+        """Получение списка доступных геолокаций"""
+        try:
+            response = self.get('/api/geolocations/available')
+            if response.status_code == 200:
+                return response.json().get('geolocations', [])
+            else:
+                logger.warning(f"Ошибка при получении доступных геолокаций: {response.status_code}")
+                return []
+        except Exception as e:
+            logger.exception(f"Ошибка при получении доступных геолокаций: {str(e)}")
+            return []
+
+    def cleanup_expired_data(self, cleanup_configs=True, cleanup_metrics=True, metrics_retention_days=30):
+        """Очистка просроченных данных"""
+        try:
+            data = {
+                "cleanup_configs": cleanup_configs,
+                "cleanup_metrics": cleanup_metrics,
+                "metrics_retention_days": metrics_retention_days
+            }
+            
+            response = self.post('/api/cleanup_expired', json=data)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning(f"Ошибка при очистке просроченных данных: {response.status_code}")
+                return {"success": False, "error": f"HTTP error: {response.status_code}"}
+        except Exception as e:
+            logger.exception(f"Ошибка при очистке просроченных данных: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+    def analyze_server_metrics(self, server_ids, time_period=24, metrics_types=None):
+        """Анализ метрик серверов"""
+        try:
+            data = {
+                "server_ids": server_ids,
+                "time_period": time_period,
+                "metrics_types": metrics_types or ['all']
+            }
+            
+            response = self.post('/api/servers/metrics/analyze', json=data)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning(f"Ошибка при анализе метрик: {response.status_code}")
+                return {"success": False, "error": f"HTTP error: {response.status_code}"}
+        except Exception as e:
+            logger.exception(f"Ошибка при анализе метрик: {str(e)}")
+            return {"success": False, "error": str(e)}
