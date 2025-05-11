@@ -231,6 +231,11 @@ def add_server():
         logger.exception(f"Error adding server: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/servers', methods=['POST'])
+def add_server_alias():
+    """Алиас для добавления серверов через стандартный URL"""
+    return add_server()
+
 @app.route('/api/servers/<int:server_id>', methods=['PUT'])
 def update_server(server_id):
     """Обновление информации об удаленном сервере"""
@@ -1450,6 +1455,58 @@ def delete_geolocation(geo_id):
                 })
     except Exception as e:
         logger.exception(f"Ошибка при удалении геолокации: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/geolocations', methods=['POST'])
+def add_geolocation():
+    """Добавление новой геолокации"""
+    try:
+        data = request.json
+        
+        # Проверка обязательных полей
+        required_fields = ['code', 'name']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Проверка уникальности кода геолокации
+                cur.execute("SELECT id FROM geolocations WHERE code = %s", (data['code'],))
+                if cur.fetchone():
+                    logger.warning(f"Геолокация с кодом {data['code']} уже существует")
+                    return jsonify({"error": f"Geolocation with code {data['code']} already exists"}), 400
+                
+                # Вставка новой геолокации
+                query = """
+                INSERT INTO geolocations (
+                    code, name, description, available
+                ) VALUES (
+                    %s, %s, %s, %s
+                ) RETURNING id, code, name, description, available
+                """
+                
+                cur.execute(query, (
+                    data['code'].upper(),
+                    data['name'],
+                    data.get('description', ''),
+                    data.get('available', True)
+                ))
+                
+                new_geo = cur.fetchone()
+                conn.commit()
+                
+                if new_geo:
+                    column_names = [desc[0] for desc in cur.description]
+                    result = dict(zip(column_names, new_geo))
+                    logger.info(f"Геолокация успешно добавлена: {result}")
+                    return jsonify(result), 201
+                else:
+                    logger.error(f"Не удалось добавить геолокацию")
+                    return jsonify({"error": "Failed to add geolocation"}), 500
+                
+    except Exception as e:
+        logger.exception(f"Ошибка при добавлении геолокации: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
