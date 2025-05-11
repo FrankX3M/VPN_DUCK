@@ -172,43 +172,61 @@ def create_app(config_class=Config):
             '''
             return error_html, 500
 
-    # User loader for login manager
+    # # User loader for login manager
+    # @login_manager.user_loader
+    # def load_user(user_id):
+    #     from utils.db_client import DatabaseClient
+    #     from config import USE_MOCK_DATA, MOCK_USERS
+        
+    #     try:
+    #         if USE_MOCK_DATA:
+    #             # Find user in mock data
+    #             for user in MOCK_USERS:
+    #                 if str(user.get('id')) == str(user_id):
+    #                     return User(
+    #                         id=user.get('id'),
+    #                         username=user.get('username'),
+    #                         email=user.get('email'),
+    #                         role=user.get('role', 'user')
+    #                     )
+    #         else:
+    #             db_client = DatabaseClient(
+    #                 base_url=app.config['API_BASE_URL'],
+    #                 api_key=app.config['API_KEY']
+    #             )
+    #             response = db_client.get(f'/api/users/{user_id}')
+    #             if response and response.status_code == 200:
+    #                 user_data = response.json()
+    #                 return User(
+    #                     id=user_data.get('id'),
+    #                     username=user_data.get('username'),
+    #                     email=user_data.get('email'),
+    #                     role=user_data.get('role', 'user')
+    #                 )
+    #     except Exception as e:
+    #         logger.exception(f"Error loading user: {str(e)}")
+        
+    #     return None
+
+    # # Health check endpoint for container orchestration
+
     @login_manager.user_loader
     def load_user(user_id):
-        from utils.db_client import DatabaseClient
-        from config import USE_MOCK_DATA, MOCK_USERS
-        
+        """Simplified user loader that only loads the admin user."""
         try:
-            if USE_MOCK_DATA:
-                # Find user in mock data
-                for user in MOCK_USERS:
-                    if str(user.get('id')) == str(user_id):
-                        return User(
-                            id=user.get('id'),
-                            username=user.get('username'),
-                            email=user.get('email'),
-                            role=user.get('role', 'user')
-                        )
-            else:
-                db_client = DatabaseClient(
-                    base_url=app.config['API_BASE_URL'],
-                    api_key=app.config['API_KEY']
+            # Only load user with ID 1 (admin)
+            if str(user_id) == '1':
+                return User(
+                    id=1,
+                    username=os.environ.get('ADMIN_USERNAME', 'admin'),
+                    email='admin@example.com',
+                    role='admin'
                 )
-                response = db_client.get(f'/api/users/{user_id}')
-                if response and response.status_code == 200:
-                    user_data = response.json()
-                    return User(
-                        id=user_data.get('id'),
-                        username=user_data.get('username'),
-                        email=user_data.get('email'),
-                        role=user_data.get('role', 'user')
-                    )
         except Exception as e:
             logger.exception(f"Error loading user: {str(e)}")
         
         return None
 
-    # Health check endpoint for container orchestration
     @app.route('/health')
     def health_check():
         from flask import jsonify

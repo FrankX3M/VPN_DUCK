@@ -19,7 +19,9 @@ class ChartGenerator:
         if not metrics_data or 'history' not in metrics_data or not metrics_data['history']:
             logger.warning(f"No metrics data available for {chart_type} chart")
             return None
-        
+        if not metrics_data or not isinstance(metrics_data, dict) or 'history' not in metrics_data or not metrics_data['history']:
+            logger.warning(f"No metrics data available for {chart_type} chart")
+            return None
         try:
             import matplotlib
             matplotlib.use('Agg')  # Use non-interactive backend
@@ -27,8 +29,14 @@ class ChartGenerator:
             
             # Extract data points from history
             history = metrics_data['history']
+            if not isinstance(history, list):
+                logger.warning(f"History data is not a list: {type(history)}")
+                return None
             timestamps = [entry.get('timestamp') for entry in history]
-            
+
+
+           
+
             if chart_type == 'latency':
                 values = [entry.get('ping_ms', 0) for entry in history]
                 title = 'Latency (ms)'

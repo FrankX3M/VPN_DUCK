@@ -35,35 +35,48 @@ def dashboard():
         geolocation_charts = {}
         
         for server in servers:
-            server_id = server.get('id')
-            metrics_data = generate_mock_metrics(server_id, hours)
-            
-            all_metrics.append({
-                'server': server,
-                'metrics': metrics_data
-            })
-            
-            # Generate charts for geolocation if not already done
-            geo_id = server.get('geolocation_id')
-            if geo_id and geo_id not in geolocation_charts:
-                geo_name = next((g['name'] for g in geolocations if g['id'] == geo_id), f"Location {geo_id}")
-                
-                # Count servers in this geolocation
-                servers_count = sum(1 for s in servers if s.get('geolocation_id') == geo_id)
-                
-                # Generate charts
-                chart_generator = ChartGenerator()
-                latency_chart = chart_generator.generate_metrics_image(
-                    metrics_data, 'latency', hours)
-                packet_loss_chart = chart_generator.generate_metrics_image(
-                    metrics_data, 'packet_loss', hours)
+            try:
+                # Проверяем, что server является словарем
+                if not isinstance(server, dict):
+                    logger.warning(f"Сервер не является словарем: {server}")
+                    continue
                     
-                geolocation_charts[geo_id] = {
-                    'geo_name': geo_name,
-                    'servers_count': servers_count,
-                    'latency_chart': latency_chart,
-                    'packet_loss_chart': packet_loss_chart
-                }
+                server_id = server.get('id')
+                if server_id is None:
+                    logger.warning(f"Сервер не имеет ID: {server}")
+                    continue
+                    
+                metrics_data = generate_mock_metrics(server_id, hours)
+                
+                all_metrics.append({
+                    'server': server,
+                    'metrics': metrics_data
+                })
+                
+                # Generate charts for geolocation if not already done
+                geo_id = server.get('geolocation_id')
+                if geo_id and geo_id not in geolocation_charts:
+                    geo_name = next((g['name'] for g in geolocations if g['id'] == geo_id), f"Location {geo_id}")
+                    
+                    # Count servers in this geolocation
+                    servers_count = sum(1 for s in servers if isinstance(s, dict) and s.get('geolocation_id') == geo_id)
+                    
+                    # Generate charts
+                    chart_generator = ChartGenerator()
+                    latency_chart = chart_generator.generate_metrics_image(
+                        metrics_data, 'latency', hours)
+                    packet_loss_chart = chart_generator.generate_metrics_image(
+                        metrics_data, 'packet_loss', hours)
+                        
+                    geolocation_charts[geo_id] = {
+                        'geo_name': geo_name,
+                        'servers_count': servers_count,
+                        'latency_chart': latency_chart,
+                        'packet_loss_chart': packet_loss_chart
+                    }
+            except Exception as e:
+                server_id = server.get('id') if isinstance(server, dict) else str(server)
+                logger.exception(f"Error generating metrics for server {server_id}: {str(e)}")
     else:
         # Get all servers from API
         from utils.db_client import DatabaseClient
@@ -77,7 +90,16 @@ def dashboard():
         try:
             response = db_client.get('/api/servers')
             if response.status_code == 200:
-                servers = response.json()
+                data = response.json()
+                # Проверяем формат данных
+                if isinstance(data, dict) and 'servers' in data:
+                    servers = data['servers']
+                elif isinstance(data, list):
+                    servers = data
+                else:
+                    logger.warning(f"Неожиданный формат данных от API: {data}")
+                    servers = []
+                    flash('Unexpected data format from API', 'warning')
             else:
                 servers = []
                 flash('Failed to fetch server list', 'warning')
@@ -90,7 +112,16 @@ def dashboard():
         try:
             response = db_client.get('/api/geolocations')
             if response.status_code == 200:
-                geolocations = response.json()
+                data = response.json()
+                # Проверяем формат данных
+                if isinstance(data, dict) and 'geolocations' in data:
+                    geolocations = data['geolocations']
+                elif isinstance(data, list):
+                    geolocations = data
+                else:
+                    logger.warning(f"Неожиданный формат данных от API (geolocations): {data}")
+                    geolocations = []
+                    flash('Unexpected data format from API (geolocations)', 'warning')
             else:
                 geolocations = []
                 flash('Failed to fetch geolocation list', 'warning')
@@ -104,8 +135,18 @@ def dashboard():
         
         for server in servers:
             try:
-                metrics_response = db_client.get(f'/api/servers/{server["id"]}/metrics', 
-                                               params={'hours': hours})
+                # Проверяем, что server является словарем
+                if not isinstance(server, dict):
+                    logger.warning(f"Сервер не является словарем: {server}")
+                    continue
+                    
+                server_id = server.get('id')
+                if server_id is None:
+                    logger.warning(f"Сервер не имеет ID: {server}")
+                    continue
+                
+                metrics_response = db_client.get(f'/api/servers/{server_id}/metrics', 
+                                             params={'hours': hours})
                 
                 if metrics_response.status_code == 200:
                     metrics_data = metrics_response.json()
@@ -117,10 +158,10 @@ def dashboard():
                     # Generate charts for geolocation if not already done
                     geo_id = server.get('geolocation_id')
                     if geo_id and geo_id not in geolocation_charts:
-                        geo_name = next((g['name'] for g in geolocations if g['id'] == geo_id), f"Location {geo_id}")
+                        geo_name = next((g['name'] for g in geolocations if isinstance(g, dict) and g.get('id') == geo_id), f"Location {geo_id}")
                         
                         # Count servers in this geolocation
-                        servers_count = sum(1 for s in servers if s.get('geolocation_id') == geo_id)
+                        servers_count = sum(1 for s in servers if isinstance(s, dict) and s.get('geolocation_id') == geo_id)
                         
                         # Generate charts
                         chart_generator = ChartGenerator()
@@ -135,9 +176,9 @@ def dashboard():
                             'latency_chart': latency_chart,
                             'packet_loss_chart': packet_loss_chart
                         }
-                        
             except Exception as e:
-                logger.exception(f"Error fetching metrics for server {server.get('id')}: {str(e)}")
+                server_id = server.get('id') if isinstance(server, dict) else str(server)
+                logger.exception(f"Error fetching metrics for server {server_id}: {str(e)}")
     
     return render_template(
         'dashboard.html',

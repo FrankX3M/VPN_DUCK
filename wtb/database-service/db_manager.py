@@ -5,6 +5,7 @@ import psycopg2.extras
 import logging
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
+from user_auth_api import users_api
 
 
 app = Flask(__name__)
@@ -1415,6 +1416,40 @@ def update_geolocation(geo_id):
                 
     except Exception as e:
         logger.exception(f"Ошибка при обновлении геолокации: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/geolocations/<int:geo_id>', methods=['DELETE'])
+def delete_geolocation(geo_id):
+    """Удаление геолокации"""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Проверка существования геолокации
+                cur.execute("SELECT id FROM geolocations WHERE id = %s", (geo_id,))
+                if not cur.fetchone():
+                    logger.warning(f"Геолокация не найдена при удалении. ID: {geo_id}")
+                    return jsonify({"error": "Geolocation not found"}), 404
+                
+                # Проверка использования геолокации серверами
+                cur.execute("SELECT COUNT(*) FROM remote_servers WHERE geolocation_id = %s", (geo_id,))
+                server_count = cur.fetchone()[0]
+                if server_count > 0:
+                    logger.warning(f"Невозможно удалить геолокацию, так как она используется {server_count} серверами. ID: {geo_id}")
+                    return jsonify({
+                        "error": f"Cannot delete geolocation: it is used by {server_count} servers. Change the servers' geolocation first."
+                    }), 400
+                
+                # Удаление геолокации
+                cur.execute("DELETE FROM geolocations WHERE id = %s", (geo_id,))
+                conn.commit()
+                
+                logger.info(f"Геолокация успешно удалена. ID: {geo_id}")
+                return jsonify({
+                    "success": True,
+                    "message": "Geolocation deleted successfully"
+                })
+    except Exception as e:
+        logger.exception(f"Ошибка при удалении геолокации: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':

@@ -114,48 +114,66 @@ class DatabaseClient:
         return self._handle_request('delete', endpoint)
     
     # Additional convenience methods for specific API endpoints
-    
     def get_servers(self, filters=None):
-        """
-        Get list of servers with optional filtering.
-        
-        Args:
-            filters (dict, optional): Filter parameters
-            
-        Returns:
-            list: List of server objects or empty list on error
-        """
         try:
             response = self.get('/api/servers', params=filters)
             if response.status_code == 200:
-                return response.json()
+                data = response.json()
+                # Проверяем, что данные имеют ожидаемый формат
+                if isinstance(data, dict) and 'servers' in data:
+                    return data['servers']
+                elif isinstance(data, list):
+                    return data
+                else:
+                    logger.warning(f"Неожиданный формат данных от API: {data}")
+                    return []
             else:
                 logger.warning(f"Failed to get servers. Status: {response.status_code}")
                 return []
         except Exception as e:
             logger.exception(f"Error fetching servers: {str(e)}")
             return []
-    
-    def get_server(self, server_id):
-        """
-        Get a single server by ID.
+    # def get_servers(self, filters=None):
+    #     """
+    #     Get list of servers with optional filtering.
         
-        Args:
-            server_id: Server ID
+    #     Args:
+    #         filters (dict, optional): Filter parameters
             
-        Returns:
-            dict: Server object or None on error
-        """
-        try:
-            response = self.get(f'/api/servers/{server_id}')
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.warning(f"Failed to get server {server_id}. Status: {response.status_code}")
-                return None
-        except Exception as e:
-            logger.exception(f"Error fetching server {server_id}: {str(e)}")
-            return None
+    #     Returns:
+    #         list: List of server objects or empty list on error
+    #     """
+    #     try:
+    #         response = self.get('/api/servers', params=filters)
+    #         if response.status_code == 200:
+    #             return response.json()
+    #         else:
+    #             logger.warning(f"Failed to get servers. Status: {response.status_code}")
+    #             return []
+    #     except Exception as e:
+    #         logger.exception(f"Error fetching servers: {str(e)}")
+    #         return []
+    
+    # def get_server(self, server_id):
+    #     """
+    #     Get a single server by ID.
+        
+    #     Args:
+    #         server_id: Server ID
+            
+    #     Returns:
+    #         dict: Server object or None on error
+    #     """
+    #     try:
+    #         response = self.get(f'/api/servers/{server_id}')
+    #         if response.status_code == 200:
+    #             return response.json()
+    #         else:
+    #             logger.warning(f"Failed to get server {server_id}. Status: {response.status_code}")
+    #             return None
+    #     except Exception as e:
+    #         logger.exception(f"Error fetching server {server_id}: {str(e)}")
+    #         return None
     
     def get_geolocations(self):
         """

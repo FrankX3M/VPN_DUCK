@@ -212,3 +212,10 @@ def generate_mock_metrics(server_id, hours=24):
         'history': history,
         'aggregates': aggregates
     }
+
+def find_user_by_id(user_id):
+    """Find user by ID in mock data."""
+    for user in MOCK_USERS:
+        if str(user.get('id')) == str(user_id):
+            return user
+    return None

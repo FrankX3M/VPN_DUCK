@@ -34,7 +34,7 @@ def index():
         
         # Update filter form choices
         filter_form.geolocation.choices = [('all', 'All Geolocations')] + [
-            (str(geo['id']), geo['name']) for geo in geolocations
+            (str(geo['id']), geo['name']) for geo in geolocations if isinstance(geo, dict)
         ]
         
         # Prepare filter params
@@ -42,7 +42,10 @@ def index():
         if search:
             filters['search'] = search
         if geolocation != 'all':
-            filters['geolocation_id'] = int(geolocation)
+            try:
+                filters['geolocation_id'] = int(geolocation)
+            except (ValueError, TypeError):
+                pass
         if status != 'all':
             filters['status'] = status
             
@@ -60,9 +63,20 @@ def index():
         try:
             geo_response = db_client.get('/api/geolocations')
             if geo_response.status_code == 200:
-                geolocations = geo_response.json()
+                geo_data = geo_response.json()
+                # Проверяем формат данных
+                if isinstance(geo_data, dict) and 'geolocations' in geo_data:
+                    geolocations = geo_data['geolocations']
+                elif isinstance(geo_data, list):
+                    geolocations = geo_data
+                else:
+                    logger.warning(f"Неожиданный формат данных от API (geolocations): {geo_data}")
+                    geolocations = []
+                    
+                # Обновляем список выбора после проверки данных
                 filter_form.geolocation.choices = [('all', 'All Geolocations')] + [
-                    (str(geo['id']), geo['name']) for geo in geolocations
+                    (str(geo['id']), geo['name']) for geo in geolocations 
+                    if isinstance(geo, dict) and 'id' in geo and 'name' in geo
                 ]
             else:
                 filter_form.geolocation.choices = [('all', 'All Geolocations')]
@@ -84,7 +98,16 @@ def index():
         try:
             response = db_client.get('/api/servers', params=filter_params)
             if response.status_code == 200:
-                servers = response.json()
+                data = response.json()
+                # Проверяем формат данных
+                if isinstance(data, dict) and 'servers' in data:
+                    servers = data['servers']
+                elif isinstance(data, list):
+                    servers = data
+                else:
+                    logger.warning(f"Неожиданный формат данных от API (servers): {data}")
+                    servers = []
+                    flash('Unexpected data format from API (servers)', 'warning')
             else:
                 servers = []
                 flash('Failed to fetch server list', 'warning')
@@ -96,9 +119,9 @@ def index():
     # Calculate server stats
     stats = {
         'total': len(servers),
-        'active': sum(1 for s in servers if s.get('status') == 'active'),
-        'inactive': sum(1 for s in servers if s.get('status') == 'inactive'),
-        'degraded': sum(1 for s in servers if s.get('status') == 'degraded')
+        'active': sum(1 for s in servers if isinstance(s, dict) and s.get('status') == 'active'),
+        'inactive': sum(1 for s in servers if isinstance(s, dict) and s.get('status') == 'inactive'),
+        'degraded': sum(1 for s in servers if isinstance(s, dict) and s.get('status') == 'degraded')
     }
     
     return render_template(
@@ -127,7 +150,7 @@ def details(server_id):
         
         # Generate charts
         charts = {}
-        if metrics and 'history' in metrics and metrics['history']:
+        if metrics and isinstance(metrics, dict) and 'history' in metrics and metrics['history']:
             chart_generator = ChartGenerator()
             charts['latency'] = chart_generator.generate_metrics_image(metrics, 'latency')
             charts['packet_loss'] = chart_generator.generate_metrics_image(metrics, 'packet_loss')
@@ -140,7 +163,8 @@ def details(server_id):
             
         # Find geolocation information
         from utils.mock_data import find_geolocation
-        geo = find_geolocation(server.get('geolocation_id', 0)) or {'name': 'Unknown', 'code': 'N/A'}
+        geo_id = server.get('geolocation_id') if isinstance(server, dict) else None
+        geo = find_geolocation(geo_id) or {'name': 'Unknown', 'code': 'N/A'}
     else:
         # Get server information
         try:
@@ -159,7 +183,11 @@ def details(server_id):
                 return redirect(url_for('servers.index'))
                 
             server = server_response.json()
-            
+            if not isinstance(server, dict):
+                logger.error(f"Неверный формат данных сервера: {server}")
+                flash("Invalid server data format", "danger")
+                return redirect(url_for('servers.index'))
+                
             # Get geolocation information
             geo_id = server.get('geolocation_id')
             geo = None
@@ -167,6 +195,9 @@ def details(server_id):
                 geo_response = db_client.get(f'/api/geolocations/{geo_id}')
                 if geo_response.status_code == 200:
                     geo = geo_response.json()
+                    if not isinstance(geo, dict):
+                        logger.warning(f"Неверный формат данных геолокации: {geo}")
+                        geo = {'name': 'Unknown', 'code': 'N/A'}
                 else:
                     geo = {'name': 'Unknown', 'code': 'N/A'}
             else:
@@ -188,7 +219,7 @@ def details(server_id):
             
             # Generate charts
             charts = {}
-            if metrics and 'history' in metrics and metrics['history']:
+            if metrics and isinstance(metrics, dict) and 'history' in metrics and metrics['history']:
                 chart_generator = ChartGenerator()
                 charts['latency'] = chart_generator.generate_metrics_image(metrics, 'latency')
                 charts['packet_loss'] = chart_generator.generate_metrics_image(metrics, 'packet_loss')
@@ -225,12 +256,24 @@ def add():
     if USE_MOCK_DATA:
         # Use mock data for development
         from utils.mock_data import MOCK_GEOLOCATIONS, MOCK_SERVERS
-        form.geolocation_id.choices = [(g['id'], g['name']) for g in MOCK_GEOLOCATIONS if g.get('available', True)]
+        try:
+            # Проверяем типы данных перед обработкой
+            form.geolocation_id.choices = [
+                (g['id'], g['name']) for g in MOCK_GEOLOCATIONS 
+                if isinstance(g, dict) and 'id' in g and 'name' in g and g.get('available', True)
+            ]
+        except Exception as e:
+            logger.exception(f"Error loading geolocations for form: {str(e)}")
+            form.geolocation_id.choices = []
+            flash('Error loading geolocation options', 'danger')
         
         if form.validate_on_submit():
             try:
                 # Generate a new server ID (max ID + 1)
-                new_id = max(s['id'] for s in MOCK_SERVERS) + 1
+                if not MOCK_SERVERS:
+                    new_id = 1
+                else:
+                    new_id = max(s.get('id', 0) for s in MOCK_SERVERS if isinstance(s, dict)) + 1
                 
                 # Create new server
                 server = {
@@ -241,7 +284,7 @@ def add():
                     'address': form.address.data,
                     'public_key': form.public_key.data,
                     'geolocation_id': form.geolocation_id.data,
-                    'geolocation_name': next((g['name'] for g in MOCK_GEOLOCATIONS if g['id'] == form.geolocation_id.data), "Unknown"),
+                    'geolocation_name': next((g['name'] for g in MOCK_GEOLOCATIONS if isinstance(g, dict) and g.get('id') == form.geolocation_id.data), "Unknown"),
                     'max_peers': form.max_peers.data,
                     'status': form.status.data,
                     'api_key': form.api_key.data or secrets.token_hex(16),
@@ -268,8 +311,21 @@ def add():
         try:
             response = db_client.get('/api/geolocations')
             if response.status_code == 200:
-                geolocations = response.json()
-                form.geolocation_id.choices = [(g['id'], g['name']) for g in geolocations if g.get('available', True)]
+                data = response.json()
+                # Проверяем формат данных
+                if isinstance(data, dict) and 'geolocations' in data:
+                    geolocations = data['geolocations']
+                elif isinstance(data, list):
+                    geolocations = data
+                else:
+                    logger.warning(f"Неожиданный формат данных от API (geolocations): {data}")
+                    geolocations = []
+                    
+                # Проверяем типы данных перед обработкой
+                form.geolocation_id.choices = [
+                    (g['id'], g['name']) for g in geolocations 
+                    if isinstance(g, dict) and 'id' in g and 'name' in g and g.get('available', True)
+                ]
             else:
                 flash('Failed to load geolocation options', 'warning')
                 form.geolocation_id.choices = []
@@ -322,14 +378,28 @@ def edit(server_id):
             flash('Server not found', 'danger')
             return redirect(url_for('servers.index'))
             
-        form = ServerForm(obj=server)
-        form.geolocation_id.choices = [(g['id'], g['name']) for g in MOCK_GEOLOCATIONS]
+        form = ServerForm()
+        if not form.is_submitted():
+            # Заполняем форму данными только если она не была отправлена
+            form = ServerForm(obj=server)
+            
+        try:
+            # Проверяем типы данных перед обработкой
+            form.geolocation_id.choices = [
+                (g['id'], g['name']) for g in MOCK_GEOLOCATIONS 
+                if isinstance(g, dict) and 'id' in g and 'name' in g
+            ]
+        except Exception as e:
+            logger.exception(f"Error loading geolocations for form: {str(e)}")
+            form.geolocation_id.choices = []
+            flash('Error loading geolocation options', 'danger')
         
         if form.validate_on_submit():
             try:
                 # Update server data
+                found = False
                 for server_item in MOCK_SERVERS:
-                    if server_item['id'] == server_id:
+                    if isinstance(server_item, dict) and server_item.get('id') == server_id:
                         server_item.update({
                             'name': form.name.data,
                             'endpoint': form.endpoint.data,
@@ -337,13 +407,21 @@ def edit(server_id):
                             'address': form.address.data,
                             'public_key': form.public_key.data,
                             'geolocation_id': form.geolocation_id.data,
-                            'geolocation_name': next((g['name'] for g in MOCK_GEOLOCATIONS if g['id'] == form.geolocation_id.data), "Unknown"),
+                            'geolocation_name': next((g['name'] for g in MOCK_GEOLOCATIONS 
+                                                    if isinstance(g, dict) and g.get('id') == form.geolocation_id.data), 
+                                                    "Unknown"),
                             'max_peers': form.max_peers.data,
                             'status': form.status.data,
                             'api_key': form.api_key.data,
                             'api_url': form.api_url.data
                         })
+                        found = True
                         break
+                
+                if not found:
+                    logger.error(f"Сервер не найден при обновлении моковых данных. ID: {server_id}")
+                    flash('Server not found for update', 'danger')
+                    return redirect(url_for('servers.index'))
                 
                 flash('Server updated successfully', 'success')
                 return redirect(url_for('servers.details', server_id=server_id))
@@ -362,6 +440,10 @@ def edit(server_id):
             response = db_client.get(f'/api/servers/{server_id}')
             if response.status_code == 200:
                 server = response.json()
+                if not isinstance(server, dict):
+                    logger.error(f"Неверный формат данных сервера: {server}")
+                    flash("Invalid server data format", "danger")
+                    return redirect(url_for('servers.index'))
             else:
                 flash('Server not found', 'danger')
                 return redirect(url_for('servers.index'))
@@ -370,20 +452,36 @@ def edit(server_id):
             flash('Service unavailable', 'danger')
             return redirect(url_for('servers.index'))
         
-        form = ServerForm(obj=server)
+        form = ServerForm()
+        if not form.is_submitted():
+            # Заполняем форму данными только если она не была отправлена
+            form = ServerForm(obj=server)
         
         # Load geolocation choices
         try:
             geo_response = db_client.get('/api/geolocations')
             if geo_response.status_code == 200:
-                geolocations = geo_response.json()
-                form.geolocation_id.choices = [(g['id'], g['name']) for g in geolocations]
+                data = geo_response.json()
+                # Проверяем формат данных
+                if isinstance(data, dict) and 'geolocations' in data:
+                    geolocations = data['geolocations']
+                elif isinstance(data, list):
+                    geolocations = data
+                else:
+                    logger.warning(f"Неожиданный формат данных от API (geolocations): {data}")
+                    geolocations = []
+                    
+                # Проверяем типы данных перед обработкой
+                form.geolocation_id.choices = [
+                    (g['id'], g['name']) for g in geolocations 
+                    if isinstance(g, dict) and 'id' in g and 'name' in g
+                ]
             else:
                 flash('Failed to load geolocation options', 'warning')
-                form.geolocation_id.choices = [(server['geolocation_id'], 'Current Location')]
+                form.geolocation_id.choices = [(server.get('geolocation_id'), 'Current Location')]
         except Exception as e:
             logger.exception(f"Error loading geolocations: {str(e)}")
-            form.geolocation_id.choices = [(server['geolocation_id'], 'Current Location')]
+            form.geolocation_id.choices = [(server.get('geolocation_id'), 'Current Location')]
         
         if form.validate_on_submit():
             try:
@@ -430,7 +528,7 @@ def delete(server_id):
             
         # Remove server from mock data
         global MOCK_SERVERS
-        MOCK_SERVERS = [s for s in MOCK_SERVERS if s['id'] != server_id]
+        MOCK_SERVERS = [s for s in MOCK_SERVERS if not isinstance(s, dict) or s.get('id') != server_id]
         
         flash('Server deleted successfully', 'success')
     else:
@@ -473,8 +571,8 @@ def action(server_id, action):
             elif action == 'toggle_status':
                 # Toggle status in mock data
                 for s in MOCK_SERVERS:
-                    if s['id'] == server_id:
-                        s['status'] = 'inactive' if s['status'] == 'active' else 'active'
+                    if isinstance(s, dict) and s.get('id') == server_id:
+                        s['status'] = 'inactive' if s.get('status') == 'active' else 'active'
                         status_text = 'activated' if s['status'] == 'active' else 'deactivated'
                         flash(f'Server {status_text} successfully', 'success')
                         break
@@ -500,6 +598,11 @@ def action(server_id, action):
                 server_response = db_client.get(f'/api/servers/{server_id}')
                 if server_response.status_code == 200:
                     server = server_response.json()
+                    if not isinstance(server, dict):
+                        logger.error(f"Неверный формат данных сервера: {server}")
+                        flash("Invalid server data format", "danger")
+                        return redirect(url_for('servers.index'))
+                        
                     new_status = 'inactive' if server.get('status') == 'active' else 'active'
                     
                     # Update status

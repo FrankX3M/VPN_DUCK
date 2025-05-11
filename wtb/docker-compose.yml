@@ -4,9 +4,9 @@ services:
     image: postgres:13
     restart: always
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=wireguard
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-5YE2w8bxd9}
+      - POSTGRES_DB=${POSTGRES_DB:-wireguard}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -22,12 +22,14 @@ services:
     build: ./database-service
     restart: always
     volumes:
-      - ./database-service:/app
+      # - ./database-service:/app
+       - ./database-service/data:/app/data
     environment:
       - POSTGRES_HOST=db
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=wireguard
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-5YE2w8bxd9}
+      - POSTGRES_DB=${POSTGRES_DB:-wireguard}
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
     depends_on:
       db:
         condition: service_healthy
@@ -55,11 +57,12 @@ services:
       - ./config:/app/config
     environment:
       - DATABASE_SERVICE_URL=http://database-service:5002
-      - DEBUG=False
-      - LOG_LEVEL=INFO
-      - CACHE_TTL=300
-      - HTTP_TIMEOUT=10
-      - HTTP_MAX_RETRIES=3
+      - DEBUG=${DEBUG:-False}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CACHE_TTL=${CACHE_TTL:-300}
+      - HTTP_TIMEOUT=${HTTP_TIMEOUT:-10}
+      - HTTP_MAX_RETRIES=${HTTP_MAX_RETRIES:-3}
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
     depends_on:
       database-service:
         condition: service_healthy
@@ -82,7 +85,14 @@ services:
       - ./admin-panel:/app
     environment:
       - DATABASE_SERVICE_URL=http://database-service:5002
-      - WIREGUARD_PROXY_URL=http://wireguard-proxy:5001
+      - WIREGUARD_SERVICE_URL=http://wireguard-proxy:5001
+      - USE_MOCK_DATA=false
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
+      - METRICS_SERVICE_URL=http://metrics-collector:5003
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - API_BASE_URL=http://database-service:5002
     depends_on:
       database-service:
         condition: service_healthy
@@ -101,16 +111,16 @@ services:
       - ./telegram-service:/app
     environment:
       - DATABASE_SERVICE_URL=http://database-service:5002
-      - WIREGUARD_PROXY_URL=http://wireguard-proxy:5001
+      - WIREGUARD_SERVICE_URL=http://wireguard-proxy:5001
       - TELEGRAM_API_TOKEN=${TELEGRAM_API_TOKEN}
-      - PAYMENT_TOKEN=${PAYMENT_TOKEN}
+      - PAYMENT_TOKEN=${PAYMENT_TOKEN:-test}
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
+      - REMOTE_ONLY=${REMOTE_ONLY:-true}
     depends_on:
       database-service:
         condition: service_healthy
       wireguard-proxy:
         condition: service_healthy
-    env_file:
-      - .env
     networks:
       - vpn_network
 
@@ -122,8 +132,9 @@ services:
       - ./metrics-collector:/app
     environment:
       - DATABASE_SERVICE_URL=http://database-service:5002
-      - WIREGUARD_PROXY_URL=http://wireguard-proxy:5001
-      - COLLECTION_INTERVAL=120
+      - WIREGUARD_SERVICE_URL=http://wireguard-proxy:5001
+      - COLLECTION_INTERVAL=${COLLECTION_INTERVAL:-120}
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
     depends_on:
       database-service:
         condition: service_healthy
@@ -140,13 +151,32 @@ services:
       - ./migration-service:/app
     environment:
       - DATABASE_SERVICE_URL=http://database-service:5002
-      - WIREGUARD_PROXY_URL=http://wireguard-proxy:5001
-      - STARTUP_DELAY=60
+      - WIREGUARD_SERVICE_URL=http://wireguard-proxy:5001
+      - STARTUP_DELAY=${STARTUP_DELAY:-60}
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
+      - POSTGRES_HOST=db
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-5YE2w8bxd9}
+      - POSTGRES_DB=${POSTGRES_DB:-wireguard}
     depends_on:
       database-service:
         condition: service_healthy
       wireguard-proxy:
         condition: service_healthy
+    networks:
+      - vpn_network
+
+  # Админ панель PgAdmin
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-9167700@gmail.com}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-Crjnj,jpf55}
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    restart: unless-stopped
     networks:
       - vpn_network
 
