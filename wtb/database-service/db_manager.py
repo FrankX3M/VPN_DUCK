@@ -165,7 +165,7 @@ def get_server(server_id):
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/servers/add', methods=['POST'])
-def add_server():
+def add_server_route():
     """Adding a new remote server"""
     try:
         data = request.json
