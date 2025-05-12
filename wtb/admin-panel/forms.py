@@ -25,20 +25,22 @@ class FilterForm(FlaskForm):
     ])
 
 class ServerForm(FlaskForm):
-    """Form for adding or editing server."""
-    name = StringField('Server Name', validators=[Length(max=100)])
-    endpoint = StringField('Endpoint', validators=[DataRequired(), Length(max=255)])
-    port = IntegerField('Port', validators=[DataRequired(), NumberRange(min=1, max=65535)])
-    address = StringField('Interface Address', validators=[DataRequired(), Length(max=100)])
-    public_key = StringField('Public Key', validators=[DataRequired(), Length(max=255)])
-    geolocation_id = SelectField('Geolocation', validators=[DataRequired()], coerce=int)
-    max_peers = IntegerField('Max Peers', validators=[Optional(), NumberRange(min=1)])
-    status = SelectField('Status', validators=[DataRequired()], choices=[
-        ('active', 'Active'),
-        ('inactive', 'Inactive')
+    """Form для добавления или редактирования сервера."""
+    name = StringField('Название сервера', validators=[Length(max=100)])
+    endpoint = StringField('Эндпоинт', validators=[DataRequired(), Length(max=255)])
+    port = IntegerField('Порт', validators=[DataRequired(), NumberRange(min=1, max=65535)])
+    address = StringField('Адрес интерфейса', validators=[DataRequired(), Length(max=100)])
+    public_key = StringField('Публичный ключ', validators=[DataRequired(), Length(max=255)])
+    geolocation_id = SelectField('Геолокация', validators=[DataRequired()], coerce=int)
+    max_peers = IntegerField('Макс. клиентов', validators=[Optional(), NumberRange(min=1)])
+    status = SelectField('Статус', validators=[DataRequired()], choices=[
+        ('active', 'Активен'),
+        ('inactive', 'Неактивен')
     ])
-    api_key = StringField('API Key', validators=[Length(max=255)])
+    api_key = StringField('API ключ', validators=[Length(max=255)])
     api_url = StringField('API URL', validators=[Length(max=255)])
+    api_path = StringField('API путь', default='/status', validators=[Length(max=255)])
+    skip_api_check = BooleanField('Пропустить проверку API', default=False)
 
 class GeolocationForm(FlaskForm):
     """Form for adding or editing geolocation."""

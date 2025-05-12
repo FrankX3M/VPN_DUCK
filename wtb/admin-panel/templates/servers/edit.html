@@ -171,6 +171,31 @@
                             <a href="{{ url_for('servers.details', server_id=server.id) }}" class="btn btn-secondary">Cancel</a>
                             <button type="submit" class="btn btn-primary">Save Changes</button>
                         </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.api_url.id }}" class="form-label">{{ form.api_url.label.text }}</label>
+                                    {{ form.api_url(class="form-control", placeholder="http://endpoint:5000") }}
+                                    <small class="text-muted">URL для API (обычно используется порт 5000, а не порт WireGuard)</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.api_path.id }}" class="form-label">{{ form.api_path.label.text }}</label>
+                                    {{ form.api_path(class="form-control", placeholder="/status") }}
+                                    <small class="text-muted">Путь к API статуса (обычно /status)</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-check mb-3">
+                            {{ form.skip_api_check(class="form-check-input") }}
+                            <label class="form-check-label" for="{{ form.skip_api_check.id }}">
+                                {{ form.skip_api_check.label.text }}
+                            </label>
+                            <small class="d-block text-muted">Включите для серверов без API или с нестандартным API</small>
+                        </div>
                     </form>
                 </div>
             </div>

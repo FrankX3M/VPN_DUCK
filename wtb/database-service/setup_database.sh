@@ -345,6 +345,30 @@ WHERE
 ON CONFLICT (server_id) DO NOTHING;
 SQL_CONTENT
 
+
+# Расположение: database-service/setup_database.sh
+# Добавление в существующий файл инициализации БД
+
+# Добавляем новые поля в таблицу remote_servers
+echo "Обновление схемы базы данных для управления API серверов..."
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    -- Добавление поля api_path для хранения пути к API статуса
+    ALTER TABLE remote_servers ADD COLUMN IF NOT EXISTS api_path VARCHAR(255) DEFAULT '/status';
+    
+    -- Добавление флага для пропуска проверки API
+    ALTER TABLE remote_servers ADD COLUMN IF NOT EXISTS skip_api_check BOOLEAN DEFAULT FALSE;
+    
+    -- Обновление существующих URL для API
+    UPDATE remote_servers 
+    SET api_url = CONCAT('http://', endpoint, ':5000'), 
+        api_path = '/status' 
+    WHERE api_url LIKE '%:51820%';
+    
+    -- Добавляем индекс для ускорения поиска
+    CREATE INDEX IF NOT EXISTS idx_remote_servers_status ON remote_servers(status);
+EOSQL
+
+
 # Применение SQL-скрипта к базе данных
 echo -e "${YELLOW}Применение SQL-скрипта к базе данных...${NC}"
 PGPASSWORD=$DB_PASS psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$SQL_FILE"

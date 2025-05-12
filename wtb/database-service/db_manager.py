@@ -164,22 +164,130 @@ def get_server(server_id):
         logger.exception(f"Error getting server details: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/servers/add', methods=['POST'])
+# @app.route('/api/servers/add', methods=['POST'])
+# def add_server():
+#     """Добавление нового удаленного сервера"""
+#     try:
+#         data = request.json
+        
+#         # Проверка обязательных полей
+#         required_fields = ['name', 'location', 'api_url', 'geolocation_id']
+#         for field in required_fields:
+#             if field not in data:
+#                 return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+#         # Генерация уникального server_id, если не указан
+#         if 'server_id' not in data:
+#             import uuid
+#             data['server_id'] = f"srv-{uuid.uuid4().hex[:8]}"
+        
+#         with get_db_connection() as conn:
+#             with conn.cursor() as cur:
+#                 query = """
+#                 INSERT INTO remote_servers (
+#                     server_id, 
+#                     name, 
+#                     location, 
+#                     api_url, 
+#                     geolocation_id, 
+#                     auth_type, 
+#                     api_key, 
+#                     oauth_client_id, 
+#                     oauth_client_secret, 
+#                     oauth_token_url, 
+#                     hmac_secret, 
+#                     max_peers, 
+#                     is_active
+#                 ) VALUES (
+#                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+#                 ) RETURNING id
+#                 """
+                
+#                 cur.execute(query, (
+#                     data['server_id'],
+#                     data['name'],
+#                     data['location'],
+#                     data['api_url'],
+#                     data['geolocation_id'],
+#                     data.get('auth_type', 'api_key'),
+#                     data.get('api_key'),
+#                     data.get('oauth_client_id'),
+#                     data.get('oauth_client_secret'),
+#                     data.get('oauth_token_url'),
+#                     data.get('hmac_secret'),
+#                     data.get('max_peers', 100),
+#                     data.get('is_active', True)
+#                 ))
+                
+#                 server_id = cur.fetchone()[0]
+#                 conn.commit()
+                
+#                 return jsonify({
+#                     "success": True,
+#                     "message": "Server added successfully",
+#                     "server_id": server_id
+#                 })
+#     except Exception as e:
+#         logger.exception(f"Error adding server: {e}")
+#         return jsonify({"error": str(e)}), 500
+
+# @app.route('/api/servers', methods=['POST'])
+# def add_server_alias():
+#     """Алиас для добавления серверов через стандартный URL"""
+#     return add_server()
+
+
+
+# Замените этот код в db_manager.py, найдите функцию add_server и изменить её следующим образом:
+
+@app.route('/api/servers', methods=['POST'])
 def add_server():
     """Добавление нового удаленного сервера"""
     try:
         data = request.json
         
+        # Вывод данных запроса для отладки
+        logger.info(f"Получены данные для добавления сервера: {data}")
+        
         # Проверка обязательных полей
-        required_fields = ['name', 'location', 'api_url', 'geolocation_id']
-        for field in required_fields:
-            if field not in data:
-                return jsonify({"error": f"Missing required field: {field}"}), 400
+        required_fields = ['name', 'endpoint', 'port', 'address', 'public_key', 'geolocation_id']
+        missing_fields = [field for field in required_fields if field not in data]
+        
+        if missing_fields:
+            logger.error(f"Отсутствуют обязательные поля: {missing_fields}")
+            return jsonify({"error": f"Отсутствуют обязательные поля: {', '.join(missing_fields)}"}), 400
+        
+        # Проверка типов данных
+        try:
+            if 'port' in data and isinstance(data['port'], str):
+                data['port'] = int(data['port'])
+            
+            if 'geolocation_id' in data and isinstance(data['geolocation_id'], str):
+                data['geolocation_id'] = int(data['geolocation_id'])
+        except ValueError as e:
+            logger.error(f"Ошибка преобразования типов данных: {str(e)}")
+            return jsonify({"error": f"Ошибка преобразования типов данных: {str(e)}"}), 400
         
         # Генерация уникального server_id, если не указан
         if 'server_id' not in data:
             import uuid
             data['server_id'] = f"srv-{uuid.uuid4().hex[:8]}"
+        
+        # Создаем URL API, если не указан
+        if 'api_url' not in data:
+            data['api_url'] = f"http://{data['endpoint']}:{data['port']}/api"
+        
+        # Локация сервера (для обратной совместимости)
+        if 'location' not in data:
+            # Пытаемся найти название геолокации
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT name FROM geolocations WHERE id = %s", (data['geolocation_id'],))
+                    geo = cur.fetchone()
+                    if geo:
+                        data['location'] = geo[0]
+                    else:
+                        data['location'] = "Unknown location"
         
         with get_db_connection() as conn:
             with conn.cursor() as cur:
@@ -206,8 +314,8 @@ def add_server():
                 cur.execute(query, (
                     data['server_id'],
                     data['name'],
-                    data['location'],
-                    data['api_url'],
+                    data.get('location', 'Unknown'),
+                    data.get('api_url'),
                     data['geolocation_id'],
                     data.get('auth_type', 'api_key'),
                     data.get('api_key'),
@@ -222,19 +330,16 @@ def add_server():
                 server_id = cur.fetchone()[0]
                 conn.commit()
                 
+                logger.info(f"Сервер успешно добавлен! ID: {server_id}")
+                
                 return jsonify({
                     "success": True,
                     "message": "Server added successfully",
                     "server_id": server_id
                 })
     except Exception as e:
-        logger.exception(f"Error adding server: {e}")
+        logger.exception(f"Ошибка при добавлении сервера: {e}")
         return jsonify({"error": str(e)}), 500
-
-@app.route('/api/servers', methods=['POST'])
-def add_server_alias():
-    """Алиас для добавления серверов через стандартный URL"""
-    return add_server()
 
 @app.route('/api/servers/<int:server_id>', methods=['PUT'])
 def update_server(server_id):

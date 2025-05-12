@@ -114,7 +114,7 @@ class ServerManager:
         try:
             response = requests.get(
                 f"{self.database_service_url}/api/servers",
-                timeout=5
+                timeout=10
             )
             
             if response.status_code != 200:
@@ -444,6 +444,84 @@ class ServerManager:
                 status_list.append(status_info)
             
             return status_list
+
+    def get_server_status(server_id):
+        """
+        Получение статуса и статистики сервера.
+        
+        Args:
+            server_id (str): Идентификатор сервера
+            
+        Returns:
+            dict: Информация о статусе сервера или None в случае ошибки
+        """
+        try:
+            # Получаем информацию о сервере
+            server_info = get_server_info(server_id)
+            if not server_info:
+                logger.warning(f"Сервер {server_id} не найден в базе данных.")
+                return None
+                
+            # Проверяем, нужно ли пропустить проверку API
+            skip_api_check = server_info.get('skip_api_check', False)
+            
+            # Если нужно пропустить проверку API, возвращаем базовый статус
+            if skip_api_check:
+                logger.info(f"Пропуск проверки API для сервера {server_id} согласно настройкам")
+                # Возвращаем базовый статус сервера
+                return {
+                    "status": "active",
+                    "server_id": server_id,
+                    "peers_count": 0,
+                    "load": 0,
+                    "is_mock": True
+                }
+            
+            # Формируем URL для проверки статуса с использованием настраиваемого пути
+            endpoint = server_info['endpoint']
+            port = server_info.get('api_port', 5000)  # Порт для API (по умолчанию 5000)
+            api_path = server_info.get('api_path', '/status')  # Путь API из БД или по умолчанию /status
+            
+            # Проверяем, есть ли api_url или конструируем из endpoint и port
+            if 'api_url' in server_info and server_info['api_url']:
+                base_url = server_info['api_url']
+                # Убеждаемся, что URL не заканчивается на слеш
+                if base_url.endswith('/'):
+                    base_url = base_url[:-1]
+            else:
+                base_url = f"http://{endpoint}:{port}"
+                
+            # Убеждаемся, что api_path начинается со слеша
+            if not api_path.startswith('/'):
+                api_path = f"/{api_path}"
+                
+            server_url = f"{base_url}{api_path}"
+            logger.info(f"Проверка статуса сервера {server_id} по адресу {server_url}")
+            
+            try:
+                # Запросить статус сервера
+                response = requests.get(server_url, timeout=15)  # Увеличен таймаут до 15 секунд
+                if response.status_code == 200:
+                    status_data = response.json()
+                    logger.info(f"Сервер {server_id} доступен. Статус: {status_data}")
+                    return {
+                        "status": "active",
+                        "server_id": server_id,
+                        "peers_count": status_data.get("peers_count", 0),
+                        "load": status_data.get("load", 0)
+                    }
+                else:
+                    logger.warning(f"Сервер {server_id} вернул код состояния {response.status_code}")
+                    # Использовать мок-данные при ошибочном ответе
+                    return get_mock_status(server_id)
+            except Exception as e:
+                logger.warning(f"Сервер {server_id} недоступен: {str(e)}")
+                # Использовать мок-данные при ошибке соединения
+                return get_mock_status(server_id)
+                
+        except Exception as e:
+            logger.exception(f"Ошибка получения статуса сервера: {str(e)}")
+            return None
     
     def get_server_metrics(self):
         """
