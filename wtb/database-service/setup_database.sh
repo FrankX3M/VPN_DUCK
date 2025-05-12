@@ -19,12 +19,17 @@ DB_NAME=${POSTGRES_DB:-"wireguard"}
 DB_USER=${POSTGRES_USER:-"postgres"}
 DB_PASS=${POSTGRES_PASSWORD:-"postgres"}
 
+# Функция для подключения к базе данных
+run_psql() {
+  PGPASSWORD=$DB_PASS psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" "$@"
+}
+
 # Проверка доступности PostgreSQL
 echo -e "${YELLOW}Проверка доступности PostgreSQL (${DB_HOST}:${DB_PORT})...${NC}"
 max_attempts=30
 attempt=0
 while [ $attempt -lt $max_attempts ]; do
-    if PGPASSWORD=$DB_PASS psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c '\q' 2>/dev/null; then
+    if run_psql -c '\q' 2>/dev/null; then
         echo -e "${GREEN}PostgreSQL доступен!${NC}"
         break
     fi
@@ -89,9 +94,18 @@ CREATE TABLE IF NOT EXISTS remote_servers (
     is_active BOOLEAN DEFAULT TRUE
 );
 
+-- Добавление новых полей в существующую таблицу remote_servers
+ALTER TABLE remote_servers ADD COLUMN IF NOT EXISTS endpoint VARCHAR(255);
+ALTER TABLE remote_servers ADD COLUMN IF NOT EXISTS port INTEGER;
+ALTER TABLE remote_servers ADD COLUMN IF NOT EXISTS address VARCHAR(255);
+ALTER TABLE remote_servers ADD COLUMN IF NOT EXISTS public_key VARCHAR(255);
+ALTER TABLE remote_servers ADD COLUMN IF NOT EXISTS api_path VARCHAR(255) DEFAULT '/status';
+ALTER TABLE remote_servers ADD COLUMN IF NOT EXISTS skip_api_check BOOLEAN DEFAULT FALSE;
+
 -- Создание индексов для remote_servers
 CREATE INDEX IF NOT EXISTS idx_remote_servers_geolocation_id ON remote_servers(geolocation_id);
 CREATE INDEX IF NOT EXISTS idx_remote_servers_is_active ON remote_servers(is_active);
+CREATE INDEX IF NOT EXISTS idx_remote_servers_status ON remote_servers(is_active);
 
 -- Добавление поля server_id в таблицу peers для обратной совместимости
 ALTER TABLE peers ADD COLUMN IF NOT EXISTS server_id INTEGER REFERENCES remote_servers(id);
@@ -343,35 +357,38 @@ FROM
 WHERE 
     g.code = 'ru'
 ON CONFLICT (server_id) DO NOTHING;
+
+-- Обновление тестового сервера дополнительными полями
+UPDATE remote_servers
+SET 
+    endpoint = 'wireguard-service',
+    port = 51820,
+    address = '10.0.0.1/24',
+    public_key = 'test_public_key_placeholder',
+    api_path = '/status',
+    skip_api_check = FALSE
+WHERE 
+    server_id = 'srv-test-001';
+
+-- Обновление существующих URL для API, если endpoint есть, но не задан api_url
+UPDATE remote_servers 
+SET api_url = CONCAT('http://', endpoint, ':5000')
+WHERE endpoint IS NOT NULL AND (api_url IS NULL OR api_url = '');
+
+-- Обновление API path для существующих записей без пути
+UPDATE remote_servers 
+SET api_path = '/status' 
+WHERE api_path IS NULL;
+
+-- Обновление информации для записей с URL порта 51820
+UPDATE remote_servers 
+SET api_url = REPLACE(api_url, ':51820', ':5000')
+WHERE api_url LIKE '%:51820%';
 SQL_CONTENT
-
-
-# Расположение: database-service/setup_database.sh
-# Добавление в существующий файл инициализации БД
-
-# Добавляем новые поля в таблицу remote_servers
-echo "Обновление схемы базы данных для управления API серверов..."
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    -- Добавление поля api_path для хранения пути к API статуса
-    ALTER TABLE remote_servers ADD COLUMN IF NOT EXISTS api_path VARCHAR(255) DEFAULT '/status';
-    
-    -- Добавление флага для пропуска проверки API
-    ALTER TABLE remote_servers ADD COLUMN IF NOT EXISTS skip_api_check BOOLEAN DEFAULT FALSE;
-    
-    -- Обновление существующих URL для API
-    UPDATE remote_servers 
-    SET api_url = CONCAT('http://', endpoint, ':5000'), 
-        api_path = '/status' 
-    WHERE api_url LIKE '%:51820%';
-    
-    -- Добавляем индекс для ускорения поиска
-    CREATE INDEX IF NOT EXISTS idx_remote_servers_status ON remote_servers(status);
-EOSQL
-
 
 # Применение SQL-скрипта к базе данных
 echo -e "${YELLOW}Применение SQL-скрипта к базе данных...${NC}"
-PGPASSWORD=$DB_PASS psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$SQL_FILE"
+run_psql -f "$SQL_FILE"
 
 # Проверка результата выполнения SQL-скрипта
 if [ $? -eq 0 ]; then
@@ -385,10 +402,10 @@ fi
 rm -f "$SQL_FILE"
 
 echo -e "${BLUE}=== Проверка структуры базы данных ===${NC}"
-echo -e "${YELLOW}Проверка наличия таблиц remote_servers и peer_server_mapping...${NC}"
+echo -e "${YELLOW}Проверка наличия таблиц и новых полей...${NC}"
 
 # Проверка наличия таблиц
-TABLE_COUNT=$(PGPASSWORD=$DB_PASS psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -c "
+TABLE_COUNT=$(run_psql -t -c "
     SELECT COUNT(*) FROM information_schema.tables 
     WHERE table_name IN ('remote_servers', 'peer_server_mapping', 'remote_server_metrics')
       AND table_schema = 'public';
@@ -401,9 +418,24 @@ else
     exit 1
 fi
 
+# Проверка наличия новых полей в таблице remote_servers
+COLUMN_COUNT=$(run_psql -t -c "
+    SELECT COUNT(*) FROM information_schema.columns 
+    WHERE table_name = 'remote_servers' 
+      AND table_schema = 'public'
+      AND column_name IN ('endpoint', 'port', 'address', 'public_key', 'api_path', 'skip_api_check');
+")
+
+if [ "$COLUMN_COUNT" -eq 6 ]; then
+    echo -e "${GREEN}Все необходимые поля в таблице remote_servers созданы успешно!${NC}"
+else
+    echo -e "${RED}Ошибка: Некоторые поля в таблице remote_servers не были созданы. Проверьте журнал ошибок PostgreSQL.${NC}"
+    exit 1
+fi
+
 # Проверка наличия тестовых данных
 echo -e "${YELLOW}Проверка наличия тестовых данных...${NC}"
-SERVER_COUNT=$(PGPASSWORD=$DB_PASS psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -c "
+SERVER_COUNT=$(run_psql -t -c "
     SELECT COUNT(*) FROM remote_servers;
 ")
 

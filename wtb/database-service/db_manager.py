@@ -164,81 +164,132 @@ def get_server(server_id):
         logger.exception(f"Error getting server details: {e}")
         return jsonify({"error": str(e)}), 500
 
-# @app.route('/api/servers/add', methods=['POST'])
-# def add_server():
-#     """Добавление нового удаленного сервера"""
-#     try:
-#         data = request.json
+@app.route('/api/servers/add', methods=['POST'])
+def add_server():
+    """Adding a new remote server"""
+    try:
+        data = request.json
         
-#         # Проверка обязательных полей
-#         required_fields = ['name', 'location', 'api_url', 'geolocation_id']
-#         for field in required_fields:
-#             if field not in data:
-#                 return jsonify({"error": f"Missing required field: {field}"}), 400
+        # Debug output of request data
+        logger.info(f"Received data for adding server: {data}")
         
-#         # Генерация уникального server_id, если не указан
-#         if 'server_id' not in data:
-#             import uuid
-#             data['server_id'] = f"srv-{uuid.uuid4().hex[:8]}"
+        # Check required fields
+        required_fields = ['name', 'endpoint', 'port', 'address', 'public_key', 'geolocation_id']
+        missing_fields = [field for field in required_fields if field not in data]
         
-#         with get_db_connection() as conn:
-#             with conn.cursor() as cur:
-#                 query = """
-#                 INSERT INTO remote_servers (
-#                     server_id, 
-#                     name, 
-#                     location, 
-#                     api_url, 
-#                     geolocation_id, 
-#                     auth_type, 
-#                     api_key, 
-#                     oauth_client_id, 
-#                     oauth_client_secret, 
-#                     oauth_token_url, 
-#                     hmac_secret, 
-#                     max_peers, 
-#                     is_active
-#                 ) VALUES (
-#                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-#                 ) RETURNING id
-#                 """
+        if missing_fields:
+            logger.error(f"Missing required fields: {missing_fields}")
+            return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+        
+        # Validate data types
+        try:
+            if 'port' in data and isinstance(data['port'], str):
+                data['port'] = int(data['port'])
+            
+            if 'geolocation_id' in data and isinstance(data['geolocation_id'], str):
+                data['geolocation_id'] = int(data['geolocation_id'])
                 
-#                 cur.execute(query, (
-#                     data['server_id'],
-#                     data['name'],
-#                     data['location'],
-#                     data['api_url'],
-#                     data['geolocation_id'],
-#                     data.get('auth_type', 'api_key'),
-#                     data.get('api_key'),
-#                     data.get('oauth_client_id'),
-#                     data.get('oauth_client_secret'),
-#                     data.get('oauth_token_url'),
-#                     data.get('hmac_secret'),
-#                     data.get('max_peers', 100),
-#                     data.get('is_active', True)
-#                 ))
+            # Convert boolean fields
+            if 'skip_api_check' in data and isinstance(data['skip_api_check'], str):
+                data['skip_api_check'] = data['skip_api_check'].lower() in ('true', 'yes', '1', 'y')
+        except ValueError as e:
+            logger.error(f"Data type conversion error: {str(e)}")
+            return jsonify({"error": f"Data type error: {str(e)}"}), 400
+        
+        # Generate unique server_id if not provided
+        if 'server_id' not in data:
+            import uuid
+            data['server_id'] = f"srv-{uuid.uuid4().hex[:8]}"
+        
+        # Create API URL if not provided
+        if 'api_url' not in data or not data['api_url']:
+            data['api_url'] = f"http://{data['endpoint']}:5000"
+        
+        # Use default API path if not provided
+        if 'api_path' not in data:
+            data['api_path'] = '/status'
+            
+        # Location (for backwards compatibility)
+        if 'location' not in data:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT name FROM geolocations WHERE id = %s", (data['geolocation_id'],))
+                    geo = cur.fetchone()
+                    if geo:
+                        data['location'] = geo[0]
+                    else:
+                        data['location'] = "Unknown location"
+        
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                query = """
+                INSERT INTO remote_servers (
+                    server_id, 
+                    name, 
+                    location, 
+                    endpoint,
+                    port,
+                    address,
+                    public_key,
+                    api_url, 
+                    api_path,
+                    geolocation_id, 
+                    auth_type, 
+                    api_key, 
+                    max_peers, 
+                    is_active,
+                    skip_api_check
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                ) RETURNING id
+                """
                 
-#                 server_id = cur.fetchone()[0]
-#                 conn.commit()
+                # Set default values for optional fields
+                is_active = data.get('status', 'active') == 'active'
                 
-#                 return jsonify({
-#                     "success": True,
-#                     "message": "Server added successfully",
-#                     "server_id": server_id
-#                 })
-#     except Exception as e:
-#         logger.exception(f"Error adding server: {e}")
-#         return jsonify({"error": str(e)}), 500
-
-# @app.route('/api/servers', methods=['POST'])
-# def add_server_alias():
-#     """Алиас для добавления серверов через стандартный URL"""
-#     return add_server()
-
-
-
-# Замените этот код в db_manager.py, найдите функцию add_server и изменить её следующим образом:
+                cur.execute(query, (
+                    data['server_id'],
+                    data['name'],
+                    data.get('location', 'Unknown'),
+                    data['endpoint'],
+                    data['port'],
+                    data['address'],
+                    data['public_key'],
+                    data['api_url'],
+                    data['api_path'],
+                    data['geolocation_id'],
+                    data.get('auth_type', 'api_key'),
+                    data.get('api_key'),
+                    data.get('max_peers', 100),
+                    is_active,
+                    data.get('skip_api_check', False)
+                ))
+                
+                server_id = cur.fetchone()[0]
+                conn.commit()
+                
+                # Return complete server data
+                cur.execute("""
+                    SELECT 
+                        id, server_id, name, location, endpoint, port, address, 
+                        public_key, api_url, api_path, geolocation_id, 
+                        max_peers, is_active, skip_api_check
+                    FROM remote_servers
+                    WHERE id = %s
+                """, (server_id,))
+                
+                server_data = dict(zip([column[0] for column in cur.description], cur.fetchone()))
+                
+                logger.info(f"Server successfully added! ID: {server_id}")
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Server added successfully",
+                    "server": server_data
+                })
+    except Exception as e:
+        logger.exception(f"Error adding server: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/servers', methods=['POST'])
 def add_server():
@@ -549,6 +600,8 @@ def find_peer_server():
     except Exception as e:
         logger.exception(f"Error finding server for peer: {e}")
         return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/servers/<int:server_id>/metrics', methods=['GET'])
 def get_server_metrics_by_id(server_id):
     """Получение метрик удаленного сервера по ID"""
@@ -583,13 +636,21 @@ def get_server_metrics_by_id(server_id):
                         "latency": "latency_ms",
                         "bandwidth": "bandwidth",
                         "jitter": "jitter",
-                        "packet_loss": "packet_loss",
-                        "measured_at": "timestamp"
-                        }
+                        "packet_loss": "packet_loss"
+                    }
                     
                     for db_field, api_field in field_mapping.items():
                         if db_field in columns:
                             select_fields.append(f"{db_field} as {api_field}")
+                    
+                    # Определяем правильное имя столбца времени
+                    time_column = "measured_at"  # По умолчанию используем measured_at
+                    if "measured_at" in columns:
+                        select_fields.append("measured_at as timestamp")
+                        time_column = "measured_at"
+                    elif "collected_at" in columns:
+                        select_fields.append("collected_at as timestamp")
+                        time_column = "collected_at"
                     
                     # Формируем SQL запрос с обнаруженными столбцами
                     query = f"""
@@ -599,9 +660,9 @@ def get_server_metrics_by_id(server_id):
                         server_metrics
                     WHERE 
                         server_id = %s AND
-                        collected_at >= %s
+                        {time_column} >= %s
                     ORDER BY 
-                        collected_at ASC
+                        {time_column} ASC
                     """
                     
                     cur.execute(query, (server_id, time_threshold))
@@ -610,7 +671,7 @@ def get_server_metrics_by_id(server_id):
                     # Если нет данных, генерируем мок-данные
                     if not metrics:
                         mock_metrics = generate_mock_metrics(server_id, hours)
-                        return jsonify({"metrics": mock_metrics, "mocked": True})
+                        return jsonify(mock_metrics)
                     
                     # Добавляем отсутствующие поля с мок-данными, если они нужны для интерфейса
                     for metric in metrics:
@@ -623,19 +684,22 @@ def get_server_metrics_by_id(server_id):
                         elif "load" not in metric:
                             metric["load"] = 30
                     
-                    return jsonify({"metrics": metrics})
+                    return jsonify({
+                        "current": metrics[-1] if metrics else {},
+                        "history": metrics
+                    })
                     
                 except Exception as e:
                     logger.exception(f"Ошибка при получении схемы таблицы: {e}")
                     # Если не удалось получить схему, используем мок-данные
                     mock_metrics = generate_mock_metrics(server_id, hours)
-                    return jsonify({"metrics": mock_metrics, "mocked": True})
+                    return jsonify(mock_metrics)
                 
     except Exception as e:
         logger.exception(f"Error getting server metrics by ID: {e}")
         # Даже при ошибке возвращаем мок-данные для корректной работы интерфейса
         mock_metrics = generate_mock_metrics(server_id, hours)
-        return jsonify({"metrics": mock_metrics, "mocked": True})
+        return jsonify(mock_metrics)
 
 def generate_mock_metrics(server_id, hours):
     """
@@ -1275,17 +1339,104 @@ def check_geolocations():
         logger.exception(f"Ошибка при проверке геолокаций: {e}")
         return jsonify({"error": str(e)}), 500
 
+# @app.route('/api/configs/migrate_users', methods=['POST'])
+# def migrate_users():
+#     """Миграция пользователей между серверами"""
+#     try:
+#         data = request.json
+        
+#         # Проверка обязательных параметров
+#         required_fields = ['source_server_id', 'target_server_id']
+#         for field in required_fields:
+#             if field not in data:
+#                 return jsonify({"error": f"Отсутствует обязательное поле: {field}"}), 400
+        
+#         source_server_id = data['source_server_id']
+#         target_server_id = data['target_server_id']
+#         user_ids = data.get('user_ids', [])  # Если не указаны, мигрируем всех пользователей
+        
+#         with get_db_connection() as conn:
+#             with conn.cursor() as cur:
+#                 # Проверка существования серверов
+#                 cur.execute("SELECT id FROM remote_servers WHERE id = %s", (source_server_id,))
+#                 if not cur.fetchone():
+#                     return jsonify({"error": f"Сервер-источник не найден: {source_server_id}"}), 404
+                
+#                 cur.execute("SELECT id FROM remote_servers WHERE id = %s", (target_server_id,))
+#                 if not cur.fetchone():
+#                     return jsonify({"error": f"Сервер-назначение не найден: {target_server_id}"}), 404
+                
+#                 # Получение конфигураций для миграции
+#                 if user_ids:
+#                     query = """
+#                     SELECT id, user_id FROM configurations 
+#                     WHERE server_id = %s AND active = TRUE AND user_id = ANY(%s)
+#                     """
+#                     cur.execute(query, (source_server_id, user_ids))
+#                 else:
+#                     query = """
+#                     SELECT id, user_id FROM configurations 
+#                     WHERE server_id = %s AND active = TRUE
+#                     """
+#                     cur.execute(query, (source_server_id,))
+                
+#                 configs = cur.fetchall()
+                
+#                 if not configs:
+#                     return jsonify({"message": "Нет конфигураций для миграции", "migrated": 0}), 200
+                
+#                 # Обновление конфигураций
+#                 migrated_count = 0
+#                 for config in configs:
+#                     # Логируем миграцию
+#                     cur.execute("""
+#                     INSERT INTO server_migrations 
+#                     (user_id, from_server_id, to_server_id, migration_reason, migration_time, success)
+#                     VALUES (%s, %s, %s, %s, NOW(), TRUE)
+#                     """, (config[1], source_server_id, target_server_id, data.get('reason', 'admin_request')))
+                    
+#                     # Обновляем конфигурацию
+#                     cur.execute("""
+#                     UPDATE configurations
+#                     SET server_id = %s, updated_at = NOW()
+#                     WHERE id = %s
+#                     """, (target_server_id, config[0]))
+                    
+#                     migrated_count += 1
+                
+#                 conn.commit()
+                
+#                 return jsonify({
+#                     "success": True,
+#                     "message": f"Успешно мигрировано {migrated_count} пользователей",
+#                     "migrated": migrated_count,
+#                     "total": len(configs)
+#                 })
+                
+#     except Exception as e:
+#         logger.exception(f"Ошибка при миграции пользователей: {e}")
+#         return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/configs/migrate_users', methods=['POST'])
 def migrate_users():
     """Миграция пользователей между серверами"""
     try:
         data = request.json
         
+        # Проверка наличия данных
+        if not data:
+            return jsonify({"error": "Отсутствуют данные для миграции"}), 400
+            
         # Проверка обязательных параметров
         required_fields = ['source_server_id', 'target_server_id']
+        missing_fields = []
         for field in required_fields:
             if field not in data:
-                return jsonify({"error": f"Отсутствует обязательное поле: {field}"}), 400
+                missing_fields.append(field)
+                
+        if missing_fields:
+            return jsonify({"error": f"Отсутствуют обязательные поля: {', '.join(missing_fields)}"}), 400
         
         source_server_id = data['source_server_id']
         target_server_id = data['target_server_id']
@@ -1353,6 +1504,7 @@ def migrate_users():
         logger.exception(f"Ошибка при миграции пользователей: {e}")
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/api/geolocations/available', methods=['GET'])
 def get_available_geolocations():
     """Получение списка доступных геолокаций"""
@@ -1390,6 +1542,56 @@ def get_available_geolocations():
         logger.exception(f"Ошибка при получении доступных геолокаций: {e}")
         return jsonify({"error": str(e)}), 500
 
+# @app.route('/api/cleanup_expired', methods=['POST'])
+# def cleanup_expired():
+#     """Очистка просроченных данных (конфигурации, токены и т.д.)"""
+#     try:
+#         data = request.json or {}
+        
+#         # Параметры для контроля очистки разных типов данных
+#         cleanup_configs = data.get('cleanup_configs', True)
+#         cleanup_metrics = data.get('cleanup_metrics', True)
+#         metrics_retention_days = data.get('metrics_retention_days', 30)
+        
+#         from datetime import datetime, timedelta
+#         metrics_threshold = datetime.now() - timedelta(days=metrics_retention_days)
+        
+#         cleaned_data = {
+#             "expired_configs": 0,
+#             "old_metrics": 0
+#         }
+        
+#         with get_db_connection() as conn:
+#             with conn.cursor() as cur:
+#                 # Очистка просроченных конфигураций
+#                 if cleanup_configs:
+#                     cur.execute("""
+#                     UPDATE configurations
+#                     SET active = FALSE
+#                     WHERE expiry_time < NOW() AND active = TRUE
+#                     """)
+#                     cleaned_data["expired_configs"] = cur.rowcount
+                
+#                 # Очистка старых метрик
+#                 if cleanup_metrics:
+#                     cur.execute("""
+#                     DELETE FROM server_metrics
+#                     WHERE collected_at < %s
+#                     """, (metrics_threshold,))
+#                     cleaned_data["old_metrics"] = cur.rowcount
+                
+#                 conn.commit()
+                
+#                 return jsonify({
+#                     "success": True,
+#                     "message": "Очистка просроченных данных выполнена успешно",
+#                     "cleaned_data": cleaned_data
+#                 })
+                
+#     except Exception as e:
+#         logger.exception(f"Ошибка при очистке просроченных данных: {e}")
+#         return jsonify({"error": str(e)}), 500
+
 @app.route('/api/cleanup_expired', methods=['POST'])
 def cleanup_expired():
     """Очистка просроченных данных (конфигурации, токены и т.д.)"""
@@ -1420,13 +1622,39 @@ def cleanup_expired():
                     """)
                     cleaned_data["expired_configs"] = cur.rowcount
                 
-                # Очистка старых метрик
+                # Очистка старых метрик - проверяем существование таблицы и поля
                 if cleanup_metrics:
+                    # Проверяем существование колонки collected_at в таблице server_metrics
                     cur.execute("""
-                    DELETE FROM server_metrics
-                    WHERE collected_at < %s
-                    """, (metrics_threshold,))
-                    cleaned_data["old_metrics"] = cur.rowcount
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'server_metrics' AND column_name = 'collected_at'
+                    """)
+                    
+                    if cur.fetchone():
+                        # Если колонка collected_at существует
+                        cur.execute("""
+                        DELETE FROM server_metrics
+                        WHERE collected_at < %s
+                        """, (metrics_threshold,))
+                        cleaned_data["old_metrics"] = cur.rowcount
+                    else:
+                        # Попробуем поле measured_at вместо collected_at
+                        cur.execute("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'server_metrics' AND column_name = 'measured_at'
+                        """)
+                        
+                        if cur.fetchone():
+                            cur.execute("""
+                            DELETE FROM server_metrics
+                            WHERE measured_at < %s
+                            """, (metrics_threshold,))
+                            cleaned_data["old_metrics"] = cur.rowcount
+                        else:
+                            logger.warning("Не найдена колонка для очистки метрик. Пропускаем очистку.")
+                            cleaned_data["old_metrics"] = "скипнуто: не найдена подходящая колонка"
                 
                 conn.commit()
                 
@@ -1613,6 +1841,152 @@ def add_geolocation():
     except Exception as e:
         logger.exception(f"Ошибка при добавлении геолокации: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/servers/rebalance', methods=['POST'])
+def rebalance_servers():
+    """Ребалансировка нагрузки на серверах"""
+    try:
+        data = request.json or {}
+        
+        # Получение параметров
+        geolocation_id = data.get('geolocation_id')
+        auto_migrate = data.get('auto_migrate', False)
+        
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # Базовый запрос для получения активных серверов
+                query = """
+                SELECT 
+                    rs.id, 
+                    rs.server_id, 
+                    rs.name, 
+                    rs.location, 
+                    rs.geolocation_id,
+                    COUNT(c.id) as active_configs,
+                    rs.max_peers
+                FROM 
+                    remote_servers rs
+                LEFT JOIN 
+                    configurations c ON rs.id = c.server_id AND c.active = TRUE
+                WHERE 
+                    rs.is_active = TRUE
+                """
+                
+                params = []
+                
+                # Если указана геолокация, фильтруем по ней
+                if geolocation_id:
+                    query += " AND rs.geolocation_id = %s"
+                    params.append(geolocation_id)
+                
+                # Группировка и получение данных
+                query += """
+                GROUP BY rs.id
+                ORDER BY rs.id ASC
+                """
+                
+                cur.execute(query, params)
+                servers = [dict(row) for row in cur.fetchall()]
+                
+                if not servers:
+                    return jsonify({"message": "Нет доступных серверов для ребалансировки"}), 404
+                
+                # Рассчитываем статистику заполненности серверов
+                total_users = sum(s['active_configs'] for s in servers)
+                total_capacity = sum(s['max_peers'] or 100 for s in servers)
+                
+                if total_capacity == 0:
+                    return jsonify({"error": "Общая вместимость серверов равна нулю"}), 400
+                    
+                average_load = total_users / total_capacity
+                
+                # Определяем перегруженные и недогруженные серверы
+                overloaded = []
+                underloaded = []
+                
+                for server in servers:
+                    capacity = server['max_peers'] or 100
+                    load_factor = server['active_configs'] / capacity if capacity > 0 else 0
+                    
+                    server['load_factor'] = load_factor
+                    server['load_percent'] = round(load_factor * 100, 1)
+                    
+                    if load_factor > average_load * 1.2:  # На 20% больше среднего
+                        overloaded.append(server)
+                    elif load_factor < average_load * 0.8:  # На 20% меньше среднего
+                        underloaded.append(server)
+                
+                # Если включена автоматическая миграция
+                migrations = []
+                if auto_migrate and overloaded and underloaded:
+                    for o_server in overloaded:
+                        for u_server in underloaded:
+                            # Определяем, сколько пользователей нужно переместить
+                            o_capacity = o_server['max_peers'] or 100
+                            u_capacity = u_server['max_peers'] or 100
+                            
+                            o_ideal = o_capacity * average_load
+                            u_ideal = u_capacity * average_load
+                            
+                            o_excess = o_server['active_configs'] - o_ideal
+                            u_space = u_ideal - u_server['active_configs']
+                            
+                            # Сколько пользователей можем переместить
+                            to_migrate = min(int(o_excess), int(u_space))
+                            
+                            if to_migrate > 0:
+                                # Получаем пользователей для миграции
+                                cur.execute("""
+                                SELECT id, user_id FROM configurations
+                                WHERE server_id = %s AND active = TRUE
+                                LIMIT %s
+                                """, (o_server['id'], to_migrate))
+                                
+                                configs = cur.fetchall()
+                                if configs:
+                                    # Выполняем миграцию
+                                    for config in configs:
+                                        # Логируем миграцию
+                                        cur.execute("""
+                                        INSERT INTO server_migrations 
+                                        (user_id, from_server_id, to_server_id, migration_reason, migration_time, success)
+                                        VALUES (%s, %s, %s, 'auto_rebalance', NOW(), TRUE)
+                                        """, (config[1], o_server['id'], u_server['id']))
+                                        
+                                        # Обновляем конфигурацию
+                                        cur.execute("""
+                                        UPDATE configurations
+                                        SET server_id = %s, updated_at = NOW()
+                                        WHERE id = %s
+                                        """, (u_server['id'], config[0]))
+                                    
+                                    migrations.append({
+                                        "from_server": o_server['server_id'],
+                                        "to_server": u_server['server_id'],
+                                        "users_migrated": len(configs)
+                                    })
+                
+                conn.commit()
+                
+                return jsonify({
+                    "success": True,
+                    "servers": servers,
+                    "statistics": {
+                        "total_users": total_users,
+                        "total_capacity": total_capacity,
+                        "average_load_percent": round(average_load * 100, 1),
+                        "overloaded_servers": len(overloaded),
+                        "underloaded_servers": len(underloaded)
+                    },
+                    "migrations": migrations,
+                    "auto_migrated": auto_migrate and len(migrations) > 0
+                })
+                
+    except Exception as e:
+        logger.exception(f"Ошибка при ребалансировке серверов: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5002) 

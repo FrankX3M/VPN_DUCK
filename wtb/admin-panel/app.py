@@ -250,7 +250,12 @@ def datetime_filter(value, format='%Y-%m-%d %H:%M:%S'):
                 value = datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
             except ValueError:
                 return value
-    return value.strftime(format)
+    # Проверяем, имеет ли value метод strftime
+    if hasattr(value, 'strftime'):
+        return value.strftime(format)
+    else:
+        # Если value не имеет метода strftime, вернем значение как есть
+        return value
 
 # Run application
 if __name__ == '__main__':

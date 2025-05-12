@@ -1,37 +1,38 @@
 {% extends "base.html" %}
 
-{% block title %}Server Details{% endblock %}
+{% block title %}Server Details - {{ server.name }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
+<div class="container mt-4">
     <div class="row">
         <div class="col-md-12">
             <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Server Details: {{ server.name }}</h3>
-                    <div class="card-tools">
-                        <a href="{{ url_for('servers.edit', server_id=server.id) }}" class="btn btn-primary btn-sm">
-                            <i class="fas fa-edit"></i> Edit
-                        </a>
-                        <button type="button" class="btn btn-danger btn-sm" data-toggle="modal" data-target="#deleteModal">
-                            <i class="fas fa-trash"></i> Delete
-                        </button>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h1 class="h3 mb-0">Server Details: {{ server.name }}</h1>
+                    <div>
+                        <span class="badge {% if server.status == 'active' %}bg-success{% elif server.status == 'inactive' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                            {{ server.status|title }}
+                        </span>
                     </div>
                 </div>
                 <div class="card-body">
                     <div class="row">
                         <div class="col-md-6">
-                            <div class="card">
+                            <div class="card mb-4">
                                 <div class="card-header">
-                                    <h3 class="card-title">Basic Information</h3>
+                                    <h5 class="mb-0">Basic Information</h5>
                                 </div>
                                 <div class="card-body">
-                                    <table class="table table-bordered">
+                                    <table class="table">
+                                        <tr>
+                                            <th style="width: 30%">ID</th>
+                                            <td>{{ server.id }}</td>
+                                        </tr>
                                         <tr>
                                             <th>Status</th>
                                             <td>
-                                                <span class="badge badge-{{ server.status|lower == 'active' and 'success' or 'danger' }}">
-                                                    {{ server.status }}
+                                                <span class="badge {% if server.status == 'active' %}bg-success{% elif server.status == 'inactive' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                                    {{ server.status|title }}
                                                 </span>
                                             </td>
                                         </tr>
@@ -45,7 +46,12 @@
                                         </tr>
                                         <tr>
                                             <th>API URL</th>
-                                            <td>{{ server.api_url }}</td>
+                                            <td>
+                                                {{ server.api_url }}
+                                                {% if server.api_path %}
+                                                <small class="text-muted d-block">Path: {{ server.api_path }}</small>
+                                                {% endif %}
+                                            </td>
                                         </tr>
                                         <tr>
                                             <th>Address</th>
@@ -56,73 +62,152 @@
                                             <td>{{ geo.name }} ({{ geo.code }})</td>
                                         </tr>
                                         <tr>
-                                            <th>Created At</th>
-                                            <td>{{ server.created_at|datetime }}</td>
+                                            <th>API Check</th>
+                                            <td>
+                                                {% if server.skip_api_check %}
+                                                <span class="badge bg-warning text-dark">Disabled</span>
+                                                {% else %}
+                                                <span class="badge bg-success">Enabled</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">Security Information</h5>
+                                </div>
+                                <div class="card-body">
+                                    <table class="table">
+                                        <tr>
+                                            <th style="width: 30%">Public Key</th>
+                                            <td>
+                                                <div class="text-truncate" style="max-width: 300px;">
+                                                    {{ server.public_key }}
+                                                </div>
+                                                <button class="btn btn-sm btn-outline-secondary mt-1 copy-btn" 
+                                                       data-copy="{{ server.public_key }}">
+                                                    <i class="bi bi-clipboard"></i> Copy
+                                                </button>
+                                            </td>
                                         </tr>
                                         <tr>
-                                            <th>Last Updated</th>
-                                            <td>{{ server.updated_at|datetime }}</td>
+                                            <th>API Key</th>
+                                            <td>
+                                                {% if server.api_key %}
+                                                <div class="text-truncate" style="max-width: 300px;">
+                                                    <span class="text-muted">{{ server.api_key }}</span>
+                                                </div>
+                                                <button class="btn btn-sm btn-outline-secondary mt-1 copy-btn" 
+                                                       data-copy="{{ server.api_key }}">
+                                                    <i class="bi bi-clipboard"></i> Copy
+                                                </button>
+                                                {% else %}
+                                                <span class="text-muted">Not set</span>
+                                                {% endif %}
+                                            </td>
                                         </tr>
                                     </table>
                                 </div>
                             </div>
                         </div>
+                        
                         <div class="col-md-6">
-                            <div class="card">
+                            <div class="card mb-4">
                                 <div class="card-header">
-                                    <h3 class="card-title">Performance Metrics</h3>
+                                    <h5 class="mb-0">Performance Metrics</h5>
                                 </div>
                                 <div class="card-body">
-                                    {% if metrics and metrics.current %}
-                                        <h5>Network Latency</h5>
+                                    {% if metrics and metrics.history and metrics.history|length > 0 %}
+                                        <h5>Latency</h5>
                                         <div class="progress mb-3">
-                                            {% if 'avg_latency' in metrics.current %}
-                                                <div class="progress-bar {% if metrics.current.avg_latency < 50 %}bg-success{% elif metrics.current.avg_latency < 100 %}bg-warning{% else %}bg-danger{% endif %}" role="progressbar"
-                                                     style="width: {{ min(metrics.current.avg_latency / 2, 100) }}%"
-                                                     aria-valuenow="{{ metrics.current.avg_latency }}" aria-valuemin="0" aria-valuemax="200">
-                                                    {{ metrics.current.avg_latency }} ms
-                                                </div>
-                                            {% else %}
-                                                <div class="progress-bar bg-secondary" role="progressbar" style="width: 100%">
-                                                    No latency data available
-                                                </div>
-                                            {% endif %}
+                                            {% set latency = metrics.history[-1].latency_ms|default(metrics.history[-1].ping_ms|default(0)) %}
+                                            <div class="progress-bar {% if latency < 50 %}bg-success{% elif latency < 100 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                                 role="progressbar"
+                                                 style="width: {{ min(latency / 2, 100) }}%"
+                                                 aria-valuenow="{{ latency }}" aria-valuemin="0" aria-valuemax="200">
+                                                {{ latency }} ms
+                                            </div>
                                         </div>
 
-                                        <h5>Bandwidth Availability</h5>
+                                        <h5>Packet Loss</h5>
                                         <div class="progress mb-3">
-                                            {% if 'bandwidth' in metrics.current %}
-                                                <div class="progress-bar bg-info" role="progressbar"
-                                                     style="width: {{ min(metrics.current.bandwidth / 10, 100) }}%"
-                                                     aria-valuenow="{{ metrics.current.bandwidth }}" aria-valuemin="0" aria-valuemax="1000">
-                                                    {{ metrics.current.bandwidth }} Mbps
-                                                </div>
-                                            {% else %}
-                                                <div class="progress-bar bg-secondary" role="progressbar" style="width: 100%">
-                                                    No bandwidth data available
-                                                </div>
-                                            {% endif %}
+                                            {% set packet_loss = metrics.history[-1].packet_loss|default(0) %}
+                                            <div class="progress-bar {% if packet_loss < 1 %}bg-success{% elif packet_loss < 5 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                                 role="progressbar"
+                                                 style="width: {{ min(packet_loss * 10, 100) }}%"
+                                                 aria-valuenow="{{ packet_loss }}" aria-valuemin="0" aria-valuemax="10">
+                                                {{ packet_loss }}%
+                                            </div>
                                         </div>
 
-                                        <h5>Uptime</h5>
+                                        <h5>Server Load</h5>
                                         <div class="progress mb-3">
-                                            {% if 'uptime' in metrics.current %}
-                                                <div class="progress-bar bg-success" role="progressbar"
-                                                     style="width: {{ metrics.current.uptime }}%"
-                                                     aria-valuenow="{{ metrics.current.uptime }}" aria-valuemin="0" aria-valuemax="100">
-                                                    {{ metrics.current.uptime }}%
-                                                </div>
-                                            {% else %}
-                                                <div class="progress-bar bg-secondary" role="progressbar" style="width: 100%">
-                                                    No uptime data available
-                                                </div>
-                                            {% endif %}
+                                            {% set load = metrics.history[-1].load|default(metrics.history[-1].cpu_usage|default(0)) %}
+                                            <div class="progress-bar {% if load < 50 %}bg-success{% elif load < 80 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                                 role="progressbar"
+                                                 style="width: {{ load }}%"
+                                                 aria-valuenow="{{ load }}" aria-valuemin="0" aria-valuemax="100">
+                                                {{ load }}%
+                                            </div>
                                         </div>
                                     {% else %}
                                         <div class="alert alert-info">
-                                            No performance metrics available for this server.
+                                            <p class="mb-0">No performance metrics available for this server.</p>
+                                            <p class="small mt-2 mb-0">Make sure the server has API access enabled and the metrics collector can connect to it.</p>
                                         </div>
                                     {% endif %}
+                                </div>
+                            </div>
+                            
+                            {% if charts and charts.resources %}
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h5 class="mb-0">Resource Usage</h5>
+                                </div>
+                                <div class="card-body text-center">
+                                    <img src="{{ charts.resources }}" class="img-fluid" alt="Resource Usage Chart">
+                                </div>
+                            </div>
+                            {% endif %}
+                            
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">Actions</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row mb-3">
+                                        <div class="col">
+                                            <a href="{{ url_for('servers.edit', server_id=server.id) }}" class="btn btn-primary w-100">
+                                                <i class="bi bi-pencil"></i> Edit Server
+                                            </a>
+                                        </div>
+                                        <div class="col">
+                                            <form action="{{ url_for('servers.action', server_id=server.id, action='toggle_status') }}" method="POST">
+                                                <button type="submit" class="btn btn-warning w-100">
+                                                    <i class="bi bi-toggle-on"></i> Toggle Status
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col">
+                                            <form action="{{ url_for('servers.action', server_id=server.id, action='restart') }}" method="POST">
+                                                <button type="submit" class="btn btn-info w-100">
+                                                    <i class="bi bi-arrow-clockwise"></i> Restart Service
+                                                </button>
+                                            </form>
+                                        </div>
+                                        <div class="col">
+                                            <a href="{{ url_for('servers.delete', server_id=server.id) }}" 
+                                               class="btn btn-danger w-100 confirm-action"
+                                               data-confirm="Are you sure you want to delete this server? This action cannot be undone.">
+                                                <i class="bi bi-trash"></i> Delete Server
+                                            </a>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -132,25 +217,209 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
-<!-- Delete Modal -->
-<div class="modal fade" id="deleteModal" tabindex="-1" role="dialog" aria-labelledby="deleteModalLabel" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="deleteModalLabel">Delete Server</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>
-            <div class="modal-body">
-                Are you sure you want to delete this server? This action cannot be undone.
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-                <form action="{{ url_for('servers.delete', server_id=server.id) }}" method="post">
-                    <button type="submit" class="btn btn-danger">Delete</button>
-                </form>
+{# Updated server add.html template - fixed duplicate fields and added proper API fields #}
+{% extends "base.html" %}
+
+{% block title %}Add New Server - VPN Duck{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-lg-8 offset-lg-2">
+            <div class="card">
+                <div class="card-header">
+                    <h1 class="h3 mb-0">Add New Server</h1>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('servers.add') }}">
+                        {{ form.csrf_token }}
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.name.id }}" class="form-label">{{ form.name.label.text }}</label>
+                                    {{ form.name(class="form-control", placeholder="Optional - generated from endpoint if empty") }}
+                                    {% if form.name.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.name.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.endpoint.id }}" class="form-label">{{ form.endpoint.label.text }} *</label>
+                                    {{ form.endpoint(class="form-control", placeholder="IP address or hostname") }}
+                                    {% if form.endpoint.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.endpoint.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.port.id }}" class="form-label">{{ form.port.label.text }} *</label>
+                                    {{ form.port(class="form-control") }}
+                                    {% if form.port.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.port.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.address.id }}" class="form-label">{{ form.address.label.text }} *</label>
+                                    {{ form.address(class="form-control", placeholder="10.0.0.1/24") }}
+                                    {% if form.address.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.address.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.public_key.id }}" class="form-label">{{ form.public_key.label.text }} *</label>
+                                    {{ form.public_key(class="form-control") }}
+                                    {% if form.public_key.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.public_key.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.geolocation_id.id }}" class="form-label">{{ form.geolocation_id.label.text }} *</label>
+                                    {{ form.geolocation_id(class="form-select") }}
+                                    {% if form.geolocation_id.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.geolocation_id.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.api_url.id }}" class="form-label">{{ form.api_url.label.text }}</label>
+                                    {{ form.api_url(class="form-control", placeholder="http://endpoint:5000") }}
+                                    <small class="text-muted">URL for API (usually uses port 5000, not WireGuard port)</small>
+                                    {% if form.api_url.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.api_url.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.api_path.id }}" class="form-label">{{ form.api_path.label.text }}</label>
+                                    {{ form.api_path(class="form-control", placeholder="/status") }}
+                                    <small class="text-muted">API status path (usually /status)</small>
+                                    {% if form.api_path.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.api_path.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.max_peers.id }}" class="form-label">{{ form.max_peers.label.text }}</label>
+                                    {{ form.max_peers(class="form-control") }}
+                                    {% if form.max_peers.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.max_peers.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.api_key.id }}" class="form-label">{{ form.api_key.label.text }}</label>
+                                    <div class="input-group">
+                                        {{ form.api_key(class="form-control") }}
+                                        <button type="button" class="btn btn-outline-secondary copy-btn" data-copy="{{ form.api_key.data }}">
+                                            <i class="bi bi-clipboard"></i>
+                                        </button>
+                                    </div>
+                                    <small class="text-muted">Auto-generated if left empty</small>
+                                    {% if form.api_key.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.api_key.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.status.id }}" class="form-label">{{ form.status.label.text }}</label>
+                                    {{ form.status(class="form-select") }}
+                                    {% if form.status.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.status.errors %}
+                                        {{ error }}
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mb-3 mt-4">
+                                    {{ form.skip_api_check(class="form-check-input") }}
+                                    <label class="form-check-label" for="{{ form.skip_api_check.id }}">
+                                        {{ form.skip_api_check.label.text }}
+                                    </label>
+                                    <small class="d-block text-muted">Enable for servers without API or with non-standard API</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{{ url_for('servers.index') }}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Add Server</button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     </div>

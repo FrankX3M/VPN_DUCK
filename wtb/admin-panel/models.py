@@ -21,68 +21,12 @@ class User(UserMixin):
     def __repr__(self):
         return f"<User {self.username}>"
 
-# class Server:
-#     """Server model for WireGuard servers."""
-    
-#     def __init__(self, id, name, endpoint, port, address, public_key, geolocation_id, 
-#                  status='active', api_key=None, api_url=None, max_peers=None, 
-#                  geolocation_name=None):
-#         self.id = id
-#         self.name = name
-#         self.endpoint = endpoint
-#         self.port = port
-#         self.address = address
-#         self.public_key = public_key
-#         self.geolocation_id = geolocation_id
-#         self.geolocation_name = geolocation_name
-#         self.status = status
-#         self.api_key = api_key
-#         self.api_url = api_url
-#         self.max_peers = max_peers
-    
-#     @classmethod
-#     def from_dict(cls, data):
-#         """Create server object from dictionary."""
-#         return cls(
-#             id=data.get('id'),
-#             name=data.get('name'),
-#             endpoint=data.get('endpoint'),
-#             port=data.get('port'),
-#             address=data.get('address'),
-#             public_key=data.get('public_key'),
-#             geolocation_id=data.get('geolocation_id'),
-#             status=data.get('status', 'active'),
-#             api_key=data.get('api_key'),
-#             api_url=data.get('api_url'),
-#             max_peers=data.get('max_peers'),
-#             geolocation_name=data.get('geolocation_name')
-#         )
-    
-#     def to_dict(self):
-#         """Convert server object to dictionary."""
-#         return {
-#             'id': self.id,
-#             'name': self.name,
-#             'endpoint': self.endpoint,
-#             'port': self.port,
-#             'address': self.address,
-#             'public_key': self.public_key,
-#             'geolocation_id': self.geolocation_id,
-#             'status': self.status,
-#             'api_key': self.api_key,
-#             'api_url': self.api_url,
-#             'max_peers': self.max_peers,
-#             'geolocation_name': self.geolocation_name
-#         }
-    
-#     def __repr__(self):
-#         return f"<Server {self.name} ({self.endpoint}:{self.port})>"
 class Server:
     """Server model for WireGuard servers."""
     
     def __init__(self, id, name, endpoint, port, address, public_key, geolocation_id, 
-                 status='active', api_key=None, api_url=None, max_peers=None, 
-                 geolocation_name=None):
+                 status='active', api_key=None, api_url=None, api_path=None, 
+                 max_peers=None, geolocation_name=None, skip_api_check=False):
         self.id = id
         self.name = name
         self.endpoint = endpoint
@@ -94,25 +38,27 @@ class Server:
         self.status = status
         self.api_key = api_key
         self.api_url = api_url
+        self.api_path = api_path or '/status'
         self.max_peers = max_peers
+        self.skip_api_check = skip_api_check
     
     @classmethod
     def from_dict(cls, data):
         """Create server object from dictionary."""
-        # Проверяем, что data - словарь
+        # Check that data is a dictionary
         if not isinstance(data, dict):
             raise ValueError(f"Expected dictionary, got {type(data)}")
             
-        # Если в словаре есть ключ 'server', используем его как источник данных
+        # If dictionary has a 'server' key, use it as the source
         if 'server' in data and isinstance(data['server'], dict):
             data = data['server']
             
-        # Получаем идентификатор сервера
+        # Get server ID
         server_id = data.get('id')
         if server_id is None and 'server_id' in data:
-            server_id = data.get('server_id')  # Альтернативное имя поля
+            server_id = data.get('server_id')  # Alternative field name
             
-        # Преобразование типов данных при необходимости
+        # Convert data types if needed
         port = data.get('port')
         if port is not None and isinstance(port, str):
             try:
@@ -127,7 +73,12 @@ class Server:
             except ValueError:
                 geolocation_id = None
                 
-        # Создаем объект сервера
+        # Handle boolean fields
+        skip_api_check = data.get('skip_api_check', False)
+        if isinstance(skip_api_check, str):
+            skip_api_check = skip_api_check.lower() in ('true', 'yes', '1', 'y')
+                
+        # Create server object
         return cls(
             id=server_id,
             name=data.get('name'),
@@ -139,8 +90,10 @@ class Server:
             status=data.get('status', 'active'),
             api_key=data.get('api_key'),
             api_url=data.get('api_url'),
+            api_path=data.get('api_path', '/status'),
             max_peers=data.get('max_peers'),
-            geolocation_name=data.get('geolocation_name')
+            geolocation_name=data.get('geolocation_name'),
+            skip_api_check=skip_api_check
         )
     
     def to_dict(self):
@@ -156,8 +109,10 @@ class Server:
             'status': self.status,
             'api_key': self.api_key,
             'api_url': self.api_url,
+            'api_path': self.api_path,
             'max_peers': self.max_peers,
-            'geolocation_name': self.geolocation_name
+            'geolocation_name': self.geolocation_name,
+            'skip_api_check': self.skip_api_check
         }
     
     def __repr__(self):
