@@ -10,95 +10,7 @@ logger = logging.getLogger(__name__)
 # Create blueprint
 api_bp = Blueprint('api', __name__)
 
-# @api_bp.route('/servers', methods=['POST'])
-# @login_required
-# def add_server():
-#     """Add a new server to the system."""
-#     try:
-#         data = request.json
-#         logger.info(f"Received data for adding server: {data}")
-        
-#         # Check for data presence
-#         if not data:
-#             logger.error("Received empty data")
-#             return jsonify({"status": "error", "message": "Empty request data"}), 400
-            
-#         # Check required fields
-#         required_fields = ['endpoint', 'port', 'public_key', 'address', 'geolocation_id']
-#         missing_fields = [field for field in required_fields if field not in data]
-        
-#         if missing_fields:
-#             logger.error(f"Missing required fields: {missing_fields}. Received data: {data}")
-#             return jsonify({"status": "error", "message": f"Missing fields: {', '.join(missing_fields)}"}), 400
-        
-#         # Validate data types with detailed diagnostics
-#         try:
-#             # Convert received data to expected types
-#             data['port'] = int(data['port']) if isinstance(data['port'], str) else data['port']
-#             data['geolocation_id'] = int(data['geolocation_id']) if isinstance(data['geolocation_id'], str) else data['geolocation_id']
-            
-#             # Check type conformance after conversion
-#             if not isinstance(data['port'], int):
-#                 return jsonify({"status": "error", "message": f"Field 'port' must be an integer. Received: {type(data['port']).__name__}"}), 400
-#             if not isinstance(data['geolocation_id'], int):
-#                 return jsonify({"status": "error", "message": f"Field 'geolocation_id' must be an integer. Received: {type(data['geolocation_id']).__name__}"}), 400
-                
-#         except ValueError as e:
-#             logger.error(f"Data type conversion error: {str(e)}, data: {data}")
-#             return jsonify({"status": "error", "message": f"Data error: {str(e)}"}), 400
-        
-#         # Add name if not specified
-#         if 'name' not in data or not data['name']:
-#             data['name'] = f"Server {data['endpoint']}:{data['port']}"
-#             logger.info(f"Automatically generated server name: {data['name']}")
-        
-#         # Generate API key if not specified
-#         if 'api_key' not in data or not data['api_key']:
-#             data['api_key'] = secrets.token_hex(16)
-#             logger.info(f"Automatically generated API key for server")
-        
-#         # Add API URL if not specified
-#         if 'api_url' not in data or not data['api_url']:
-#             data['api_url'] = f"http://{data['endpoint']}:{data['port']}/api"
-#             logger.info(f"Automatically generated API URL for server: {data['api_url']}")
-        
-#         # Add status if not specified
-#         if 'status' not in data or not data['status']:
-#             data['status'] = 'active'
-#             logger.info(f"Set default server status: {data['status']}")
-        
-#         # Send request to database-service to add server
-#         DATABASE_SERVICE_URL = current_app.config['DATABASE_SERVICE_URL']
-#         response = requests.post(
-#             f"{DATABASE_SERVICE_URL}/api/servers/add", 
-#             json=data,
-#             timeout=15
-#         )
-        
-#         if response.status_code != 200:
-#             logger.error(f"Error from database service: {response.status_code} {response.text}")
-#             return jsonify({
-#                 "status": "error",
-#                 "message": "Failed to add server",
-#                 "details": response.text
-#             }), response.status_code
-        
-#         # Log successful server addition
-#         response_data = response.json()
-#         logger.info(f"Server successfully added: {response_data}")
-        
-#         return jsonify({
-#             "status": "success",
-#             "message": "Server successfully added",
-#             "server": response_data
-#         }), 201
-#     except Exception as e:
-#         logger.exception(f"Error adding server: {e}")
-#         return jsonify({
-#             "status": "error",
-#             "message": "Internal server error",
-#             "details": str(e)
-#         }), 500
+
 @api_bp.route('/servers', methods=['POST'])
 @login_required
 def add_server():
@@ -107,66 +19,50 @@ def add_server():
         data = request.json
         logger.info(f"Received data for adding server: {data}")
         
-        # Check for data presence
-        if not data:
-            logger.error("Received empty data")
-            return jsonify({"error": "Empty request data"}), 400
-            
-        # Check required fields
+        # Проверка обязательных полей
         required_fields = ['endpoint', 'port', 'public_key', 'address', 'geolocation_id']
         missing_fields = [field for field in required_fields if field not in data]
         
         if missing_fields:
-            logger.error(f"Missing required fields: {missing_fields}. Received data: {data}")
             return jsonify({"error": f"Missing fields: {', '.join(missing_fields)}"}), 400
         
-        # Validate data types with detailed diagnostics
+        # Генерация уникального server_id, если он не предоставлен
+        if 'server_id' not in data:
+            import uuid
+            data['server_id'] = f"srv-{uuid.uuid4().hex[:8]}"
+        
+        # Конвертация типов данных
         try:
-            # Convert received data to expected types
             data['port'] = int(data['port']) if isinstance(data['port'], str) else data['port']
             data['geolocation_id'] = int(data['geolocation_id']) if isinstance(data['geolocation_id'], str) else data['geolocation_id']
             
-            # Convert boolean fields
+            # Конвертация булевых полей
             if 'skip_api_check' in data and isinstance(data['skip_api_check'], str):
                 data['skip_api_check'] = data['skip_api_check'].lower() in ('true', 'yes', '1', 'y')
-            
-            # Check type conformance after conversion
-            if not isinstance(data['port'], int):
-                return jsonify({"error": f"Field 'port' must be an integer. Received: {type(data['port']).__name__}"}), 400
-            if not isinstance(data['geolocation_id'], int):
-                return jsonify({"error": f"Field 'geolocation_id' must be an integer. Received: {type(data['geolocation_id']).__name__}"}), 400
-                
         except ValueError as e:
-            logger.error(f"Data type conversion error: {str(e)}, data: {data}")
             return jsonify({"error": f"Data error: {str(e)}"}), 400
         
-        # Add name if not specified
-        if 'name' not in data or not data['name']:
+        # Автоматическая генерация имени (если пусто)
+        if not data.get('name'):
             data['name'] = f"Server {data['endpoint']}:{data['port']}"
-            logger.info(f"Automatically generated server name: {data['name']}")
         
-        # Generate API key if not specified
-        if 'api_key' not in data or not data['api_key']:
+        # Автоматическая генерация API_KEY (если пусто)
+        if not data.get('api_key'):
             data['api_key'] = secrets.token_hex(16)
-            logger.info(f"Automatically generated API key for server")
         
-        # Add API URL if not specified
-        if 'api_url' not in data or not data['api_url']:
+        # Автоматическая генерация API_URL (если пусто)
+        if not data.get('api_url'):
             data['api_url'] = f"http://{data['endpoint']}:5000"
-            logger.info(f"Automatically generated API URL for server: {data['api_url']}")
-            
-        # Add API path if not specified
+        
+        # Добавление API_PATH (если пусто)
         if 'api_path' not in data:
             data['api_path'] = '/status'
-            logger.info(f"Using default API path: {data['api_path']}")
         
-        # Add status if not specified
-        if 'status' not in data or not data['status']:
+        # Добавление статуса (если пусто)
+        if not data.get('status'):
             data['status'] = 'active'
-            logger.info(f"Set default server status: {data['status']}")
         
-        # Send request to database-service to add server
-        DATABASE_SERVICE_URL = current_app.config['DATABASE_SERVICE_URL']
+        # Запрос к базе данных для добавления сервера
         response = requests.post(
             f"{DATABASE_SERVICE_URL}/api/servers/add", 
             json=data,
@@ -174,20 +70,17 @@ def add_server():
         )
         
         if response.status_code != 200:
-            logger.error(f"Error from database service: {response.status_code} {response.text}")
             return jsonify({
                 "error": "Failed to add server",
                 "details": response.text
             }), response.status_code
         
-        # Log successful server addition
-        response_data = response.json()
-        logger.info(f"Server successfully added: {response_data}")
+        logger.info(f"Server successfully added: {response.json()}")
         
         return jsonify({
             "success": True,
             "message": "Server successfully added",
-            "server": response_data
+            "server": response.json()
         }), 201
     except Exception as e:
         logger.exception(f"Error adding server: {e}")
@@ -267,101 +160,7 @@ def delete_server(server_id):
             "details": str(e)
         }), 500
 
-# @api_bp.route('/servers/<int:server_id>', methods=['PUT'])
-# @login_required
-# def update_server(server_id):
-#     """Update server information."""
-#     try:
-#         data = request.json
-#         logger.info(f"Received request to update server {server_id} with data: {data}")
-        
-#         # Check for data presence
-#         if not data:
-#             logger.error("Received empty data")
-#             return jsonify({"status": "error", "message": "Empty request data"}), 400
-        
-#         # Get current server data
-#         DATABASE_SERVICE_URL = current_app.config['DATABASE_SERVICE_URL']
-#         current_server_response = requests.get(
-#             f"{DATABASE_SERVICE_URL}/api/servers/{server_id}", 
-#             timeout=10
-#         )
-        
-#         if current_server_response.status_code != 200:
-#             logger.error(f"Server with ID {server_id} not found in database")
-#             return jsonify({"status": "error", "message": "Server not found"}), 404
-            
-#         current_server = current_server_response.json()
-        
-#         # Prepare data for database request
-#         update_data = {}
-        
-#         # Add fields that are allowed to be updated
-#         allowed_fields = ['endpoint', 'port', 'address', 'geolocation_id', 'status', 'name', 'city', 'country', 'api_key', 'public_key', 'api_url']
-#         for field in allowed_fields:
-#             if field in data:
-#                 # Convert numeric fields from strings to numbers
-#                 if field in ['port', 'geolocation_id'] and isinstance(data[field], str):
-#                     try:
-#                         update_data[field] = int(data[field])
-#                     except ValueError:
-#                         return jsonify({"status": "error", "message": f"Field '{field}' must be a number"}), 400
-#                 else:
-#                     update_data[field] = data[field]
-        
-#         # Check that there is data to update
-#         if not update_data:
-#             return jsonify({"status": "error", "message": "No fields specified for update"}), 400
-        
-#         # If endpoint or port are updated but not api_url, generate it
-#         if ('endpoint' in update_data or 'port' in update_data) and 'api_url' not in update_data:
-#             # Use new values if present, otherwise use current values
-#             endpoint = update_data.get('endpoint', current_server.get('endpoint'))
-#             port = update_data.get('port', current_server.get('port'))
-            
-#             if endpoint and port:
-#                 update_data['api_url'] = f"http://{endpoint}:{port}/api"
-#                 logger.info(f"Automatically updated API URL for server: {update_data['api_url']}")
-        
-#         # Send request to database
-#         response = requests.put(
-#             f"{DATABASE_SERVICE_URL}/api/servers/{server_id}",
-#             json=update_data,
-#             timeout=15
-#         )
-        
-#         if response.status_code != 200:
-#             logger.error(f"Error updating server: {response.status_code}, {response.text}")
-            
-#             # Check for error info in response
-#             error_message = "Error updating server"
-#             try:
-#                 error_data = response.json()
-#                 if "error" in error_data:
-#                     error_message = error_data.get("error")
-#             except:
-#                 pass
-                
-#             return jsonify({
-#                 "status": "error", 
-#                 "message": error_message,
-#                 "details": response.text
-#             }), response.status_code
-        
-#         # Log successful update
-#         logger.info(f"Server {server_id} successfully updated")
-#         return jsonify({
-#             "status": "success", 
-#             "message": "Server data successfully updated",
-#             "server_id": server_id
-#         })
-        
-#     except Exception as e:
-#         logger.exception(f"Error updating server: {e}")
-#         return jsonify({
-#             "status": "error", 
-#             "message": str(e)
-#         }), 500
+
 @api_bp.route('/servers/<int:server_id>', methods=['PUT'])
 @login_required
 def update_server(server_id):

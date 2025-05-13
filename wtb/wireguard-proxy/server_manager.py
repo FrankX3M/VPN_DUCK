@@ -57,15 +57,65 @@ class ServerManager:
             "response_time": {} # Среднее время ответа
         }
     
+    # def update_servers_info(self):
+    #     """Обновление информации о серверах из базы данных или использование тестовых данных"""
+    #     with self.lock:
+    #         try:
+    #             if self.fallback_mode:
+    #                 logger.info("Working in fallback mode, skipping database update")
+    #                 # Если мы в режиме отказоустойчивости, не пытаемся обновить данные из БД
+    #                 return
+                
+    #             logger.info("Updating servers information from database")
+                
+    #             # Если включен режим тестовых данных, используем мок-данные
+    #             if USE_MOCK_DATA:
+    #                 logger.info("Using mock data instead of database")
+    #                 self.servers = MOCK_SERVERS
+    #                 self._check_servers_availability()
+    #                 self.last_update = datetime.now()
+                    
+    #                 # Обновляем информацию в кэше
+    #                 self.cache_manager.set('servers', self.servers, ttl=300)  # Кэш на 5 минут
+    #                 return
+                
+    #             # Запрос к сервису базы данных для получения информации о серверах
+    #             response = self._fetch_servers_from_database()
+    #             if not response:
+    #                 self._handle_database_unavailable()
+    #                 return
+                    
+    #             servers_data = response.get('servers', [])
+    #             logger.info(f"Received {len(servers_data)} servers from database")
+                
+    #             # Обновление локального кэша серверов
+    #             self.servers = servers_data
+                
+    #             # Проверка доступности каждого сервера
+    #             self._check_servers_availability()
+                
+    #             self.last_update = datetime.now()
+    #             logger.info("Servers information updated successfully")
+                
+    #             # Обновляем информацию в кэше
+    #             self.cache_manager.set('servers', servers_data, ttl=300)  # Кэш на 5 минут
+                
+    #             # Сбрасываем режим отказоустойчивости, если он был включен
+    #             if self.fallback_mode:
+    #                 logger.info("Exiting fallback mode")
+    #                 self.fallback_mode = False
+                
+    #         except Exception as e:
+    #             logger.exception(f"Error updating servers info: {e}")
+    #             self._handle_database_unavailable()
     def update_servers_info(self):
-        """Обновление информации о серверах из базы данных или использование тестовых данных"""
+        """Обновление информации о серверах из базы данных"""
         with self.lock:
             try:
                 if self.fallback_mode:
                     logger.info("Working in fallback mode, skipping database update")
-                    # Если мы в режиме отказоустойчивости, не пытаемся обновить данные из БД
                     return
-                
+                    
                 logger.info("Updating servers information from database")
                 
                 # Если включен режим тестовых данных, используем мок-данные
@@ -80,31 +130,53 @@ class ServerManager:
                     return
                 
                 # Запрос к сервису базы данных для получения информации о серверах
-                response = self._fetch_servers_from_database()
-                if not response:
-                    self._handle_database_unavailable()
-                    return
+                try:
+                    # Убедимся, что у нас есть URL сервиса базы данных
+                    if not self.database_service_url:
+                        logger.error("Database service URL is not set")
+                        self._handle_database_unavailable()
+                        return
+                        
+                    response = requests.get(
+                        f"{self.database_service_url}/api/servers",
+                        timeout=10
+                    )
                     
-                servers_data = response.get('servers', [])
-                logger.info(f"Received {len(servers_data)} servers from database")
-                
-                # Обновление локального кэша серверов
-                self.servers = servers_data
-                
-                # Проверка доступности каждого сервера
-                self._check_servers_availability()
-                
-                self.last_update = datetime.now()
-                logger.info("Servers information updated successfully")
-                
-                # Обновляем информацию в кэше
-                self.cache_manager.set('servers', servers_data, ttl=300)  # Кэш на 5 минут
-                
-                # Сбрасываем режим отказоустойчивости, если он был включен
-                if self.fallback_mode:
-                    logger.info("Exiting fallback mode")
-                    self.fallback_mode = False
-                
+                    if response.status_code != 200:
+                        logger.error(f"Failed to get servers from database: {response.status_code}")
+                        self._handle_database_unavailable()
+                        return
+                        
+                    servers_data = response.json().get('servers', [])
+                    logger.info(f"Received {len(servers_data)} servers from database")
+                    
+                    # Проверяем, что полученные данные соответствуют ожидаемому формату
+                    if not all(self._validate_server_data(server) for server in servers_data):
+                        logger.error("Some server data is invalid, using previous configuration")
+                        self._handle_database_unavailable()
+                        return
+                    
+                    # Обновление локального кэша серверов
+                    self.servers = servers_data
+                    
+                    # Проверка доступности каждого сервера
+                    self._check_servers_availability()
+                    
+                    self.last_update = datetime.now()
+                    logger.info("Servers information updated successfully")
+                    
+                    # Обновляем информацию в кэше
+                    self.cache_manager.set('servers', servers_data, ttl=300)  # Кэш на 5 минут
+                    
+                    # Сбрасываем режим отказоустойчивости, если он был включен
+                    if self.fallback_mode:
+                        logger.info("Exiting fallback mode")
+                        self.fallback_mode = False
+                        
+                except requests.RequestException as e:
+                    logger.error(f"Database service connection error: {e}")
+                    self._handle_database_unavailable()
+                    
             except Exception as e:
                 logger.exception(f"Error updating servers info: {e}")
                 self._handle_database_unavailable()
@@ -127,6 +199,34 @@ class ServerManager:
             logger.error(f"Database service connection error: {e}")
             return None
     
+    def _validate_server_data(self, server):
+        """Проверка корректности данных сервера
+        
+        Args:
+            server (dict): Данные сервера
+            
+        Returns:
+            bool: True, если данные валидны, иначе False
+        """
+        required_fields = ['id', 'endpoint', 'port', 'address', 'public_key']
+        
+        # Проверяем наличие всех обязательных полей
+        if not all(field in server for field in required_fields):
+            logger.error(f"Missing required fields in server data: {server}")
+            return False
+            
+        # Проверяем типы данных
+        if not isinstance(server.get('port'), int):
+            logger.error(f"Port should be an integer for server: {server.get('id')}")
+            return False
+            
+        # Проверяем диапазон порта
+        if not (1 <= server.get('port', 0) <= 65535):
+            logger.error(f"Port is out of range (1-65535) for server: {server.get('id')}")
+            return False
+            
+        return True
+
     def _handle_database_unavailable(self):
         """Обработка ситуации, когда база данных недоступна"""
         # Проверка, есть ли данные в кэше
@@ -201,7 +301,39 @@ class ServerManager:
                 logger.warning(f"Server {server_id} is not available: {e}")
                 # Возвращаем мокированные данные
                 self._set_mock_server_data(server_id, server, is_degraded=True)
-    
+
+    def _process_server_data(self, server_data):
+        """Преобразование данных сервера из remote_servers в формат, используемый приложением
+        
+        Args:
+            server_data (dict): Данные сервера из базы данных
+            
+        Returns:
+            dict: Отформатированные данные сервера
+        """
+        return {
+            'id': str(server_data.get('id')),
+            'name': server_data.get('name'),
+            'endpoint': server_data.get('endpoint'),
+            'port': server_data.get('port'),
+            'address': server_data.get('address'),
+            'public_key': server_data.get('public_key'),
+            'geolocation_id': str(server_data.get('geolocation_id')) if server_data.get('geolocation_id') else None,
+            'geolocation_name': server_data.get('geolocation_name'),
+            'status': 'active' if server_data.get('is_active', True) else 'inactive',
+            'api_key': server_data.get('api_key'),
+            'api_url': server_data.get('api_url'),
+            'api_path': server_data.get('api_path') or '/status',
+            'skip_api_check': server_data.get('skip_api_check') or False,
+            'max_peers': server_data.get('max_peers') or 100,
+            'metrics': {
+                'peers_count': server_data.get('peers_count', 0),
+                'is_available': server_data.get('is_available', True),
+                'response_time': server_data.get('response_time', 0),
+                'last_check': server_data.get('last_check', datetime.now().isoformat())
+            }
+        }
+
     def _set_mock_server_data(self, server_id, server, is_degraded=False):
         """
         Устанавливает мокированные данные о статусе сервера для тестирования интерфейса
@@ -374,37 +506,81 @@ class ServerManager:
         
         return servers_to_use[0]
     
-    def record_server_metrics(self, server_id, success, response_time):
-        """
-        Запись метрик для сервера
+    def record_server_metrics(self, server_id, success=True, response_time=0):
+        """Запись метрик сервера
         
         Args:
             server_id (str): ID сервера
-            success (bool): Успешность запроса
+            success (bool): Флаг успешности запроса
             response_time (float): Время ответа в секундах
         """
-        with self.lock:
-            # Инициализация метрик для сервера, если его еще нет
-            if server_id not in self.server_metrics["requests"]:
-                self.server_metrics["requests"][server_id] = 0
-                self.server_metrics["failures"][server_id] = 0
-                self.server_metrics["response_time"][server_id] = 0
+        try:
+            server = self.get_server_by_id(server_id)
+            if not server:
+                logger.warning(f"Cannot record metrics for unknown server: {server_id}")
+                return
+                
+            # Обновляем метрики в локальном объекте сервера
+            if 'metrics' not in server:
+                server['metrics'] = {}
+                
+            server['metrics']['is_available'] = success
+            server['metrics']['response_time'] = response_time
+            server['metrics']['last_check'] = datetime.now().isoformat()
             
-            # Обновление метрик
-            self.server_metrics["requests"][server_id] += 1
-            if not success:
-                self.server_metrics["failures"][server_id] += 1
+            # Отправить метрики в базу данных (в фоновом режиме)
+            self._send_metrics_to_database(server_id, success, response_time)
             
-            # Обновление среднего времени ответа
-            prev_avg = self.server_metrics["response_time"][server_id]
-            prev_requests = self.server_metrics["requests"][server_id] - 1
-            
-            if prev_requests > 0:
-                new_avg = (prev_avg * prev_requests + response_time) / self.server_metrics["requests"][server_id]
-                self.server_metrics["response_time"][server_id] = new_avg
-            else:
-                self.server_metrics["response_time"][server_id] = response_time
+        except Exception as e:
+            logger.exception(f"Error recording server metrics: {e}")
     
+    def _send_metrics_to_database(self, server_id, is_available, response_time):
+        """Отправка метрик сервера в базу данных
+        
+        Args:
+            server_id (str): ID сервера
+            is_available (bool): Доступность сервера
+            response_time (float): Время ответа в секундах
+        """
+        try:
+            # Выполнение в отдельном потоке, чтобы не блокировать основной поток
+            threading.Thread(
+                target=self._do_send_metrics_to_database,
+                args=(server_id, is_available, response_time),
+                daemon=True
+            ).start()
+        except Exception as e:
+            logger.exception(f"Error starting metrics thread: {e}")
+        
+    def _do_send_metrics_to_database(self, server_id, is_available, response_time):
+        """Отправка метрик сервера в базу данных (выполняется в отдельном потоке)
+        
+        Args:
+            server_id (str): ID сервера
+            is_available (bool): Доступность сервера
+            response_time (float): Время ответа в секундах
+        """
+        try:
+            # Если URL сервиса базы данных не указан, выходим
+            if not self.database_service_url:
+                return
+                
+            # Подготовка данных для отправки
+            data = {
+                'server_id': server_id,
+                'is_available': is_available,
+                'response_time': response_time
+            }
+            
+            # Отправка метрик в базу данных
+            requests.post(
+                f"{self.database_service_url}/api/server_metrics/add",
+                json=data,
+                timeout=5
+            )
+        except Exception as e:
+            logger.exception(f"Error sending metrics to database: {e}")
+
     def get_servers_status(self):
         """
         Получение статуса всех серверов
@@ -445,7 +621,7 @@ class ServerManager:
             
             return status_list
 
-    def get_server_status(server_id):
+    def get_server_status(self, server_id):
         """
         Получение статуса и статистики сервера.
         
@@ -457,7 +633,7 @@ class ServerManager:
         """
         try:
             # Получаем информацию о сервере
-            server_info = get_server_info(server_id)
+            server_info = self.get_server_by_id(server_id)
             if not server_info:
                 logger.warning(f"Сервер {server_id} не найден в базе данных.")
                 return None
@@ -513,11 +689,11 @@ class ServerManager:
                 else:
                     logger.warning(f"Сервер {server_id} вернул код состояния {response.status_code}")
                     # Использовать мок-данные при ошибочном ответе
-                    return get_mock_status(server_id)
+                    return self._set_mock_server_data(server_id, server_info, is_degraded=True)
             except Exception as e:
                 logger.warning(f"Сервер {server_id} недоступен: {str(e)}")
                 # Использовать мок-данные при ошибке соединения
-                return get_mock_status(server_id)
+                return self._set_mock_server_data(server_id, server_info, is_degraded=True)
                 
         except Exception as e:
             logger.exception(f"Ошибка получения статуса сервера: {str(e)}")

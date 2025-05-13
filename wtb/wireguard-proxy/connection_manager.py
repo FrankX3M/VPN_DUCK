@@ -58,6 +58,111 @@ class ConnectionManager:
         """
         return self.server_manager.get_available_servers()
     
+    # def send_create_request(self, server_id, data):
+    #     """
+    #     Отправка запроса на создание конфигурации на удаленный сервер
+        
+    #     Args:
+    #         server_id (str): ID сервера
+    #         data (dict): Данные для создания конфигурации
+            
+    #     Returns:
+    #         dict: Результат выполнения запроса
+            
+    #     Raises:
+    #         RemoteServerError: Если произошла ошибка при обращении к удаленному серверу
+    #     """
+    #     server = self.server_manager.get_server_by_id(server_id)
+    #     if not server:
+    #         raise NoAvailableServerError(f"Server with ID {server_id} not found")
+        
+    #     # Проверка, является ли сервер тестовым (ID начинается с 'test-')
+    #     if server_id.startswith('test-'):
+    #         logger.info(f"Generating mock response for test server {server_id}")
+    #         import uuid
+    #         import time
+            
+    #         # Генерируем тестовые данные для ответа
+    #         test_private_key = "test_" + str(uuid.uuid4()).replace("-", "")
+    #         test_public_key = "test_" + str(uuid.uuid4()).replace("-", "")
+            
+    #         # Симуляция задержки для более реалистичного поведения
+    #         time.sleep(0.2)
+            
+    #         # Запись метрик
+    #         self.server_manager.record_server_metrics(
+    #             server_id,
+    #             success=True,
+    #             response_time=0.2
+    #         )
+            
+    #         # Формирование тестового ответа
+    #         return {
+    #             "public_key": test_public_key,
+    #             "private_key": test_private_key,
+    #             "server_endpoint": f"{server.get('api_url', 'test.example.com').split('//')[1].split('/')[0]}:51820",
+    #             "allowed_ips": "0.0.0.0/0",
+    #             "dns": "1.1.1.1",
+    #             "config": f"# WireGuard configuration\n[Interface]\nPrivateKey = {test_private_key}\nAddress = 10.0.0.2/24\nDNS = 1.1.1.1\n\n[Peer]\nPublicKey = {test_public_key}\nAllowedIPs = 0.0.0.0/0\nEndpoint = test.example.com:51820",
+    #             "server_id": server_id
+    #         }
+        
+    #     # Оригинальный код для реальных серверов
+    #     server_url = server.get('api_url')
+    #     if not server_url:
+    #         raise ValueError(f"Invalid server URL for server {server_id}")
+        
+    #     try:
+    #         logger.info(f"Sending create request to server {server_id} ({server_url})")
+            
+    #         # Измерение времени ответа
+    #         start_time = time.time()
+            
+    #         # Получение заголовков аутентификации
+    #         headers = get_auth_headers(server)
+            
+    #         # Отправка запроса на удаленный сервер
+    #         response = requests.post(
+    #             f"{server_url}/create",
+    #             json=data,
+    #             headers=headers,
+    #             timeout=self.timeout
+    #         )
+            
+    #         # Вычисление времени ответа
+    #         response_time = time.time() - start_time
+            
+    #         # Запись метрик
+    #         self.server_manager.record_server_metrics(
+    #             server_id,
+    #             success=(response.status_code == 200),
+    #             response_time=response_time
+    #         )
+            
+    #         # Проверка статуса ответа
+    #         if response.status_code != 200:
+    #             error_msg = f"Error from remote server {server_id}: {response.status_code} {response.text}"
+    #             logger.error(error_msg)
+    #             raise RemoteServerError(error_msg)
+            
+    #         # Обработка успешного ответа
+    #         result = response.json()
+    #         logger.info(f"Create request to server {server_id} completed successfully")
+            
+    #         return result
+            
+    #     except requests.RequestException as e:
+    #         error_msg = f"Connection error to server {server_id} ({server_url}): {e}"
+    #         logger.error(error_msg)
+            
+    #         # Запись метрик о неудачном запросе
+    #         self.server_manager.record_server_metrics(
+    #             server_id,
+    #             success=False,
+    #             response_time=time.time() - start_time if 'start_time' in locals() else 0
+    #         )
+            
+    #         raise RemoteServerError(error_msg)
     def send_create_request(self, server_id, data):
         """
         Отправка запроса на создание конфигурации на удаленный сервер
@@ -76,45 +181,31 @@ class ConnectionManager:
         if not server:
             raise NoAvailableServerError(f"Server with ID {server_id} not found")
         
-        # Проверка, является ли сервер тестовым (ID начинается с 'test-')
-        if server_id.startswith('test-'):
-            logger.info(f"Generating mock response for test server {server_id}")
-            import uuid
-            import time
-            
-            # Генерируем тестовые данные для ответа
-            test_private_key = "test_" + str(uuid.uuid4()).replace("-", "")
-            test_public_key = "test_" + str(uuid.uuid4()).replace("-", "")
-            
-            # Симуляция задержки для более реалистичного поведения
-            time.sleep(0.2)
-            
-            # Запись метрик
-            self.server_manager.record_server_metrics(
-                server_id,
-                success=True,
-                response_time=0.2
-            )
-            
-            # Формирование тестового ответа
-            return {
-                "public_key": test_public_key,
-                "private_key": test_private_key,
-                "server_endpoint": f"{server.get('api_url', 'test.example.com').split('//')[1].split('/')[0]}:51820",
-                "allowed_ips": "0.0.0.0/0",
-                "dns": "1.1.1.1",
-                "config": f"# WireGuard configuration\n[Interface]\nPrivateKey = {test_private_key}\nAddress = 10.0.0.2/24\nDNS = 1.1.1.1\n\n[Peer]\nPublicKey = {test_public_key}\nAllowedIPs = 0.0.0.0/0\nEndpoint = test.example.com:51820",
-                "server_id": server_id
-            }
-        
-        # Оригинальный код для реальных серверов
+        # Получаем URL API сервера
         server_url = server.get('api_url')
         if not server_url:
             raise ValueError(f"Invalid server URL for server {server_id}")
         
+        # Убедимся, что URL не заканчивается на /
+        if server_url.endswith('/'):
+            server_url = server_url[:-1]
+        
+        # Получаем путь API (по умолчанию /create)
+        api_path = server.get('api_path', '/create')
+        if not api_path.startswith('/'):
+            api_path = f"/{api_path}"
+        
+        # Если в api_path есть {something}, заменяем на соответствующее значение
+        import re
+        path_params = re.findall(r'\{([^}]+)\}', api_path)
+        for param in path_params:
+            if param in data:
+                api_path = api_path.replace(f"{{{param}}}", str(data[param]))
+        
+        full_url = f"{server_url}{api_path}"
+        logger.info(f"Sending create request to server {server_id} at {full_url}")
+        
         try:
-            logger.info(f"Sending create request to server {server_id} ({server_url})")
-            
             # Измерение времени ответа
             start_time = time.time()
             
@@ -123,7 +214,7 @@ class ConnectionManager:
             
             # Отправка запроса на удаленный сервер
             response = requests.post(
-                f"{server_url}/create",
+                full_url,
                 json=data,
                 headers=headers,
                 timeout=self.timeout
@@ -164,6 +255,23 @@ class ConnectionManager:
             
             raise RemoteServerError(error_msg)
     
+    def get_auth_headers(server):
+        """Получение заголовков аутентификации для запроса к удаленному серверу
+        
+        Args:
+            server (dict): Данные сервера
+            
+        Returns:
+            dict: Заголовки аутентификации
+        """
+        headers = {}
+        
+        # Добавление API-ключа, если он указан
+        if server.get('api_key'):
+            headers['X-API-Key'] = server.get('api_key')
+        
+        return headers
+
     def send_remove_request(self, server_id, public_key):
         """
         Отправка запроса на удаление пира на удаленный сервер

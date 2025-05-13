@@ -109,6 +109,7 @@ services:
     restart: always
     volumes:
       - ./telegram-service:/app
+      - ./.env:/app/.env
     environment:
       - DATABASE_SERVICE_URL=http://database-service:5002
       - WIREGUARD_SERVICE_URL=http://wireguard-proxy:5001

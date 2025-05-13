@@ -25,6 +25,8 @@ from app_config.settings import (
     FALLBACK_MODE_ENABLED,
     wait_for_services
 )
+# Импорт модуля инициализации ServerManager
+from server_manager_init import initialize_server_manager
 from auth.auth_handler import init_auth_handler
 
 # Настройка логирования
@@ -40,7 +42,15 @@ CORS(app)
 
 # Инициализация менеджеров
 cache_manager = CacheManager()
-server_manager = ServerManager(cache_manager)
+# server_manager = ServerManager(cache_manager)
+# connection_manager = ConnectionManager(server_manager)
+# route_manager = RouteManager(connection_manager, cache_manager)
+from server_manager_init import initialize_server_manager
+server_manager = initialize_server_manager(
+    cache_manager=cache_manager,
+    shutdown_event=shutdown_event,
+    background_threads=background_threads
+)
 connection_manager = ConnectionManager(server_manager)
 route_manager = RouteManager(connection_manager, cache_manager)
 
@@ -65,53 +75,46 @@ signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
 # Запуск фоновых задач
-def background_server_updater():
-    """Фоновая задача для обновления информации о серверах"""
-    retry_count = 0
-    max_retry_count = 10
-    retry_delay = 5
-    
-    while not shutdown_event.is_set():
-        try:
-            # Обновление информации о серверах
-            server_manager.update_servers_info()
-            
-            # При успехе сбрасываем счетчик повторных попыток
-            retry_count = 0
-            retry_delay = 5
-            
-            # Ожидание следующего обновления (проверка на событие завершения)
-            shutdown_event.wait(60)  # 1 минута между обновлениями
-            
-        except Exception as e:
-            # Увеличиваем счетчик повторных попыток
-            retry_count += 1
-            logger.error(f"Error in server updater background task: {e}")
-            
-            if retry_count >= max_retry_count:
-                logger.warning(f"Max retries ({max_retry_count}) exceeded in server updater, using longer interval")
-                # Используем более длительный интервал при постоянных ошибках
-                shutdown_event.wait(300)  # 5 минут после достижения лимита повторов
-                retry_count = 0  # Сбрасываем счетчик
-            else:
-                # Экспоненциальное увеличение задержки между попытками
-                retry_delay = min(retry_delay * 2, 120)
-                logger.info(f"Retrying in {retry_delay} seconds...")
-                shutdown_event.wait(retry_delay)
+# def background_server_updater():
+#     """Фоновая задача для обновления информации о серверах"""
+#     retry_count = 0
+#     max_retry_count = 10
+#     retry_delay = 5
+#     
+#     while not shutdown_event.is_set():
+#         try:
+#             # Обновление информации о серверах
+#             server_manager.update_servers_info()
+#             
+#             # При успехе сбрасываем счетчик повторных попыток
+#             retry_count = 0
+#             retry_delay = 5
+#             
+#             # Ожидание следующего обновления (проверка на событие завершения)
+#             shutdown_event.wait(60)  # 1 минута между обновлениями
+#             
+#         except Exception as e:
+#             # Увеличиваем счетчик повторных попыток
+#             retry_count += 1
+#             logger.error(f"Error in server updater background task: {e}")
+#             
+#             if retry_count >= max_retry_count:
+#                 logger.warning(f"Max retries ({max_retry_count}) exceeded in server updater, using longer interval")
+#                 # Используем более длительный интервал при постоянных ошибках
+#                 shutdown_event.wait(300)  # 5 минут после достижения лимита повторов
+#                 retry_count = 0  # Сбрасываем счетчик
+#             else:
+#                 # Экспоненциальное увеличение задержки между попытками
+#                 retry_delay = min(retry_delay * 2, 120)
+#                 logger.info(f"Retrying in {retry_delay} seconds...")
+#                 shutdown_event.wait(retry_delay)
 
 # Запуск фоновых потоков
 def start_background_threads():
     """Запуск всех фоновых потоков"""
     global background_threads
     
-    # Поток обновления информации о серверах
-    server_updater = threading.Thread(
-        target=background_server_updater,
-        name="ServerUpdater",
-        daemon=True
-    )
-    server_updater.start()
-    background_threads.append(server_updater)
+    # Поток обновления информации о серверах теперь запускается через initialize_server_manager
     
     logger.info("Background threads started")
 
@@ -332,18 +335,11 @@ def initialize_services():
             logger.warning("Services not available, starting in fallback mode")
             server_manager.fallback_mode = True
     
-    # Начальное обновление информации о серверах
-    try:
-        server_manager.update_servers_info()
-        logger.info("Initial server information updated successfully")
-    except Exception as e:
-        logger.error(f"Failed to update initial server information: {e}")
-        if FALLBACK_MODE_ENABLED:
-            logger.warning("Using fallback mode with test servers")
-            server_manager.fallback_mode = True
+    # Начальное обновление происходит автоматически в фоновом потоке
+    # Не нужно вызывать server_manager.update_servers_info() здесь
     
-    # Запуск фоновых потоков
-    start_background_threads()
+    # Запуск фоновых потоков (если есть другие потоки, кроме серверного)
+    # start_background_threads()
     
     logger.info("Service initialization complete")
 

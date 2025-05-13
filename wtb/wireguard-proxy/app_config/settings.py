@@ -175,6 +175,40 @@ logger.info(f"Database service URL: {DATABASE_SERVICE_URL}")
 logger.info(f"Cache settings: MAX_SIZE={CACHE_MAX_SIZE}, TTL={CACHE_TTL}")
 logger.info(f"Routing strategy: {ROUTING_STRATEGY}, Geolocation priority: {ROUTING_GEOLOCATION_PRIORITY}")
 
+def get_servers_from_database():
+    """Загрузка информации о серверах из базы данных"""
+    if USE_MOCK_DATA:
+        logger.info("Using mock servers in test mode")
+        return MOCK_SERVERS
+        
+    try:
+        import requests
+        # Необходимо убедиться, что переменная DATABASE_SERVICE_URL определена
+        database_url = os.environ.get('DATABASE_SERVICE_URL')
+        if not database_url:
+            logger.error("DATABASE_SERVICE_URL is not defined in environment variables")
+            return MOCK_SERVERS
+            
+        response = requests.get(
+            f"{database_url}/api/servers",
+            timeout=10
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"Failed to get servers from database: {response.status_code}")
+            return MOCK_SERVERS
+            
+        data = response.json()
+        if "servers" in data and isinstance(data["servers"], list):
+            logger.info(f"Loaded {len(data['servers'])} servers from database")
+            return data["servers"]
+        else:
+            logger.warning(f"Unexpected data format from database API: {data}")
+            return MOCK_SERVERS
+    except Exception as e:
+        logger.error(f"Error loading servers from database: {str(e)}")
+        return MOCK_SERVERS
+
 def wait_for_services():
     """
     Ожидание запуска зависимых сервисов

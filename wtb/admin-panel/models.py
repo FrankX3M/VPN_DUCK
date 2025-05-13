@@ -22,78 +22,55 @@ class User(UserMixin):
         return f"<User {self.username}>"
 
 class Server:
-    """Server model for WireGuard servers."""
+    """Server model for WireGuard remote servers."""
     
-    def __init__(self, id, name, endpoint, port, address, public_key, geolocation_id, 
-                 status='active', api_key=None, api_url=None, api_path=None, 
-                 max_peers=None, geolocation_name=None, skip_api_check=False):
+    def __init__(self, id, server_id, name, endpoint, port, address, public_key, geolocation_id, 
+                 location=None, geolocation_name=None, status='active', api_key=None, 
+                 api_url=None, api_path=None, max_peers=None, skip_api_check=False):
         self.id = id
+        self.server_id = server_id  # Уникальный идентификатор сервера в таблице remote_servers
         self.name = name
         self.endpoint = endpoint
         self.port = port
         self.address = address
         self.public_key = public_key
         self.geolocation_id = geolocation_id
+        self.location = location  # Соответствует полю location в remote_servers
         self.geolocation_name = geolocation_name
-        self.status = status
+        self.status = status  # 'active' соответствует is_active=TRUE в remote_servers
         self.api_key = api_key
         self.api_url = api_url
         self.api_path = api_path or '/status'
         self.max_peers = max_peers
         self.skip_api_check = skip_api_check
-    
+        
     @classmethod
-    def from_dict(cls, data):
-        """Create server object from dictionary."""
-        # Check that data is a dictionary
-        if not isinstance(data, dict):
-            raise ValueError(f"Expected dictionary, got {type(data)}")
+    def from_remote_server(cls, remote_server):
+        """Создание объекта Server из данных remote_servers
+        
+        Args:
+            remote_server (dict): Данные из таблицы remote_servers
             
-        # If dictionary has a 'server' key, use it as the source
-        if 'server' in data and isinstance(data['server'], dict):
-            data = data['server']
-            
-        # Get server ID
-        server_id = data.get('id')
-        if server_id is None and 'server_id' in data:
-            server_id = data.get('server_id')  # Alternative field name
-            
-        # Convert data types if needed
-        port = data.get('port')
-        if port is not None and isinstance(port, str):
-            try:
-                port = int(port)
-            except ValueError:
-                port = None
-                
-        geolocation_id = data.get('geolocation_id')
-        if geolocation_id is not None and isinstance(geolocation_id, str):
-            try:
-                geolocation_id = int(geolocation_id)
-            except ValueError:
-                geolocation_id = None
-                
-        # Handle boolean fields
-        skip_api_check = data.get('skip_api_check', False)
-        if isinstance(skip_api_check, str):
-            skip_api_check = skip_api_check.lower() in ('true', 'yes', '1', 'y')
-                
-        # Create server object
+        Returns:
+            Server: Объект Server
+        """
         return cls(
-            id=server_id,
-            name=data.get('name'),
-            endpoint=data.get('endpoint'),
-            port=port,
-            address=data.get('address'),
-            public_key=data.get('public_key'),
-            geolocation_id=geolocation_id,
-            status=data.get('status', 'active'),
-            api_key=data.get('api_key'),
-            api_url=data.get('api_url'),
-            api_path=data.get('api_path', '/status'),
-            max_peers=data.get('max_peers'),
-            geolocation_name=data.get('geolocation_name'),
-            skip_api_check=skip_api_check
+            id=remote_server.get('id'),
+            server_id=remote_server.get('server_id'),
+            name=remote_server.get('name'),
+            endpoint=remote_server.get('endpoint'),
+            port=remote_server.get('port'),
+            address=remote_server.get('address'),
+            public_key=remote_server.get('public_key'),
+            geolocation_id=remote_server.get('geolocation_id'),
+            location=remote_server.get('location'),
+            geolocation_name=remote_server.get('geolocation_name'),
+            status='active' if remote_server.get('is_active', True) else 'inactive',
+            api_key=remote_server.get('api_key'),
+            api_url=remote_server.get('api_url'),
+            api_path=remote_server.get('api_path'),
+            max_peers=remote_server.get('max_peers'),
+            skip_api_check=remote_server.get('skip_api_check', False)
         )
     
     def to_dict(self):

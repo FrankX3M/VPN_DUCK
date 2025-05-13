@@ -44,6 +44,44 @@ def health_check():
 
 # Новые API-эндпоинты для работы с удаленными серверами
 
+# @app.route('/api/servers', methods=['GET'])
+# def get_servers():
+#     """Получение списка всех удаленных серверов"""
+#     try:
+#         with get_db_connection() as conn:
+#             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+#                 query = """
+#                 SELECT 
+#                     rs.id, 
+#                     rs.server_id, 
+#                     rs.name, 
+#                     rs.location, 
+#                     rs.api_url, 
+#                     rs.geolocation_id, 
+#                     rs.auth_type, 
+#                     rs.max_peers, 
+#                     rs.is_active,
+#                     g.name as geolocation_name
+#                 FROM 
+#                     remote_servers rs
+#                 LEFT JOIN 
+#                     geolocations g ON rs.geolocation_id = g.id
+#                 ORDER BY 
+#                     rs.name
+#                 """
+#                 cur.execute(query)
+#                 servers = [dict(row) for row in cur.fetchall()]
+                
+#                 # Удаляем чувствительные данные
+#                 for server in servers:
+#                     for key in ['api_key', 'oauth_client_id', 'oauth_client_secret', 'hmac_secret']:
+#                         if key in server:
+#                             del server[key]
+                
+#                 return jsonify({"servers": servers})
+#     except Exception as e:
+#         logger.exception(f"Error getting servers: {e}")
+#         return jsonify({"error": str(e)}), 500
 @app.route('/api/servers', methods=['GET'])
 def get_servers():
     """Получение списка всех удаленных серверов"""
@@ -57,6 +95,12 @@ def get_servers():
                     rs.name, 
                     rs.location, 
                     rs.api_url, 
+                    rs.endpoint,
+                    rs.port,
+                    rs.address,
+                    rs.public_key,
+                    rs.api_path,
+                    rs.skip_api_check,
                     rs.geolocation_id, 
                     rs.auth_type, 
                     rs.max_peers, 
@@ -72,13 +116,30 @@ def get_servers():
                 cur.execute(query)
                 servers = [dict(row) for row in cur.fetchall()]
                 
-                # Удаляем чувствительные данные
+                # Удаляем чувствительные данные и форматируем для совместимости
+                formatted_servers = []
                 for server in servers:
+                    # Удаляем чувствительные данные
                     for key in ['api_key', 'oauth_client_id', 'oauth_client_secret', 'hmac_secret']:
                         if key in server:
                             del server[key]
+                            
+                    # Преобразуем ID в строки
+                    if 'id' in server:
+                        server['id'] = str(server['id'])
+                    if 'geolocation_id' in server and server['geolocation_id']:
+                        server['geolocation_id'] = str(server['geolocation_id'])
+                        
+                    # Преобразуем is_active в status
+                    server['status'] = 'active' if server.get('is_active', True) else 'inactive'
+                    
+                    # Значения по умолчанию
+                    if 'api_path' not in server or not server['api_path']:
+                        server['api_path'] = '/status'
+                        
+                    formatted_servers.append(server)
                 
-                return jsonify({"servers": servers})
+                return jsonify({"servers": formatted_servers})
     except Exception as e:
         logger.exception(f"Error getting servers: {e}")
         return jsonify({"error": str(e)}), 500
@@ -123,6 +184,46 @@ def get_active_servers():
         logger.exception(f"Error getting active servers: {e}")
         return jsonify({"error": str(e)}), 500
 
+# @app.route('/api/servers/<int:server_id>', methods=['GET'])
+# def get_server(server_id):
+#     """Получение информации об удаленном сервере по ID"""
+#     try:
+#         with get_db_connection() as conn:
+#             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+#                 query = """
+#                 SELECT 
+#                     rs.id, 
+#                     rs.server_id, 
+#                     rs.name, 
+#                     rs.location, 
+#                     rs.api_url, 
+#                     rs.geolocation_id, 
+#                     rs.auth_type, 
+#                     rs.api_key, 
+#                     rs.oauth_client_id, 
+#                     rs.oauth_client_secret, 
+#                     rs.oauth_token_url, 
+#                     rs.hmac_secret, 
+#                     rs.max_peers, 
+#                     rs.is_active,
+#                     g.name as geolocation_name
+#                 FROM 
+#                     remote_servers rs
+#                 LEFT JOIN 
+#                     geolocations g ON rs.geolocation_id = g.id
+#                 WHERE 
+#                     rs.id = %s
+#                 """
+#                 cur.execute(query, (server_id,))
+#                 server = cur.fetchone()
+                
+#                 if not server:
+#                     return jsonify({"error": "Server not found"}), 404
+                
+#                 return jsonify({"server": dict(server)})
+#     except Exception as e:
+#         logger.exception(f"Error getting server details: {e}")
+#         return jsonify({"error": str(e)}), 500
 @app.route('/api/servers/<int:server_id>', methods=['GET'])
 def get_server(server_id):
     """Получение информации об удаленном сервере по ID"""
@@ -136,6 +237,12 @@ def get_server(server_id):
                     rs.name, 
                     rs.location, 
                     rs.api_url, 
+                    rs.endpoint,
+                    rs.port,
+                    rs.address,
+                    rs.public_key,
+                    rs.api_path,
+                    rs.skip_api_check, 
                     rs.geolocation_id, 
                     rs.auth_type, 
                     rs.api_key, 
@@ -159,10 +266,143 @@ def get_server(server_id):
                 if not server:
                     return jsonify({"error": "Server not found"}), 404
                 
-                return jsonify({"server": dict(server)})
+                # Преобразование результата для совместимости
+                server_dict = dict(server)
+                server_dict['id'] = str(server_dict['id'])
+                if server_dict['geolocation_id']:
+                    server_dict['geolocation_id'] = str(server_dict['geolocation_id'])
+                server_dict['status'] = 'active' if server_dict['is_active'] else 'inactive'
+                
+                return jsonify({"server": server_dict})
     except Exception as e:
         logger.exception(f"Error getting server details: {e}")
         return jsonify({"error": str(e)}), 500
+# @app.route('/api/servers/add', methods=['POST'])
+# def add_server_route():
+#     """Adding a new remote server"""
+#     try:
+#         data = request.json
+        
+#         # Debug output of request data
+#         logger.info(f"Received data for adding server: {data}")
+        
+#         # Check required fields
+#         required_fields = ['name', 'endpoint', 'port', 'address', 'public_key', 'geolocation_id']
+#         missing_fields = [field for field in required_fields if field not in data]
+        
+#         if missing_fields:
+#             logger.error(f"Missing required fields: {missing_fields}")
+#             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+        
+#         # Validate data types
+#         try:
+#             if 'port' in data and isinstance(data['port'], str):
+#                 data['port'] = int(data['port'])
+            
+#             if 'geolocation_id' in data and isinstance(data['geolocation_id'], str):
+#                 data['geolocation_id'] = int(data['geolocation_id'])
+                
+#             # Convert boolean fields
+#             if 'skip_api_check' in data and isinstance(data['skip_api_check'], str):
+#                 data['skip_api_check'] = data['skip_api_check'].lower() in ('true', 'yes', '1', 'y')
+#         except ValueError as e:
+#             logger.error(f"Data type conversion error: {str(e)}")
+#             return jsonify({"error": f"Data type error: {str(e)}"}), 400
+        
+#         # Generate unique server_id if not provided
+#         if 'server_id' not in data:
+#             import uuid
+#             data['server_id'] = f"srv-{uuid.uuid4().hex[:8]}"
+        
+#         # Create API URL if not provided
+#         if 'api_url' not in data or not data['api_url']:
+#             data['api_url'] = f"http://{data['endpoint']}:5000"
+        
+#         # Use default API path if not provided
+#         if 'api_path' not in data:
+#             data['api_path'] = '/status'
+            
+#         # Location (for backwards compatibility)
+#         if 'location' not in data:
+#             with get_db_connection() as conn:
+#                 with conn.cursor() as cur:
+#                     cur.execute("SELECT name FROM geolocations WHERE id = %s", (data['geolocation_id'],))
+#                     geo = cur.fetchone()
+#                     if geo:
+#                         data['location'] = geo[0]
+#                     else:
+#                         data['location'] = "Unknown location"
+        
+#         with get_db_connection() as conn:
+#             with conn.cursor() as cur:
+#                 query = """
+#                 INSERT INTO remote_servers (
+#                     server_id, 
+#                     name, 
+#                     location, 
+#                     endpoint,
+#                     port,
+#                     address,
+#                     public_key,
+#                     api_url, 
+#                     api_path,
+#                     geolocation_id, 
+#                     auth_type, 
+#                     api_key, 
+#                     max_peers, 
+#                     is_active,
+#                     skip_api_check
+#                 ) VALUES (
+#                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+#                 ) RETURNING id
+#                 """
+                
+#                 # Set default values for optional fields
+#                 is_active = data.get('status', 'active') == 'active'
+                
+#                 cur.execute(query, (
+#                     data['server_id'],
+#                     data['name'],
+#                     data.get('location', 'Unknown'),
+#                     data['endpoint'],
+#                     data['port'],
+#                     data['address'],
+#                     data['public_key'],
+#                     data['api_url'],
+#                     data['api_path'],
+#                     data['geolocation_id'],
+#                     data.get('auth_type', 'api_key'),
+#                     data.get('api_key'),
+#                     data.get('max_peers', 100),
+#                     is_active,
+#                     data.get('skip_api_check', False)
+#                 ))
+                
+#                 server_id = cur.fetchone()[0]
+#                 conn.commit()
+                
+#                 # Return complete server data
+#                 cur.execute("""
+#                     SELECT 
+#                         id, server_id, name, location, endpoint, port, address, 
+#                         public_key, api_url, api_path, geolocation_id, 
+#                         max_peers, is_active, skip_api_check
+#                     FROM remote_servers
+#                     WHERE id = %s
+#                 """, (server_id,))
+                
+#                 server_data = dict(zip([column[0] for column in cur.description], cur.fetchone()))
+                
+#                 logger.info(f"Server successfully added! ID: {server_id}")
+                
+#                 return jsonify({
+#                     "success": True,
+#                     "message": "Server added successfully",
+#                     "server": server_data
+#                 })
+#     except Exception as e:
+#         logger.exception(f"Error adding server: {e}")
+#         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/servers/add', methods=['POST'])
 def add_server_route():
@@ -206,7 +446,7 @@ def add_server_route():
             data['api_url'] = f"http://{data['endpoint']}:5000"
         
         # Use default API path if not provided
-        if 'api_path' not in data:
+        if 'api_path' not in data or not data['api_path']:
             data['api_path'] = '/status'
             
         # Location (for backwards compatibility)
@@ -221,7 +461,7 @@ def add_server_route():
                         data['location'] = "Unknown location"
         
         with get_db_connection() as conn:
-            with conn.cursor() as cur:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
                 query = """
                 INSERT INTO remote_servers (
                     server_id, 
@@ -241,7 +481,8 @@ def add_server_route():
                     skip_api_check
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                ) RETURNING id
+                ) RETURNING id, server_id, name, endpoint, port, address, public_key, api_url, api_path, 
+                          geolocation_id, auth_type, max_peers, is_active, skip_api_check
                 """
                 
                 # Set default values for optional fields
@@ -265,31 +506,27 @@ def add_server_route():
                     data.get('skip_api_check', False)
                 ))
                 
-                server_id = cur.fetchone()[0]
+                server = cur.fetchone()
                 conn.commit()
                 
-                # Return complete server data
-                cur.execute("""
-                    SELECT 
-                        id, server_id, name, location, endpoint, port, address, 
-                        public_key, api_url, api_path, geolocation_id, 
-                        max_peers, is_active, skip_api_check
-                    FROM remote_servers
-                    WHERE id = %s
-                """, (server_id,))
+                # Форматирование ответа для совместимости с приложением
+                formatted_server = dict(server)
+                formatted_server['id'] = str(formatted_server['id'])
                 
-                server_data = dict(zip([column[0] for column in cur.description], cur.fetchone()))
+                if formatted_server['geolocation_id']:
+                    formatted_server['geolocation_id'] = str(formatted_server['geolocation_id'])
+                    
+                # Преобразуем is_active в status
+                formatted_server['status'] = 'active' if formatted_server.get('is_active', True) else 'inactive'
                 
-                logger.info(f"Server successfully added! ID: {server_id}")
+                logger.info(f"Server successfully added! ID: {formatted_server['id']}")
                 
-                return jsonify({
-                    "success": True,
-                    "message": "Server added successfully",
-                    "server": server_data
-                })
+                return jsonify(formatted_server)
     except Exception as e:
         logger.exception(f"Error adding server: {e}")
         return jsonify({"error": str(e)}), 500
+
+
 
 @app.route('/api/servers', methods=['POST'])
 def add_server():
@@ -392,6 +629,53 @@ def add_server():
         logger.exception(f"Ошибка при добавлении сервера: {e}")
         return jsonify({"error": str(e)}), 500
 
+# @app.route('/api/servers/<int:server_id>', methods=['PUT'])
+# def update_server(server_id):
+#     """Обновление информации об удаленном сервере"""
+#     try:
+#         data = request.json
+        
+#         with get_db_connection() as conn:
+#             with conn.cursor() as cur:
+#                 # Проверка существования сервера
+#                 cur.execute("SELECT id FROM remote_servers WHERE id = %s", (server_id,))
+#                 if not cur.fetchone():
+#                     return jsonify({"error": "Server not found"}), 404
+                
+#                 # Формирование SET части запроса
+#                 update_fields = []
+#                 params = []
+                
+#                 for field in ['name', 'location', 'api_url', 'geolocation_id', 'auth_type', 
+#                              'api_key', 'oauth_client_id', 'oauth_client_secret', 
+#                              'oauth_token_url', 'hmac_secret', 'max_peers', 'is_active']:
+#                     if field in data:
+#                         update_fields.append(f"{field} = %s")
+#                         params.append(data[field])
+                
+#                 if not update_fields:
+#                     return jsonify({"message": "No fields to update"}), 400
+                
+#                 # Добавление ID сервера в параметры
+#                 params.append(server_id)
+                
+#                 # Формирование полного запроса
+#                 query = f"""
+#                 UPDATE remote_servers 
+#                 SET {', '.join(update_fields)}
+#                 WHERE id = %s
+#                 """
+                
+#                 cur.execute(query, params)
+#                 conn.commit()
+                
+#                 return jsonify({
+#                     "success": True,
+#                     "message": "Server updated successfully"
+#                 })
+#     except Exception as e:
+#         logger.exception(f"Error updating server: {e}")
+#         return jsonify({"error": str(e)}), 500
 @app.route('/api/servers/<int:server_id>', methods=['PUT'])
 def update_server(server_id):
     """Обновление информации об удаленном сервере"""
@@ -409,9 +693,21 @@ def update_server(server_id):
                 update_fields = []
                 params = []
                 
-                for field in ['name', 'location', 'api_url', 'geolocation_id', 'auth_type', 
-                             'api_key', 'oauth_client_id', 'oauth_client_secret', 
-                             'oauth_token_url', 'hmac_secret', 'max_peers', 'is_active']:
+                # Все возможные поля для обновления
+                field_list = [
+                    'name', 'location', 'api_url', 'geolocation_id', 'auth_type', 
+                    'api_key', 'oauth_client_id', 'oauth_client_secret', 'oauth_token_url',
+                    'hmac_secret', 'max_peers', 'endpoint', 'port', 'address', 
+                    'public_key', 'api_path', 'skip_api_check'
+                ]
+                
+                # Обработка флага is_active отдельно
+                if 'status' in data:
+                    update_fields.append("is_active = %s")
+                    params.append(data['status'] == 'active')
+                
+                # Добавляем все остальные поля
+                for field in field_list:
                     if field in data:
                         update_fields.append(f"{field} = %s")
                         params.append(data[field])
@@ -425,12 +721,28 @@ def update_server(server_id):
                 # Формирование полного запроса
                 query = f"""
                 UPDATE remote_servers 
-                SET {', '.join(update_fields)}
+                SET {', '.join(update_fields)}, updated_at = NOW()
                 WHERE id = %s
+                RETURNING id, server_id, name, endpoint, port, address, public_key, api_url, 
+                          api_path, geolocation_id, max_peers, is_active, skip_api_check
                 """
                 
                 cur.execute(query, params)
+                updated_server = cur.fetchone()
                 conn.commit()
+                
+                if updated_server:
+                    # Преобразование результата в словарь
+                    column_names = [desc[0] for desc in cur.description]
+                    server_dict = dict(zip(column_names, updated_server))
+                    
+                    # Форматирование для совместимости
+                    server_dict['id'] = str(server_dict['id'])
+                    if server_dict['geolocation_id']:
+                        server_dict['geolocation_id'] = str(server_dict['geolocation_id'])
+                    server_dict['status'] = 'active' if server_dict['is_active'] else 'inactive'
+                    
+                    return jsonify(server_dict)
                 
                 return jsonify({
                     "success": True,
@@ -438,6 +750,107 @@ def update_server(server_id):
                 })
     except Exception as e:
         logger.exception(f"Error updating server: {e}")
+        return jsonify({"error": str(e)}), 500
+@app.route('/api/server_metrics/add', methods=['POST'])
+def add_server_metric():
+    """Добавление метрик сервера"""
+    try:
+        data = request.json
+        
+        # Проверка обязательных полей
+        required_fields = ['server_id', 'is_available', 'response_time']
+        missing_fields = [field for field in required_fields if field not in data]
+        
+        if missing_fields:
+            return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+        
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # Получение ID сервера по server_id
+                if data.get('server_id').isdigit():
+                    # Если server_id числовой, пробуем найти по id или server_id
+                    cur.execute(
+                        "SELECT id FROM remote_servers WHERE id = %s OR server_id = %s", 
+                        (data.get('server_id'), data.get('server_id'))
+                    )
+                else:
+                    # Иначе ищем только по server_id
+                    cur.execute(
+                        "SELECT id FROM remote_servers WHERE server_id = %s", 
+                        (data.get('server_id'),)
+                    )
+                
+                server = cur.fetchone()
+                
+                if not server:
+                    return jsonify({'error': f'Server not found: {data.get("server_id")}'}), 404
+                    
+                server_id = server['id']
+                
+                # Проверяем, существует ли таблица remote_server_metrics
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'remote_server_metrics'
+                    )
+                """)
+                
+                table_exists = cur.fetchone()[0]
+                
+                if table_exists:
+                    # Используем таблицу remote_server_metrics
+                    query = """
+                        INSERT INTO remote_server_metrics (
+                            server_id, 
+                            peers_count,
+                            is_available, 
+                            response_time, 
+                            collected_at
+                        ) VALUES (
+                            %s, %s, %s, %s, NOW()
+                        ) RETURNING id, server_id, is_available, response_time, collected_at
+                    """
+                    
+                    cur.execute(query, (
+                        server_id,
+                        data.get('peers_count', 0),
+                        data.get('is_available'),
+                        data.get('response_time')
+                    ))
+                else:
+                    # Пробуем использовать server_metrics, если remote_server_metrics не существует
+                    query = """
+                        INSERT INTO server_metrics (
+                            server_id,
+                            latency,
+                            is_available,
+                            measured_at
+                        ) VALUES (
+                            %s, %s, %s, NOW()
+                        ) RETURNING id, server_id, latency, measured_at
+                    """
+                    
+                    cur.execute(query, (
+                        server_id,
+                        data.get('response_time'),
+                        data.get('is_available')
+                    ))
+                
+                metric = cur.fetchone()
+                conn.commit()
+                
+                if metric:
+                    return jsonify({
+                        'success': True,
+                        'message': 'Server metrics added successfully',
+                        'metric_id': metric['id']
+                    })
+                else:
+                    return jsonify({'error': 'Failed to add server metrics'}), 500
+                
+    except Exception as e:
+        logger.exception(f"Error adding server metrics: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/servers/<int:server_id>', methods=['DELETE'])
