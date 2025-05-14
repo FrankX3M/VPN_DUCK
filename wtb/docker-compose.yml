@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # PostgreSQL база данных
   db:
@@ -17,7 +19,7 @@ services:
     networks:
       - vpn_network
 
-  # Сервис базы данных
+  # API сервис для взаимодействия с базой данных
   database-service:
     build: ./database-service
     restart: always
@@ -40,44 +42,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 10s
-    command: >
-      bash -c "chmod +x setup_database.sh &&
-              ./setup_database.sh &&
-              python db_manager.py"
     networks:
       - vpn_network
 
-  # Прокси-сервер для WireGuard
-  wireguard-proxy:
-    build: ./wireguard-proxy
-    restart: always
-    volumes:
-      - ./wireguard-proxy:/app
-      - ./config:/app/config
-    environment:
-      - DATABASE_SERVICE_URL=http://database-service:5002
-      - DEBUG=${DEBUG:-False}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - CACHE_TTL=${CACHE_TTL:-300}
-      - HTTP_TIMEOUT=${HTTP_TIMEOUT:-10}
-      - HTTP_MAX_RETRIES=${HTTP_MAX_RETRIES:-3}
-      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
-    depends_on:
-      database-service:
-        condition: service_healthy
-    ports:
-      - "5001:5001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    networks:
-      - vpn_network
-
-  # Административная панель
+  # Веб-интерфейс администратора
   admin-panel:
     build: ./admin-panel
     restart: always
@@ -103,7 +71,7 @@ services:
     networks:
       - vpn_network
 
-  # Telegram бот
+  # Телеграм-бот
   telegram-service:
     build: ./telegram-service
     restart: always
@@ -113,15 +81,46 @@ services:
     environment:
       - DATABASE_SERVICE_URL=http://database-service:5002
       - WIREGUARD_SERVICE_URL=http://wireguard-proxy:5001
-      - TELEGRAM_API_TOKEN=${TELEGRAM_API_TOKEN}
+      - TELEGRAM_API_TOKEN=${TELEGRAM_TOKEN}
       - PAYMENT_TOKEN=${PAYMENT_TOKEN:-test}
       - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
       - REMOTE_ONLY=${REMOTE_ONLY:-true}
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     depends_on:
       database-service:
         condition: service_healthy
       wireguard-proxy:
         condition: service_healthy
+    networks:
+      - vpn_network
+
+  # Прокси для WireGuard серверов
+  wireguard-proxy:
+    build: ./wireguard-proxy
+    restart: always
+    volumes:
+      - ./wireguard-proxy:/app
+      - ./config:/app/config
+    environment:
+      - DATABASE_SERVICE_URL=http://database-service:5002
+      - DEBUG=${DEBUG:-False}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CACHE_TTL=${CACHE_TTL:-300}
+      - HTTP_TIMEOUT=${HTTP_TIMEOUT:-10}
+      - HTTP_MAX_RETRIES=${HTTP_MAX_RETRIES:-3}
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
+    depends_on:
+      database-service:
+        condition: service_healthy
+    ports:
+      - "5001:5001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       - vpn_network
 
@@ -177,13 +176,14 @@ services:
       - "5050:80"
     depends_on:
       - db
-    restart: unless-stopped
     networks:
       - vpn_network
 
+# Сети
 networks:
   vpn_network:
     driver: bridge
 
+# Тома для хранения данных
 volumes:
   postgres_data:

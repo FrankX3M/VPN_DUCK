@@ -4,7 +4,7 @@ from datetime import datetime
 from io import BytesIO
 import asyncio
 from core.settings import bot, logger
-from utils.bd import get_user_config, create_new_config, get_config_from_wireguard, are_servers_available 
+from utils.bd import get_user_config, create_new_config, get_config_from_wireguard, are_servers_available, check_services_availability
 from utils.qr import generate_config_qr
 
 # Прямой обработчик для создания конфигурации
@@ -25,20 +25,22 @@ async def direct_create_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
     
     # Проверяем наличие доступных серверов
-    # logger.info("Проверяем наличие доступных серверов")
-    # servers_available = await are_servers_available()
-    # logger.info(f"Результат проверки доступных серверов: {servers_available}")
-    # if not servers_available:
-    #     await bot.edit_message_text(
-    #         "⚠️ <b>Создание конфигурации невозможно</b>\n\n"
-    #         "В данный момент нет доступных серверов. "
-    #         "Пожалуйста, добавьте серверы через административную панель или попробуйте позже.",
-    #         chat_id=callback_query.message.chat.id,
-    #         message_id=callback_query.message.message_id,
-    #         parse_mode=ParseMode.HTML
-    #     )
-    #     return
-    servers_available = True
+    logger.info("Проверяем доступность сервисов перед созданием конфигурации")
+    services_status = await check_services_availability()
+    
+    if not services_status["wireguard"]:
+        await bot.edit_message_text(
+            "⚠️ <b>Создание конфигурации невозможно</b>\n\n"
+            "В данный момент VPN-сервер недоступен. "
+            "Пожалуйста, попробуйте позже.",
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    if not services_status["database"]:
+        logger.warning("База данных недоступна, но продолжаем попытку создания конфигурации")
     
     # Сообщаем пользователю о начале процесса создания
     await bot.edit_message_text(
@@ -66,12 +68,22 @@ async def direct_create_handler(callback_query: types.CallbackQuery):
             return
         
         if "error" in config_data:
-            await bot.edit_message_text(
-                f"❌ <b>Ошибка!</b>\n\n{config_data['error']}",
-                chat_id=callback_query.message.chat.id,
-                message_id=callback_query.message.message_id,
-                parse_mode=ParseMode.HTML
-            )
+            error_message = config_data['error']
+            if "Error communicating with remote server" in error_message:
+                await bot.edit_message_text(
+                    "⚠️ <b>Ошибка соединения с сервером</b>\n\n"
+                    "В данный момент сервер WireGuard недоступен. Пожалуйста, попробуйте позже.",
+                    chat_id=callback_query.message.chat.id,
+                    message_id=callback_query.message.message_id,
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await bot.edit_message_text(
+                    f"❌ <b>Ошибка!</b>\n\n{error_message}",
+                    chat_id=callback_query.message.chat.id,
+                    message_id=callback_query.message.message_id,
+                    parse_mode=ParseMode.HTML
+                )
             return
         
         config_text = config_data.get("config_text")

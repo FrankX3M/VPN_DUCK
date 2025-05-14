@@ -507,80 +507,87 @@ class ServerManager:
         return servers_to_use[0]
     
     def record_server_metrics(self, server_id, success=True, response_time=0):
-        """Запись метрик сервера
+        """
+        Запись метрик работы сервера
         
         Args:
             server_id (str): ID сервера
-            success (bool): Флаг успешности запроса
-            response_time (float): Время ответа в секундах
+            success (bool, optional): Успешность запроса. По умолчанию True
+            response_time (float, optional): Время ответа в секундах. По умолчанию 0
         """
         try:
-            server = self.get_server_by_id(server_id)
-            if not server:
-                logger.warning(f"Cannot record metrics for unknown server: {server_id}")
+            # Игнорируем ошибки при использовании тестовых серверов
+            if server_id.startswith('test-'):
+                logger.info(f"Игнорируем запись метрик для тестового сервера {server_id}")
                 return
-                
-            # Обновляем метрики в локальном объекте сервера
-            if 'metrics' not in server:
-                server['metrics'] = {}
-                
-            server['metrics']['is_available'] = success
-            server['metrics']['response_time'] = response_time
-            server['metrics']['last_check'] = datetime.now().isoformat()
             
-            # Отправить метрики в базу данных (в фоновом режиме)
-            self._send_metrics_to_database(server_id, success, response_time)
+            # Проверяем, есть ли запись о метриках для этого сервера в кэше
+            cache_key = f"metrics:{server_id}"
+            server_metrics = self.cache_manager.get(cache_key)
+            
+            if not server_metrics:
+                server_metrics = {
+                    "success_count": 0,
+                    "error_count": 0,
+                    "total_response_time": 0,
+                    "last_update": int(time.time())
+                }
+            
+            # Обновляем метрики
+            if success:
+                server_metrics["success_count"] += 1
+            else:
+                server_metrics["error_count"] += 1
+            
+            server_metrics["total_response_time"] += response_time
+            server_metrics["last_update"] = int(time.time())
+            
+            # Записываем обновленные метрики в кэш
+            self.cache_manager.set(cache_key, server_metrics)
+            
+            # Пробуем отправить метрики в базу данных
+            try:
+                # Используем корректный ID из базы данных, если это реальный сервер
+                # Проверяем, есть ли сервер в списке
+                real_server_id = None
+                for server in self.servers:
+                    if server.get('id') == server_id:
+                        real_server_id = server.get('server_id') or server_id
+                        break
+                        
+                if real_server_id is None:
+                    # Если сервер не найден в списке, используем оригинальный ID
+                    real_server_id = server_id
+                
+                # Проверяем ID сервера в базе данных
+                url = f"{self.database_service_url}/api/servers/{real_server_id}"
+                response = requests.get(url, timeout=5)
+                
+                if response.status_code == 404:
+                    logger.warning(f"Сервер {real_server_id} не найден в базе данных, метрики не будут записаны")
+                    return
+                    
+                # Подготовка данных метрик
+                metrics_data = {
+                    "server_id": real_server_id,
+                    "timestamp": int(time.time()),
+                    "success": success,
+                    "response_time": response_time
+                }
+                
+                # Отправка метрик в базу данных
+                metrics_url = f"{self.database_service_url}/api/servers/metrics/add"
+                response = requests.post(metrics_url, json=metrics_data, timeout=5)
+                
+                if response.status_code != 200:
+                    logger.warning(f"Ошибка при отправке метрик в базу данных: {response.status_code} {response.text}")
+            except Exception as e:
+                logger.warning(f"Ошибка при записи метрик в базу данных: {str(e)}")
             
         except Exception as e:
-            logger.exception(f"Error recording server metrics: {e}")
+            logger.error(f"Ошибка при записи метрик сервера {server_id}: {str(e)}")
+            # Игнорируем ошибку, чтобы не прерывать основной процесс
     
-    def _send_metrics_to_database(self, server_id, is_available, response_time):
-        """Отправка метрик сервера в базу данных
-        
-        Args:
-            server_id (str): ID сервера
-            is_available (bool): Доступность сервера
-            response_time (float): Время ответа в секундах
-        """
-        try:
-            # Выполнение в отдельном потоке, чтобы не блокировать основной поток
-            threading.Thread(
-                target=self._do_send_metrics_to_database,
-                args=(server_id, is_available, response_time),
-                daemon=True
-            ).start()
-        except Exception as e:
-            logger.exception(f"Error starting metrics thread: {e}")
-        
-    def _do_send_metrics_to_database(self, server_id, is_available, response_time):
-        """Отправка метрик сервера в базу данных (выполняется в отдельном потоке)
-        
-        Args:
-            server_id (str): ID сервера
-            is_available (bool): Доступность сервера
-            response_time (float): Время ответа в секундах
-        """
-        try:
-            # Если URL сервиса базы данных не указан, выходим
-            if not self.database_service_url:
-                return
-                
-            # Подготовка данных для отправки
-            data = {
-                'server_id': server_id,
-                'is_available': is_available,
-                'response_time': response_time
-            }
-            
-            # Отправка метрик в базу данных
-            requests.post(
-                f"{self.database_service_url}/api/server_metrics/add",
-                json=data,
-                timeout=5
-            )
-        except Exception as e:
-            logger.exception(f"Error sending metrics to database: {e}")
-
     def get_servers_status(self):
         """
         Получение статуса всех серверов

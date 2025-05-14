@@ -1,6 +1,7 @@
 import os
 import logging
 import secrets
+import requests
 from datetime import datetime
 from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app
 from flask_login import login_required
@@ -8,6 +9,7 @@ from flask_login import login_required
 from forms import ServerForm, FilterForm
 from utils.chart_generator import ChartGenerator
 from config import USE_MOCK_DATA
+from config import DATABASE_SERVICE_URL
 
 logger = logging.getLogger(__name__)
 
@@ -392,13 +394,15 @@ def add():
             
             # Обновление кэша серверов (если используется)
             try:
-                cache.delete('servers_list')
+                from flask import current_app
+                if hasattr(current_app, 'cache') and current_app.cache:
+                    current_app.cache.delete('servers_list')
             except Exception as e:
                 logger.warning(f"Не удалось обновить кэш серверов: {e}")
             
             # Перенаправление на страницу со списком серверов
             flash('Сервер успешно добавлен', 'success')
-            return redirect(url_for('servers.list'))
+            return redirect(url_for('servers.index'))
             
         except Exception as e:
             error_message = f"Ошибка при добавлении сервера: {str(e)}"
@@ -610,15 +614,20 @@ def edit(server_id):
 def delete(server_id):
     """Delete a server."""
     if USE_MOCK_DATA:
+        # Import necessary modules
+        from utils.mock_data import find_server
+        
         # Find server in mock data
-        from utils.mock_data import find_server, MOCK_SERVERS
         server = find_server(server_id)
         if not server:
             flash('Server not found', 'danger')
             return redirect(url_for('servers.index'))
-            
-        # Remove server from mock data
+        
+        # Import and declare MOCK_SERVERS as global    
         global MOCK_SERVERS
+        from utils.mock_data import MOCK_SERVERS
+        
+        # Remove server from mock data
         MOCK_SERVERS = [s for s in MOCK_SERVERS if not isinstance(s, dict) or s.get('id') != server_id]
         
         flash('Server deleted successfully', 'success')
@@ -644,31 +653,44 @@ def delete(server_id):
     
     return redirect(url_for('servers.index'))
 
-@servers_bp.route('/<int:server_id>/action/<action>', methods=['POST'])
+@servers_bp.route('/<int:server_id>/toggle_status')
 @login_required
-def action(server_id, action):
-    """Perform action on server (restart, toggle status, etc)."""
+def toggle_status(server_id):
+    """Изменить статус сервера (активный/неактивный)."""
     try:
+        # Параметр статуса из запроса
+        status = request.args.get('status')
+        if not status or status not in ['active', 'inactive']:
+            status = None  # Если статус не указан, будем просто переключать текущий
+            
+        logger.info(f"Запрос на переключение статуса сервера {server_id} в {status or 'противоположный'}")
+        
         if USE_MOCK_DATA:
             from utils.mock_data import find_server, MOCK_SERVERS
             server = find_server(server_id)
             if not server:
-                flash('Server not found', 'danger')
+                flash('Сервер не найден', 'danger')
                 return redirect(url_for('servers.index'))
                 
-            if action == 'restart':
-                flash('WireGuard service restarted successfully (mock)', 'success')
-                
-            elif action == 'toggle_status':
-                # Toggle status in mock data
-                for s in MOCK_SERVERS:
-                    if isinstance(s, dict) and s.get('id') == server_id:
+            # Переключение статуса в моковых данных
+            found = False
+            for s in MOCK_SERVERS:
+                if isinstance(s, dict) and s.get('id') == server_id:
+                    if status:
+                        s['status'] = status
+                    else:
+                        # Переключение между active/inactive
                         s['status'] = 'inactive' if s.get('status') == 'active' else 'active'
-                        status_text = 'activated' if s['status'] == 'active' else 'deactivated'
-                        flash(f'Server {status_text} successfully', 'success')
-                        break
-            else:
-                flash('Unknown action', 'danger')
+                    new_status = s['status']
+                    found = True
+                    break
+                    
+            if not found:
+                flash('Ошибка при изменении статуса сервера', 'danger')
+                return redirect(url_for('servers.details', server_id=server_id))
+                
+            status_text = 'активирован' if new_status == 'active' else 'деактивирован'
+            flash(f'Сервер успешно {status_text}', 'success')
         else:
             from utils.db_client import DatabaseClient
             
@@ -677,43 +699,174 @@ def action(server_id, action):
                 api_key=current_app.config['API_KEY']
             )
             
-            if action == 'restart':
+            # Если статус не указан, получаем текущий и инвертируем его
+            if not status:
+                try:
+                    server_response = db_client.get(f'/api/servers/{server_id}')
+                    if server_response.status_code == 200:
+                        server_data = server_response.json()
+                        
+                        # Проверка формата ответа
+                        if isinstance(server_data, dict):
+                            # Поддержка разных форматов ответа API
+                            if 'server' in server_data:
+                                server_data = server_data['server']
+                            
+                            # Определение текущего статуса
+                            current_status = server_data.get('status')
+                            if current_status is None:
+                                # Проверим альтернативное поле is_active
+                                is_active = server_data.get('is_active')
+                                if is_active is not None:
+                                    current_status = 'active' if is_active else 'inactive'
+                                else:
+                                    current_status = 'active'  # По умолчанию считаем активным
+                            
+                            # Инвертируем статус
+                            status = 'inactive' if current_status == 'active' else 'active'
+                        else:
+                            logger.warning(f"Неожиданный формат данных от API: {server_data}")
+                            status = 'active'  # Безопасное значение по умолчанию
+                    else:
+                        logger.error(f"Ошибка получения данных сервера: {server_response.status_code}")
+                        flash('Не удалось получить информацию о сервере', 'danger')
+                        return redirect(url_for('servers.details', server_id=server_id))
+                except Exception as e:
+                    logger.exception(f"Ошибка при получении данных сервера: {str(e)}")
+                    flash('Сервис недоступен', 'danger')
+                    return redirect(url_for('servers.details', server_id=server_id))
+            
+            # Обновляем статус через API
+            logger.info(f"Изменение статуса сервера {server_id} на {status}")
+            try:
+                # Подготовка данных для обновления
+                update_data = {'status': status}
+                
+                # Альтернативный формат для API, если оно принимает is_active вместо status
+                if status in ['active', 'inactive']:
+                    update_data['is_active'] = (status == 'active')
+                
+                # Отправка запроса
+                response = db_client.put(f'/api/servers/{server_id}', json=update_data)
+                
+                if response.status_code == 200:
+                    status_text = 'активирован' if status == 'active' else 'деактивирован'
+                    flash(f'Сервер успешно {status_text}', 'success')
+                else:
+                    logger.error(f"Ошибка обновления статуса сервера: {response.status_code}, {response.text}")
+                    flash('Не удалось обновить статус сервера', 'danger')
+            except Exception as e:
+                logger.exception(f"Ошибка при изменении статуса сервера: {str(e)}")
+                flash('Сервис недоступен', 'danger')
+                
+    except Exception as e:
+        logger.exception(f"Непредвиденная ошибка при изменении статуса сервера: {str(e)}")
+        flash('Произошла ошибка', 'danger')
+    
+    return redirect(url_for('servers.details', server_id=server_id))
+
+@servers_bp.route('/<int:server_id>/action/<action>', methods=['POST'])
+@login_required
+def action(server_id, action):
+    """Выполнить действие с сервером (restart, toggle_status и т.д.)."""
+    try:
+        if action == 'toggle_status':
+            # Получаем текущий статус сервера
+            if USE_MOCK_DATA:
+                from utils.mock_data import find_server, MOCK_SERVERS
+                server = find_server(server_id)
+            else:
+                server = get_server(server_id)
+                
+            if not server:
+                flash('Сервер не найден', 'danger')
+                return redirect(url_for('servers.index'))
+                
+            # Переключаем статус
+            current_status = server.get('status') if isinstance(server, dict) else server.status
+            new_status = 'inactive' if current_status == 'active' else 'active'
+            
+            # Обновляем статус
+            if USE_MOCK_DATA:
+                # Обновление в моковых данных
+                for s in MOCK_SERVERS:
+                    if isinstance(s, dict) and s.get('id') == server_id:
+                        s['status'] = new_status
+                        break
+            else:
+                # Обновление через API
+                try:
+                    from utils.db_client import DatabaseClient
+                    
+                    db_client = DatabaseClient(
+                        base_url=current_app.config['API_BASE_URL'],
+                        api_key=current_app.config['API_KEY']
+                    )
+                    
+                    # Подготовка данных для обновления
+                    update_data = {'status': new_status}
+                    
+                    # Альтернативный формат для API, если оно принимает is_active вместо status
+                    if new_status in ['active', 'inactive']:
+                        update_data['is_active'] = (new_status == 'active')
+                    
+                    # Отправка запроса
+                    response = db_client.put(f'/api/servers/{server_id}', json=update_data)
+                    
+                    if response.status_code != 200:
+                        flash('Не удалось обновить статус сервера', 'danger')
+                        return redirect(url_for('servers.details', server_id=server_id))
+                except Exception as e:
+                    logger.exception(f"Ошибка при обновлении статуса сервера: {e}")
+                    flash('Сервис недоступен', 'danger')
+                    return redirect(url_for('servers.details', server_id=server_id))
+            
+            status_text = 'деактивирован' if new_status == 'inactive' else 'активирован'
+            flash(f'Сервер успешно {status_text}', 'success')
+        elif action == 'restart':
+            if USE_MOCK_DATA:
+                flash('WireGuard service restarted successfully (mock)', 'success')
+            else:
+                from utils.db_client import DatabaseClient
+                
+                db_client = DatabaseClient(
+                    base_url=current_app.config['API_BASE_URL'],
+                    api_key=current_app.config['API_KEY']
+                )
+                
                 response = db_client.post(f'/api/servers/{server_id}/restart')
                 if response.status_code == 200:
                     flash('WireGuard service restarted successfully', 'success')
                 else:
                     flash('Failed to restart WireGuard service', 'danger')
-                    
-            elif action == 'toggle_status':
-                # First get current status
-                server_response = db_client.get(f'/api/servers/{server_id}')
-                if server_response.status_code == 200:
-                    server = server_response.json()
-                    if not isinstance(server, dict):
-                        logger.error(f"Неверный формат данных сервера: {server}")
-                        flash("Invalid server data format", "danger")
-                        return redirect(url_for('servers.index'))
-                        
-                    new_status = 'inactive' if server.get('status') == 'active' else 'active'
-                    
-                    # Update status
-                    update_response = db_client.put(
-                        f'/api/servers/{server_id}',
-                        json={'status': new_status}
-                    )
-                    
-                    if update_response.status_code == 200:
-                        status_text = 'activated' if new_status == 'active' else 'deactivated'
-                        flash(f'Server {status_text} successfully', 'success')
-                    else:
-                        flash('Failed to update server status', 'danger')
-                else:
-                    flash('Failed to get server information', 'danger')
-            else:
-                flash('Unknown action', 'danger')
-                
+        else:
+            flash('Unknown action', 'danger')
+            
+        return redirect(url_for('servers.details', server_id=server_id))
     except Exception as e:
         logger.exception(f"Error performing server action: {str(e)}")
         flash('Service unavailable', 'danger')
+        return redirect(url_for('servers.details', server_id=server_id))
+
+# Вспомогательная функция для получения сервера
+def get_server(server_id):
+    """Получить информацию о сервере по ID."""
+    try:
+        from utils.db_client import DatabaseClient
+        
+        db_client = DatabaseClient(
+            base_url=current_app.config['API_BASE_URL'],
+            api_key=current_app.config['API_KEY']
+        )
+        
+        response = db_client.get(f'/api/servers/{server_id}')
+        if response.status_code == 200:
+            server_data = response.json()
+            # Извлекаем данные сервера, если они в оболочке
+            if isinstance(server_data, dict) and 'server' in server_data:
+                server_data = server_data['server']
+            return server_data
+    except Exception as e:
+        logger.exception(f"Error getting server info: {str(e)}")
     
-    return redirect(url_for('servers.details', server_id=server_id))
+    return None

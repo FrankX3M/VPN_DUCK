@@ -171,17 +171,21 @@
                     <i class="bi bi-arrow-left"></i> Back to Servers
                 </a>
                 {% if server.status == 'active' %}
-                <a href="{{ url_for('servers.toggle_status', server_id=server.id, status='inactive') }}" 
-                   class="btn btn-warning confirm-action"
-                   data-confirm="Are you sure you want to deactivate this server?">
-                    <i class="bi bi-power"></i> Deactivate Server
-                </a>
+                <form action="{{ url_for('servers.action', server_id=server.id, action='toggle_status') }}" method="post" class="d-inline">
+                    {{ csrf_token() }}
+                    <button type="submit" class="btn btn-warning confirm-action" 
+                            data-confirm="Вы уверены, что хотите деактивировать этот сервер?">
+                        <i class="bi bi-power"></i> Деактивировать сервер
+                    </button>
+                </form>
                 {% else %}
-                <a href="{{ url_for('servers.toggle_status', server_id=server.id, status='active') }}" 
-                   class="btn btn-success confirm-action"
-                   data-confirm="Are you sure you want to activate this server?">
-                    <i class="bi bi-power"></i> Activate Server
-                </a>
+                <form action="{{ url_for('servers.action', server_id=server.id, action='toggle_status') }}" method="post" class="d-inline">
+                    {{ csrf_token() }}
+                    <button type="submit" class="btn btn-success confirm-action" 
+                            data-confirm="Вы уверены, что хотите активировать этот сервер?">
+                        <i class="bi bi-power"></i> Активировать сервер
+                    </button>
+                </form>
                 {% endif %}
             </div>
         </div>

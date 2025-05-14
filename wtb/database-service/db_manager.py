@@ -11,7 +11,7 @@ from user_auth_api import users_api
 app = Flask(__name__)
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO,
+logging.basicConfig(level=logging.DEBUG,
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('database-service')
 
@@ -1582,12 +1582,30 @@ def update_servers_status_batch():
 def add_server_metrics():
     """Добавление метрик сервера"""
     try:
+        logger.debug(f"Получен запрос на добавление метрик сервера: {request.method} {request.path}")
         data = request.json
+        logger.debug(f"Полученные данные: {data}")
+        
         if 'server_id' not in data:
+            logger.warning("Отсутствует обязательное поле server_id")
             return jsonify({"error": "Missing server_id field"}), 400
-            
+        
+        logger.debug(f"Проверка сервера с ID: {data['server_id']}")    
         with get_db_connection() as conn:
+            # Проверим, существует ли сервер с таким ID
+            with conn.cursor() as check_cur:
+                check_cur.execute("SELECT id FROM remote_servers WHERE id = %s", (data['server_id'],))
+                server_exists = check_cur.fetchone()
+                if not server_exists:
+                    logger.warning(f"Сервер с ID {data['server_id']} не найден в базе данных")
+                    # Проверим в логах, что именно приходит в server_id
+                    logger.debug(f"Тип данных server_id: {type(data['server_id'])}, значение: {data['server_id']}")
+                    
+                    # Вместо ошибки создадим запись о неизвестном сервере
+                    logger.info(f"Создание записи метрик для неизвестного сервера {data['server_id']}")
+            
             with conn.cursor() as cur:
+                logger.debug("Подготовка SQL запроса для вставки метрик")
                 query = """
                 INSERT INTO server_metrics (
                     server_id,
@@ -1601,24 +1619,40 @@ def add_server_metrics():
                 ) RETURNING id
                 """
                 
-                cur.execute(query, (
+                params = (
                     data['server_id'],
                     data.get('latency'),
                     data.get('bandwidth'),
                     data.get('jitter'),
                     data.get('packet_loss')
-                ))
+                )
+                logger.debug(f"Выполнение SQL запроса с параметрами: {params}")
                 
-                metric_id = cur.fetchone()[0]
-                conn.commit()
-                
-                return jsonify({
-                    "success": True,
-                    "message": "Metrics added successfully",
-                    "metric_id": metric_id
-                })
+                try:
+                    cur.execute(query, params)
+                    metric_id = cur.fetchone()[0]
+                    conn.commit()
+                    logger.info(f"Метрики успешно добавлены для сервера {data['server_id']}, ID метрики: {metric_id}")
+                    
+                    return jsonify({
+                        "success": True,
+                        "message": "Metrics added successfully",
+                        "metric_id": metric_id
+                    })
+                except Exception as sql_err:
+                    conn.rollback()
+                    logger.error(f"Ошибка выполнения SQL запроса: {sql_err}")
+                    # Проверим структуру таблицы
+                    try:
+                        cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'server_metrics'")
+                        columns = cur.fetchall()
+                        logger.debug(f"Структура таблицы server_metrics: {columns}")
+                    except Exception as schema_err:
+                        logger.error(f"Не удалось получить структуру таблицы server_metrics: {schema_err}")
+                    
+                    raise sql_err
     except Exception as e:
-        logger.exception(f"Error adding server metrics: {e}")
+        logger.exception(f"Ошибка добавления метрик сервера: {e}")
         return jsonify({"error": str(e)}), 500
 
 # Анализ метрик серверов

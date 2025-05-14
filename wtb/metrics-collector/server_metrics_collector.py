@@ -11,7 +11,7 @@ from datetime import datetime
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("metrics-collector")
@@ -22,18 +22,53 @@ def get_service_url(service_name, default_port, env_var_name):
     # Сначала проверяем переменную окружения
     env_url = os.getenv(env_var_name)
     if env_url:
-        return env_url
+        return normalize_api_url(env_url)
     
     # Пытаемся получить IP по имени хоста через DNS
     try:
         import socket
         ip_address = socket.gethostbyname(service_name)
-        return f"http://{ip_address}:{default_port}"
-    except Exception as e:
-        logger.warning(f"Не удалось определить IP для {service_name}: {str(e)}")
+        # Формируем URL
+        base_url = f"http://{ip_address}:{default_port}"
+        return normalize_api_url(base_url)
+    except socket.gaierror:
+        # Если не удалось получить IP по имени, используем имя хоста
+        base_url = f"http://{service_name}:{default_port}"
+        return normalize_api_url(base_url)
+
+def normalize_api_url(url):
+    """
+    Нормализует URL API для взаимодействия с микросервисами.
     
-    # Если DNS не работает, используем имя хоста Docker
-    return f"http://{service_name}:{default_port}"
+    Args:
+        url (str): Исходный URL микросервиса
+        
+    Returns:
+        str: Нормализованный URL с правильным путем /api
+    """
+    if not url:
+        return ""
+    
+    # Убираем завершающий слеш, если он есть
+    url = url.rstrip('/')
+    
+    # Проверяем, содержит ли URL уже путь /api
+    if 'wireguard-proxy' in url or 'wireguard-service' in url:
+        # Для wireguard-proxy, который имеет эндпоинты в корне, не добавляем /api
+        # Исправляем, если /api уже добавлен
+        if url.endswith('/api'):
+            logger.debug(f"Удаляем /api для wireguard-proxy: {url}")
+            url = url[:-4]  # Удаляем '/api'
+    else:
+        # Для других сервисов добавляем /api, если его нет
+        if not url.endswith('/api') and '/api/' not in url:
+            url += '/api'
+    
+    # Исправляем случаи двойного /api/api
+    url = url.replace('/api/api', '/api')
+    
+    logger.debug(f"Нормализованный URL: {url}")
+    return url
 
 # Динамическое определение URL сервисов
 DATABASE_SERVICE_URL = get_service_url("database-service", 5002, 'DATABASE_SERVICE_URL')
@@ -83,8 +118,35 @@ def get_server_location(ip_address):
 def get_servers():
     """Получает список всех активных серверов из базы данных."""
     try:
-        response = make_api_request('get', f"{DATABASE_SERVICE_URL}/api/servers/all", timeout=10)
-        return response.json().get("servers", [])
+        response = make_api_request('get', f"{DATABASE_SERVICE_URL}/servers/all", timeout=10)
+        servers = response.json().get("servers", [])
+        
+        # Проверяем валидность полученных данных
+        valid_servers = []
+        for server in servers:
+            # Проверка наличия необходимых полей
+            if not isinstance(server, dict):
+                logger.warning(f"Сервер не является объектом: {server}")
+                continue
+                
+            if 'id' not in server or not server['id']:
+                logger.warning(f"Сервер без ID: {server}")
+                continue
+                
+            if 'endpoint' not in server or not server['endpoint']:
+                logger.warning(f"Сервер без endpoint: {server}")
+                continue
+                
+            # Проверка статуса сервера
+            if server.get('status') != 'active':
+                logger.info(f"Пропуск неактивного сервера {server['id']}")
+                continue
+                
+            # Если все проверки пройдены, добавляем сервер в список
+            valid_servers.append(server)
+            
+        logger.info(f"Найдено {len(valid_servers)} валидных активных серверов из {len(servers)} полученных")
+        return valid_servers
     except Exception as e:
         logger.error(f"Ошибка при запросе к API для получения серверов: {str(e)}")
     
@@ -92,108 +154,130 @@ def get_servers():
 
 def measure_server_metrics(server):
     """Измеряет метрики сервера."""
-    server_id = server.get("id")
-    endpoint = server.get("endpoint")
-    port = server.get("port")
-    
-    if not endpoint:
-        logger.warning(f"Ошибка: для сервера {server_id} не указан endpoint")
-        return None
-    
-    logger.info(f"Измерение метрик для сервера {server_id} ({endpoint})")
-    
-    metrics = {
-        "server_id": server_id,
-        "latency": None,
-        "jitter": None,
-        "packet_loss": None,
-        "bandwidth": None,
-        "measured_at": datetime.now().isoformat()
-    }
-    
-    # Измерение задержки и джиттера с помощью ping
     try:
-        ping_command = ["ping", "-c", str(PING_COUNT), endpoint]
-        ping_result = subprocess.run(
-            ping_command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=30
-        )
+        server_id = server.get("id")
+        endpoint = server.get("endpoint")
+        port = server.get("port", 80)  # Порт по умолчанию, если не указан
         
-        if ping_result.returncode == 0:
-            # Получаем строки с временем
-            ping_lines = ping_result.stdout.split('\n')
-            times = []
+        if not server_id:
+            logger.warning(f"Ошибка: сервер без ID: {server}")
+            return None
             
-            for line in ping_lines:
-                if "time=" in line:
-                    time_part = line.split("time=")[1].split(" ")[0]
-                    try:
-                        times.append(float(time_part))
-                    except ValueError:
-                        pass
+        if not endpoint:
+            logger.warning(f"Ошибка: для сервера {server_id} не указан endpoint")
+            return None
+        
+        # Проверка, что endpoint является строкой
+        if not isinstance(endpoint, str):
+            logger.warning(f"Ошибка: endpoint для сервера {server_id} не является строкой: {endpoint}")
+            return None
             
-            if times:
-                # Рассчитываем среднее время и джиттер
-                metrics["latency"] = statistics.mean(times)
-                metrics["jitter"] = statistics.stdev(times) if len(times) > 1 else 0
+        logger.info(f"Измерение метрик для сервера {server_id} ({endpoint})")
+        
+        metrics = {
+            "server_id": server_id,
+            "latency": None,
+            "bandwidth": None,
+            "jitter": None,
+            "packet_loss": None,
+            "measured_at": datetime.now().isoformat()
+        }
+        
+        # Измерение задержки и джиттера с помощью ping
+        try:
+            ping_command = ["ping", "-c", str(PING_COUNT), endpoint]
+            ping_result = subprocess.run(
+                ping_command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30
+            )
             
-            # Извлекаем процент потери пакетов
-            for line in ping_lines:
-                if "packet loss" in line:
-                    try:
-                        packet_loss = float(line.split("%")[0].split(" ")[-1])
-                        metrics["packet_loss"] = packet_loss
-                    except ValueError:
-                        pass
-        else:
-            logger.warning(f"Ошибка ping для сервера {server_id} ({endpoint}): {ping_result.stderr}")
-            metrics["packet_loss"] = 100  # Если ping не прошел, считаем 100% потерю пакетов
+            if ping_result.returncode == 0:
+                # Получаем строки с временем
+                ping_lines = ping_result.stdout.split('\n')
+                times = []
+                
+                for line in ping_lines:
+                    if "time=" in line:
+                        time_part = line.split("time=")[1].split(" ")[0]
+                        try:
+                            times.append(float(time_part))
+                        except ValueError:
+                            pass
+                
+                if times:
+                    # Рассчитываем среднее время и джиттер
+                    metrics["latency"] = statistics.mean(times)
+                    metrics["jitter"] = statistics.stdev(times) if len(times) > 1 else 0
+                
+                # Извлекаем процент потери пакетов
+                for line in ping_lines:
+                    if "packet loss" in line:
+                        try:
+                            packet_loss = float(line.split("%")[0].split(" ")[-1])
+                            metrics["packet_loss"] = packet_loss
+                        except ValueError:
+                            pass
+            else:
+                logger.warning(f"Ошибка ping для сервера {server_id} ({endpoint}): {ping_result.stderr}")
+                metrics["packet_loss"] = 100  # Если ping не прошел, считаем 100% потерю пакетов
+        except Exception as e:
+            logger.error(f"Ошибка при измерении пинга для сервера {server_id}: {str(e)}")
+        
+        # Измерение пропускной способности (симуляция)
+        # В реальном случае здесь может быть использован iperf3 или другой инструмент
+        try:
+            # На данный момент используем случайное значение
+            metrics["bandwidth"] = 100.0  # Mbps
+        except Exception as e:
+            logger.error(f"Ошибка при измерении скорости для сервера {server_id}: {str(e)}")
+        
+        return metrics
     except Exception as e:
-        logger.error(f"Ошибка при измерении пинга для сервера {server_id}: {str(e)}")
-    
-    # Измерение пропускной способности (симуляция)
-    # В реальном случае здесь может быть использован iperf3 или другой инструмент
-    try:
-        # На данный момент используем случайное значение
-        metrics["bandwidth"] = 100.0  # Mbps
-    except Exception as e:
-        logger.error(f"Ошибка при измерении скорости для сервера {server_id}: {str(e)}")
-    
-    return metrics
+        logger.error(f"Ошибка при измерении метрик для сервера {server_id}: {str(e)}")
+        return None
 
 def update_server_metrics(metrics):
     """Отправляет собранные метрики в базу данных."""
     try:
-        response = make_api_request('post', f"{DATABASE_SERVICE_URL}/api/servers/metrics/add", json=metrics)
+        logger.debug(f"Отправка метрик сервера: {metrics}")
+        # Проверим формат и тип данных server_id 
+        if 'server_id' in metrics:
+            logger.debug(f"server_id в метриках: тип={type(metrics['server_id'])}, значение={metrics['server_id']}")
+            
+            # Попробуем преобразовать server_id в целое число, если это необходимо
+            if isinstance(metrics['server_id'], str):
+                try:
+                    metrics['server_id'] = int(metrics['server_id'])
+                    logger.debug(f"server_id преобразован в int: {metrics['server_id']}")
+                except ValueError as e:
+                    logger.warning(f"Не удалось преобразовать server_id в int: {e}")
+        else:
+            logger.error("В метриках отсутствует обязательное поле server_id")
+            return False
+            
+        url = f"{DATABASE_SERVICE_URL}/servers/metrics/add"
+        logger.debug(f"URL для отправки метрик: {url}")
+        
+        response = make_api_request('post', url, json=metrics)
+        logger.info(f"Ответ сервера: {response.status_code} - {response.text[:100]}")
         logger.info(f"Метрики для сервера {metrics['server_id']} успешно обновлены")
         return True
     except Exception as e:
         logger.error(f"Ошибка при отправке метрик в API: {str(e)}")
+        logger.exception("Подробный стек вызовов:")
     
     return False
 
-# def analyze_servers_metrics():
-#     """Анализирует метрики серверов и обновляет их рейтинги."""
-#     try:
-#         response = make_api_request('post', f"{DATABASE_SERVICE_URL}/servers/metrics/analyze")
-#         result = response.json()
-#         updated_servers = result.get("updated_servers", 0)
-#         logger.info(f"Анализ метрик серверов выполнен успешно, обновлено {updated_servers} серверов")
-#         return True
-#     except Exception as e:
-#         logger.error(f"Ошибка при запросе к API для анализа метрик: {str(e)}")
-    
-#     return False
 def analyze_servers_metrics():
     """Анализирует метрики серверов и обновляет их рейтинги."""
     try:
         # Создаем собственный запрос на анализ метрик с сохранением статуса maintenance
         response = make_api_request(
             'post', 
-            f"{DATABASE_SERVICE_URL}/api/servers/metrics/analyze",
+            f"{DATABASE_SERVICE_URL}/servers/metrics/analyze",
             json={"preserve_maintenance": True}  # Добавляем флаг для сохранения статуса maintenance
         )
         
@@ -209,7 +293,7 @@ def migrate_users_from_inactive_servers():
     """Мигрирует пользователей с неактивных серверов на активные."""
     try:
         response = requests.post(
-            f"{DATABASE_SERVICE_URL}/api/configs/migrate_users",
+            f"{DATABASE_SERVICE_URL}/configs/migrate_users",
             timeout=20
         )
         
@@ -233,7 +317,7 @@ def rebalance_server_load():
     """Перебалансирует нагрузку серверов."""
     try:
         # Получаем список геолокаций
-        response = requests.get(f"{DATABASE_SERVICE_URL}/api/geolocations/available", timeout=5)
+        response = requests.get(f"{DATABASE_SERVICE_URL}/geolocations/available", timeout=5)
         
         if response.status_code == 200:
             geolocations = response.json().get("geolocations", [])
@@ -243,7 +327,7 @@ def rebalance_server_load():
                 
                 # Запускаем перебалансировку для каждой доступной геолокации
                 rebalance_response = requests.post(
-                    f"{DATABASE_SERVICE_URL}/api/servers/rebalance",
+                    f"{DATABASE_SERVICE_URL}/servers/rebalance",
                     json={"geolocation_id": geo_id, "threshold": 70},
                     timeout=10
                 )
@@ -267,7 +351,7 @@ def check_geolocations_availability():
     """Проверяет доступность геолокаций и обновляет их статус."""
     try:
         response = requests.get(
-            f"{DATABASE_SERVICE_URL}/api/geolocations/check",
+            f"{DATABASE_SERVICE_URL}/geolocations/check",
             timeout=10
         )
         
@@ -287,7 +371,7 @@ def cleanup_expired_configs():
     """Очищает истекшие конфигурации."""
     try:
         response = requests.post(
-            f"{DATABASE_SERVICE_URL}/api/cleanup_expired",
+            f"{DATABASE_SERVICE_URL}/cleanup_expired",
             timeout=10
         )
         
@@ -334,7 +418,7 @@ def register_own_server():
         
         # Получаем список геолокаций
         try:
-            response = make_api_request('get', f"{DATABASE_SERVICE_URL}/api/geolocations")
+            response = make_api_request('get', f"{DATABASE_SERVICE_URL}/geolocations")
             geolocations = response.json().get("geolocations", [])
         except Exception as e:
             logger.error(f"Ошибка при получении списка геолокаций: {str(e)}")
@@ -403,7 +487,7 @@ def register_own_server():
         try:
             register_response = make_api_request(
                 'post', 
-                f"{DATABASE_SERVICE_URL}/api/servers/register",
+                f"{DATABASE_SERVICE_URL}/servers/register",
                 json=server_data,
                 max_retries=3
             )
@@ -448,6 +532,13 @@ def make_api_request(method, url, json=None, timeout=10, max_retries=3, retry_de
     """Выполняет запрос к API с повторными попытками."""
     retry_count = 0
     last_error = None
+    
+    # Проверяем, содержит ли URL уже часть /api/
+    if '/api/' in url:
+        # Удаляем двойные вхождения /api/api/
+        url = url.replace('/api/api/', '/api/')
+    
+    logger.debug(f"Выполняем {method.upper()} запрос к URL: {url}")
     
     while retry_count < max_retries:
         try:

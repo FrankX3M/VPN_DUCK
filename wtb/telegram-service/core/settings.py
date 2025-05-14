@@ -14,6 +14,41 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Функция для нормализации URL API
+def normalize_api_url(url: str) -> str:
+    """
+    Нормализует URL API для взаимодействия с микросервисами.
+    
+    Args:
+        url (str): Исходный URL микросервиса
+        
+    Returns:
+        str: Нормализованный URL с правильным путем /api
+    """
+    if not url:
+        return ""
+    
+    # Убираем завершающий слеш, если он есть
+    url = url.rstrip('/')
+    
+    # Проверяем, содержит ли URL уже путь /api
+    if 'wireguard-proxy' in url or 'wireguard-service' in url:
+        # Для wireguard-proxy, который имеет эндпоинты в корне, не добавляем /api
+        # Исправляем, если /api уже добавлен
+        if url.endswith('/api'):
+            logger.debug(f"Удаляем /api для wireguard-proxy: {url}")
+            url = url[:-4]  # Удаляем '/api'
+    else:
+        # Для других сервисов добавляем /api, если его нет
+        if not url.endswith('/api') and '/api/' not in url:
+            url += '/api'
+    
+    # Исправляем случаи двойного /api/api
+    url = url.replace('/api/api', '/api')
+    
+    logger.debug(f"Нормализованный URL: {url}")
+    return url
+
 # Получение токена и базовой конфигурации
 def get_telegram_token() -> str:
     """
@@ -100,10 +135,28 @@ def setup_bot():
     return bot, dp
 
 # Получение дополнительных конфигураций
-WIREGUARD_SERVICE_URL = os.getenv('WIREGUARD_SERVICE_URL', '')
-DATABASE_SERVICE_URL = os.getenv('DATABASE_SERVICE_URL', 'http://database-service:5002')
+WIREGUARD_SERVICE_URL = normalize_api_url(os.getenv('WIREGUARD_SERVICE_URL', ''))
+DATABASE_SERVICE_URL = normalize_api_url(os.getenv('DATABASE_SERVICE_URL', 'http://database-service:5002'))
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', 'ваш_id_чата')
 REMOTE_ONLY = os.getenv('REMOTE_ONLY', 'false').lower() == 'true'
+
+# Логируем информацию о сервисах при запуске
+logger.info(f"WIREGUARD_SERVICE_URL: {WIREGUARD_SERVICE_URL}")
+logger.info(f"DATABASE_SERVICE_URL: {DATABASE_SERVICE_URL}")
+
+# Проверка работы функции нормализации URL
+test_urls = [
+    "http://example.com",
+    "http://example.com/",
+    "http://example.com/api",
+    "http://example.com/api/",
+    "http://example.com/api/endpoint",
+    "http://example.com/api/api/endpoint"
+]
+logger.info("Тестирование функции normalize_api_url:")
+for url in test_urls:
+    normalized = normalize_api_url(url)
+    logger.info(f"  Исходный: {url} -> Нормализованный: {normalized}")
 
 # Константы для продления
 EXTEND_OPTIONS = [

@@ -142,21 +142,12 @@ def health_check():
 
 @app.route('/create', methods=['POST'])
 def create_configuration():
-    """Создание новой конфигурации WireGuard на удаленном сервере"""
+    """Создание новой конфигурации WireGuard"""
     try:
-        data = request.json
-        logger.info(f"Received create request with data: {data}")
+        logger.info("Received create configuration request")
         
-        # Получение параметров
-        user_id = data.get('user_id')
-        geolocation_id = data.get('geolocation_id')
-        
-        if not user_id:
-            return jsonify({"error": "user_id is required"}), 400
-            
-        # Получение подходящего сервера через менеджер маршрутизации
-        result = route_manager.handle_create_request(data)
-        return jsonify(result)
+        # Передаем управление в route_manager
+        return route_manager.handle_create_request()
         
     except NoAvailableServerError as e:
         logger.error(f"No available server: {e}")

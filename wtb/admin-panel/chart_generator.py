@@ -23,106 +23,189 @@ class ChartGenerator:
     """Generator for server metrics charts"""
     
     @staticmethod
-    def generate_metrics_image(metrics_data, chart_type='latency', hours=24):
-        """Creates a chart image of metrics
+    def generate_metrics_image(self, metrics_data, chart_type='latency', hours=24):
+        """Создает изображение графика на основе метрик
         
         Args:
-            metrics_data: Metrics data from API
-            chart_type: Chart type (latency, load, resources, packet_loss)
-            hours: Number of hours to display
+            metrics_data: Данные метрик от API
+            chart_type: Тип графика (latency, load, resources, packet_loss)
+            hours: Количество часов для отображения
             
         Returns:
-            Base64-encoded image string for HTML embedding
+            Base64-закодированная строка изображения для встраивания в HTML
         """
         try:
-            if not metrics_data or 'history' not in metrics_data or not metrics_data['history']:
-                logger.warning("No data for chart generation")
+            # Проверка наличия данных
+            if not metrics_data:
+                logger.warning("Нет данных для построения графика")
                 return None
                 
-            # Create the figure
+            if not isinstance(metrics_data, dict):
+                logger.warning(f"Неверный тип данных метрик: {type(metrics_data)}")
+                return None
+                
+            if 'history' not in metrics_data or not metrics_data['history']:
+                logger.warning("Отсутствует история метрик в данных")
+                return None
+                
+            # Импортируем matplotlib только при необходимости
+            import matplotlib
+            matplotlib.use('Agg')  # Использование не-интерактивного бэкенда
+            import matplotlib.pyplot as plt
+            import matplotlib.dates as mdates
+            from io import BytesIO
+            import base64
+            import datetime
+            
+            # Создаем фигуру с заданными размерами
             fig, ax = plt.subplots(figsize=(10, 5))
             
-            # Convert timestamps to datetime
-            # history = metrics_data['history']
-            # timestamps = [datetime.datetime.fromisoformat(item['timestamp'].replace('Z', '+00:00')) 
-            #              if 'timestamp' in item else 
-            #              datetime.datetime.fromisoformat(item['hour'].replace('Z', '+00:00')) 
-            #              for item in history]
-            # In generate_metrics_image method, update the timestamps conversion:
+            # Обрабатываем и конвертируем временные метки
             history = metrics_data['history']
             timestamps = []
+            values = []
+            
             for item in history:
-                ts = item.get('timestamp', item.get('hour', ''))
-                if isinstance(ts, str):
-                    try:
-                        # Try to convert strings to datetime objects
-                        timestamps.append(datetime.datetime.fromisoformat(ts.replace('Z', '+00:00')))
-                    except ValueError:
-                        # If conversion fails, use the string as is
+                if not isinstance(item, dict):
+                    logger.debug(f"Пропуск элемента истории, не являющегося словарем: {item}")
+                    continue
+                    
+                # Получаем временную метку - поддерживает разные форматы
+                ts = item.get('timestamp', item.get('hour', None))
+                if ts is None:
+                    logger.debug(f"Пропуск элемента без временной метки: {item}")
+                    continue
+                    
+                try:
+                    # Пытаемся преобразовать строку в объект datetime
+                    if isinstance(ts, str):
+                        # Поддержка разных форматов времени
+                        try:
+                            dt = datetime.datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                        except ValueError:
+                            try:
+                                dt = datetime.datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
+                            except ValueError:
+                                logger.debug(f"Невозможно разобрать формат времени: {ts}")
+                                continue
+                        timestamps.append(dt)
+                    elif isinstance(ts, datetime.datetime):
                         timestamps.append(ts)
-                else:
-                    # If it's already a datetime or something else, use it as is
-                    timestamps.append(ts)
-
-            # Select data based on chart type
+                    else:
+                        logger.debug(f"Неподдерживаемый тип временной метки: {type(ts)}")
+                        continue
+                        
+                    # Выбираем данные в зависимости от типа графика
+                    if chart_type == 'latency':
+                        value = item.get('avg_latency')
+                        if value is None:
+                            value = item.get('ping_ms')
+                        if value is None:
+                            value = item.get('latency', 0)
+                        values.append(float(value))
+                        
+                    elif chart_type == 'packet_loss':
+                        value = item.get('avg_packet_loss')
+                        if value is None:
+                            value = item.get('packet_loss_percent')
+                        if value is None:
+                            value = item.get('packet_loss', 0)
+                        values.append(float(value))
+                        
+                    elif chart_type == 'load':
+                        value = item.get('load')
+                        if value is None:
+                            value = item.get('server_load', 0)
+                        values.append(float(value))
+                        
+                    elif chart_type == 'resources':
+                        cpu_value = item.get('cpu_usage')
+                        if cpu_value is None:
+                            cpu_value = item.get('cpu', 0)
+                        
+                        memory_value = item.get('memory_usage')
+                        if memory_value is None:
+                            memory_value = item.get('memory', 0)
+                            
+                        values.append((float(cpu_value), float(memory_value)))
+                        
+                    else:
+                        logger.warning(f"Неизвестный тип графика: {chart_type}")
+                        return None
+                        
+                except (ValueError, TypeError) as e:
+                    logger.debug(f"Ошибка обработки элемента данных: {e}, элемент: {item}")
+                    continue
+            
+            # Проверяем, что у нас есть данные для построения
+            if not timestamps or not values:
+                logger.warning("Нет данных для построения графика после фильтрации")
+                return None
+                
+            if len(timestamps) != len(values):
+                logger.warning(f"Несоответствие длины массивов: timestamps={len(timestamps)}, values={len(values)}")
+                # Обрезаем до минимальной длины
+                min_length = min(len(timestamps), len(values))
+                timestamps = timestamps[:min_length]
+                values = values[:min_length]
+            
+            # Строим график в зависимости от типа
             if chart_type == 'latency':
-                # Latency chart
-                latency_data = [item.get('avg_latency', 0) for item in history]
-                ax.plot(timestamps, latency_data, 'b-', label='Latency (ms)')
+                ax.plot(timestamps, values, 'b-', label='Latency (ms)')
                 ax.set_ylabel('Latency (ms)')
                 ax.set_title('Latency over last 24 hours')
                 
             elif chart_type == 'load':
-                # Load chart
-                load_data = [item.get('load', 0) for item in history]
-                ax.plot(timestamps, load_data, 'g-', label='Load (%)')
+                ax.plot(timestamps, values, 'g-', label='Load (%)')
                 ax.set_ylabel('Load (%)')
                 ax.set_title('Server Load')
                 ax.set_ylim(0, 100)
                 
             elif chart_type == 'resources':
-                # Resources chart (CPU and memory)
-                cpu_data = [item.get('cpu_usage', 0) for item in history]
-                memory_data = [item.get('memory_usage', 0) for item in history]
+                # Разделяем значения CPU и памяти
+                cpu_values = [v[0] for v in values]
+                memory_values = [v[1] for v in values]
                 
-                ax.plot(timestamps, cpu_data, 'r-', label='CPU (%)')
-                ax.plot(timestamps, memory_data, 'b-', label='Memory (%)')
+                ax.plot(timestamps, cpu_values, 'r-', label='CPU (%)')
+                ax.plot(timestamps, memory_values, 'b-', label='Memory (%)')
                 ax.set_ylabel('Usage (%)')
                 ax.set_title('Resource Usage')
                 ax.set_ylim(0, 100)
                 ax.legend()
                 
             elif chart_type == 'packet_loss':
-                # Packet loss chart
-                packet_loss_data = [item.get('avg_packet_loss', 0) for item in history]
-                ax.plot(timestamps, packet_loss_data, 'r-', label='Packet Loss (%)')
+                ax.plot(timestamps, values, 'r-', label='Packet Loss (%)')
                 ax.set_ylabel('Packet Loss (%)')
                 ax.set_title('Packet Loss')
-                ax.set_ylim(0, 100)
+                ax.set_ylim(0, max(5, max(values) * 1.2))  # Адаптивный масштаб
             
-            # Format X axis for date display
+            # Форматирование оси X для отображения дат
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M\n%d.%m'))
             plt.xticks(rotation=0)
             
-            # Add grid and legend
+            # Добавляем сетку и легенду
             ax.grid(True, linestyle='--', alpha=0.7)
-            ax.legend()
+            if chart_type != 'resources':  # для resources легенда уже добавлена
+                ax.legend()
             
-            # Save chart to memory
+            # Сохраняем график в память
             buffer = BytesIO()
             plt.savefig(buffer, format='png', dpi=100, bbox_inches='tight')
             buffer.seek(0)
             
-            # Encode as base64 for HTML embedding
+            # Кодируем как base64 для встраивания в HTML
             image_png = buffer.getvalue()
             buffer.close()
-            plt.close(fig)  # Close figure to free memory
+            plt.close(fig)  # Закрываем фигуру для освобождения памяти
             
             encoded = base64.b64encode(image_png).decode('utf-8')
             return encoded
         
+        except ImportError as e:
+            logger.exception(f"Ошибка импорта необходимых библиотек: {str(e)}")
+            return None
         except Exception as e:
-            logger.exception(f"Error generating chart: {str(e)}")
+            logger.exception(f"Ошибка генерации графика: {str(e)}")
             return None
             
     @staticmethod

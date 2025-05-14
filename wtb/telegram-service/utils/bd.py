@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 import time
 
-from core.settings import DATABASE_SERVICE_URL, WIREGUARD_SERVICE_URL, logger
+from core.settings import DATABASE_SERVICE_URL, WIREGUARD_SERVICE_URL, logger, normalize_api_url
 
 # Время жизни кэша в секундах
 GEO_CACHE_TTL = 300
@@ -15,6 +15,156 @@ GEO_CACHE_TTL = 300
 _geo_cache_last_update = 0
 # Кэш геолокаций
 _geo_cache = []
+
+# Время последней проверки доступности сервисов
+_services_check_last_time = 0
+# Интервал проверки сервисов в секундах (10 минут)
+_SERVICES_CHECK_INTERVAL = 600
+# Состояние сервисов
+_services_status = {
+    "wireguard": False,
+    "database": False
+}
+
+# Функция проверки доступности сервисов
+async def check_services_availability():
+    """
+    Проверяет доступность сервисов WireGuard и Database.
+    Обновляет глобальное состояние сервисов.
+    Вызывается периодически для отслеживания состояния.
+    """
+    global _services_check_last_time, _services_status
+    
+    # Проверяем, не слишком ли рано для повторной проверки
+    current_time = time.time()
+    if (current_time - _services_check_last_time) < _SERVICES_CHECK_INTERVAL:
+        # Если прошло мало времени с последней проверки, возвращаем текущее состояние
+        return _services_status
+    
+    logger.info("Выполняем проверку доступности сервисов")
+    
+    # Проверка database-service
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = _verify_url(DATABASE_SERVICE_URL, "status")
+            async with session.get(url, timeout=5) as response:
+                if response.status == 200:
+                    _services_status["database"] = True
+                    logger.info("database-service доступен")
+                else:
+                    _services_status["database"] = False
+                    logger.warning(f"database-service недоступен, код: {response.status}")
+    except Exception as e:
+        _services_status["database"] = False
+        logger.error(f"Ошибка при проверке database-service: {str(e)}")
+    
+    # Проверка wireguard-service
+    if WIREGUARD_SERVICE_URL:
+        try:
+            # Получаем базовый URL без /api для wireguard-proxy
+            wireguard_base_url = WIREGUARD_SERVICE_URL
+            if wireguard_base_url.endswith('/api'):
+                wireguard_base_url = wireguard_base_url[:-4]  # Удаляем '/api'
+            
+            async with aiohttp.ClientSession() as session:
+                # Сначала пробуем через эндпоинт /status
+                url = f"{wireguard_base_url}/status"
+                logger.info(f"Проверка доступности wireguard-service по URL: {url}")
+                
+                try:
+                    async with session.get(url, timeout=5) as response:
+                        if response.status == 200:
+                            _services_status["wireguard"] = True
+                            logger.info("wireguard-service доступен через /status")
+                        else:
+                            logger.warning(f"Эндпоинт /status вернул код: {response.status}")
+                except Exception as e:
+                    logger.warning(f"Ошибка при проверке /status: {str(e)}")
+                
+                # Если /status недоступен или вернул ошибку, пробуем через /health
+                if not _services_status["wireguard"]:
+                    url = f"{wireguard_base_url}/health"
+                    logger.info(f"Пробуем запасной URL для проверки: {url}")
+                    
+                    try:
+                        async with session.get(url, timeout=5) as response:
+                            if response.status == 200:
+                                _services_status["wireguard"] = True
+                                logger.info("wireguard-service доступен через /health")
+                            else:
+                                _services_status["wireguard"] = False
+                                logger.warning(f"Эндпоинт /health вернул код: {response.status}")
+                    except Exception as e:
+                        _services_status["wireguard"] = False
+                        logger.error(f"Ошибка при проверке /health: {str(e)}")
+                
+                # Если предыдущие проверки не сработали, пробуем /servers
+                if not _services_status["wireguard"]:
+                    url = f"{wireguard_base_url}/servers"
+                    logger.info(f"Пробуем проверку через /servers: {url}")
+                    
+                    try:
+                        async with session.get(url, timeout=5) as response:
+                            if response.status == 200:
+                                _services_status["wireguard"] = True
+                                logger.info("wireguard-service доступен через /servers")
+                            else:
+                                _services_status["wireguard"] = False
+                                logger.warning(f"Эндпоинт /servers вернул код: {response.status}")
+                    except Exception as e:
+                        _services_status["wireguard"] = False
+                        logger.error(f"Ошибка при проверке /servers: {str(e)}")
+        except Exception as e:
+            _services_status["wireguard"] = False
+            logger.error(f"Ошибка при проверке wireguard-service: {str(e)}")
+    else:
+        _services_status["wireguard"] = False
+        logger.warning("URL wireguard-service не настроен")
+    
+    # Обновляем время последней проверки
+    _services_check_last_time = current_time
+    
+    return _services_status
+
+# Проверка при импорте модуля
+# asyncio.create_task(check_services_availability())
+# Примечание: нельзя запускать задачи при импорте модуля, 
+# проверка сервисов будет автоматически происходить при первом вызове функций
+
+# Вспомогательная функция для проверки корректности URL перед запросом
+def _verify_url(url, endpoint=""):
+    """
+    Проверяет и корректирует URL перед отправкой запроса.
+    
+    Args:
+        url (str): Базовый URL сервиса
+        endpoint (str): Эндпоинт для запроса (без начального слеша)
+        
+    Returns:
+        str: Корректный URL для запроса
+    """
+    if not url:
+        return ""
+    
+    # Проверяем базовый URL
+    base_url = url.rstrip('/')
+    
+    # Формируем полный URL с эндпоинтом
+    if endpoint:
+        # Убираем начальный слеш у эндпоинта, если есть
+        if endpoint.startswith('/'):
+            endpoint = endpoint[1:]
+        
+        full_url = f"{base_url}/{endpoint}"
+    else:
+        full_url = base_url
+    
+    # Исправляем возможные ошибки
+    if '/api/api/' in full_url:
+        full_url = full_url.replace('/api/api/', '/api/')
+    
+    logger.debug(f"Нормализованный URL: {full_url}")
+    return full_url
 
 async def get_available_geolocations():
     """Получает список доступных геолокаций из базы данных с кэшированием."""
@@ -30,7 +180,8 @@ async def get_available_geolocations():
         logger.info("Получение доступных геолокаций (обновление кэша)")
         
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"{DATABASE_SERVICE_URL}/api/geolocations/available", timeout=10) as response:
+            url = _verify_url(DATABASE_SERVICE_URL, "geolocations/available")
+            async with session.get(url, timeout=10) as response:
                 logger.info(f"Ответ API: код {response.status}")
                 
                 if response.status == 200:
@@ -75,7 +226,7 @@ async def change_config_geolocation(user_id, geolocation_id, server_id=None):
                 logger.info(f"Запрашиваем список серверов для геолокации {geolocation_id}")
                 try:
                     async with session.get(
-                        f"{DATABASE_SERVICE_URL}/api/servers/geolocation/{geolocation_id}",
+                        _verify_url(DATABASE_SERVICE_URL, f"servers/geolocation/{geolocation_id}"),
                         timeout=10
                     ) as server_response:
                         
@@ -107,7 +258,7 @@ async def change_config_geolocation(user_id, geolocation_id, server_id=None):
             # Отправляем запрос на изменение геолокации с увеличенным таймаутом
             try:
                 async with session.post(
-                    f"{DATABASE_SERVICE_URL}/api/configs/change_geolocation",
+                    _verify_url(DATABASE_SERVICE_URL, "configs/change_geolocation"),
                     json=data,
                     timeout=30
                 ) as response:
@@ -150,6 +301,12 @@ async def create_new_config(user_id, geolocation_id=None):
     try:
         logger.info(f"Создание новой конфигурации для пользователя {user_id} с геолокацией {geolocation_id}")
         
+        # Проверяем доступность сервисов
+        services_status = await check_services_availability()
+        if not services_status["wireguard"]:
+            logger.error("WireGuard сервис недоступен, невозможно создать конфигурацию")
+            return {"error": "WireGuard сервис недоступен. Пожалуйста, попробуйте позже."}
+        
         # Проверяем текущую конфигурацию и деактивируем ее
         current_config = await get_user_config(user_id)
         if current_config and current_config.get("active") and current_config.get("public_key"):
@@ -157,8 +314,16 @@ async def create_new_config(user_id, geolocation_id=None):
             logger.info(f"Деактивируем существующую конфигурацию с public_key: {public_key}")
             
             try:
+                # Очистка URL wireguard от /api
+                wireguard_base_url = WIREGUARD_SERVICE_URL
+                if wireguard_base_url.endswith('/api'):
+                    wireguard_base_url = wireguard_base_url[:-4]  # Удаляем '/api'
+                
+                deactivate_url = f"{wireguard_base_url}/remove/{public_key}"
+                logger.info(f"Отправляем запрос на деактивацию на URL: {deactivate_url}")
+                
                 deactivate_response = requests.delete(
-                    f"{WIREGUARD_SERVICE_URL}/remove/{public_key}", 
+                    deactivate_url, 
                     timeout=10
                 )
                 logger.info(f"Ответ API на деактивацию: код {deactivate_response.status_code}")
@@ -167,13 +332,14 @@ async def create_new_config(user_id, geolocation_id=None):
         
         # Определяем URL сервиса WireGuard
         wireguard_url = WIREGUARD_SERVICE_URL
+        logger.info(f"Используем URL wireguard-service: {wireguard_url}")
         
         # Если URL не установлен, получаем список серверов
         if not wireguard_url:
             async with aiohttp.ClientSession() as session:
                 try:
                     async with session.get(
-                        f"{DATABASE_SERVICE_URL}/api/servers/all", 
+                        _verify_url(DATABASE_SERVICE_URL, "servers/all"), 
                         timeout=10
                     ) as servers_response:
                         if servers_response.status == 200:
@@ -184,7 +350,10 @@ async def create_new_config(user_id, geolocation_id=None):
                             if active_servers:
                                 # Берем первый активный сервер
                                 server = active_servers[0]
-                                wireguard_url = f"http://{server.get('endpoint')}:{server.get('port')}"
+                                endpoint = server.get('endpoint')
+                                port = server.get('port', 5000)  # Используем 5000 как порт по умолчанию
+                                wireguard_url = normalize_api_url(f"http://{endpoint}:{port}")
+                                
                                 logger.info(f"Используем сервер: {wireguard_url}")
                             else:
                                 logger.error("Нет активных серверов")
@@ -201,11 +370,22 @@ async def create_new_config(user_id, geolocation_id=None):
         if geolocation_id:
             request_data["geolocation_id"] = geolocation_id
         
-        # Отправляем запрос на создание конфигурации
+        logger.info(f"Отправляем запрос на создание с данными: {request_data}")
+        
+        # Отправляем запрос на создание новой конфигурации
         async with aiohttp.ClientSession() as session:
             try:
+                # Формируем URL для запроса
+                wireguard_base_url = wireguard_url
+                # Удаляем /api из базового URL, если он присутствует
+                if wireguard_base_url.endswith('/api'):
+                    wireguard_base_url = wireguard_base_url[:-4]  # Удаляем '/api'
+                
+                create_url = f"{wireguard_base_url}/create"
+                logger.info(f"Отправляем запрос на URL: {create_url}")
+                
                 async with session.post(
-                    f"{wireguard_url}/create",
+                    create_url,
                     json=request_data,
                     timeout=30
                 ) as wg_response:
@@ -241,7 +421,7 @@ async def create_new_config(user_id, geolocation_id=None):
                             db_data["server_id"] = server_id
                         
                         async with session.post(
-                            f"{DATABASE_SERVICE_URL}/api/config",
+                            _verify_url(DATABASE_SERVICE_URL, "config"),
                             json=db_data,
                             timeout=20
                         ) as db_response:
@@ -296,7 +476,7 @@ async def get_all_user_configs(user_id):
         
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                f"{DATABASE_SERVICE_URL}/api/configs/get_all/{user_id}", 
+                _verify_url(DATABASE_SERVICE_URL, f"configs/get_all/{user_id}"), 
                 timeout=15
             ) as response:
                 
@@ -334,15 +514,12 @@ async def get_user_config(user_id):
     """Получает конфигурацию пользователя из базы данных."""
     try:
         logger.info(f"Получение конфигурации для пользователя {user_id}")
-        logger.info(f"Используем URL: {DATABASE_SERVICE_URL}/api/config/{user_id}")
+        url = _verify_url(DATABASE_SERVICE_URL, f"config/{user_id}")
+        logger.info(f"Используем URL: {url}")
         
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(
-                    f"{DATABASE_SERVICE_URL}/api/config/{user_id}", 
-                    timeout=10
-                ) as response:
-                    
+                async with session.get(url, timeout=10) as response:
                     logger.info(f"Ответ API: код {response.status}")
                     
                     if response.status == 200:
@@ -359,10 +536,7 @@ async def get_user_config(user_id):
                             logger.info(f"Повторяем запрос после серверной ошибки {response.status}")
                             await asyncio.sleep(1)  # Небольшая задержка перед повторным запросом
                             
-                            async with session.get(
-                                f"{DATABASE_SERVICE_URL}/api/config/{user_id}", 
-                                timeout=10
-                            ) as retry_response:
+                            async with session.get(url, timeout=10) as retry_response:
                                 if retry_response.status == 200:
                                     logger.info("Повторный запрос успешен")
                                     return await retry_response.json()
@@ -382,31 +556,41 @@ async def get_user_config(user_id):
         logger.error(f"Ошибка запроса конфигурации пользователя: {str(e)}")
         return None
 
+# Обновленная функция проверки доступности серверов
 async def are_servers_available():
     """Проверяет наличие доступных внешних серверов."""
+    # Вызываем общую проверку сервисов
+    services_status = await check_services_availability()
+    
+    # Если wireguard уже проверен и доступен, возвращаем результат
+    if services_status["wireguard"]:
+        return True
+        
+    # Пробуем напрямую обратиться к эндпоинту /servers
     try:
-        # Получаем список серверов с wireguard-service
+        wireguard_base_url = WIREGUARD_SERVICE_URL
+        if wireguard_base_url.endswith('/api'):
+            wireguard_base_url = wireguard_base_url[:-4]  # Удаляем '/api'
+            
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"{WIREGUARD_SERVICE_URL}/servers", timeout=10) as response:
-                if response.status != 200:
+            async with session.get(f"{wireguard_base_url}/servers", timeout=10) as response:
+                if response.status == 200:
+                    servers_data = await response.json()
+                    servers = servers_data.get("servers", [])
+                    active_count = servers_data.get("active", 0)
+                    
+                    # Проверяем наличие активных серверов
+                    if active_count <= 0 or not servers:
+                        logger.info("Нет активных серверов")
+                        return False
+                    
+                    logger.info(f"Доступно {active_count} активных серверов")
+                    return True
+                else:
                     logger.error(f"Ошибка при получении списка серверов: {response.status}")
                     return False
-                
-                servers_data = await response.json()
-                servers = servers_data.get("servers", [])
-                active_count = servers_data.get("active", 0)
-                
-                # Проверяем наличие активных серверов
-                if active_count <= 0 or not servers:
-                    logger.info("Нет активных серверов")
-                    return False
-                
-                logger.info(f"Доступно {active_count} активных серверов")
-                return True
-
     except Exception as e:
         logger.error(f"Ошибка при проверке доступных серверов: {str(e)}")
-        # В случае ошибки возвращаем False, чтобы предотвратить создание конфигурации
         return False
 
 async def get_servers_for_geolocation(geolocation_id):
@@ -424,7 +608,7 @@ async def get_servers_for_geolocation(geolocation_id):
         
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                f"{DATABASE_SERVICE_URL}/api/servers/geolocation/{geolocation_id}",
+                _verify_url(DATABASE_SERVICE_URL, f"servers/geolocation/{geolocation_id}"),
                 timeout=10
             ) as response:
                 logger.info(f"Ответ API получения серверов: код {response.status}")
@@ -479,7 +663,7 @@ async def update_user_location(user_id, location):
     try:
         async with aiohttp.ClientSession() as session:
             async with session.put(
-                f"{DATABASE_SERVICE_URL}/api/user/location",
+                _verify_url(DATABASE_SERVICE_URL, "user/location"),
                 json={
                     "user_id": user_id,
                     "location": location
@@ -572,7 +756,7 @@ async def extend_config(user_id, days, stars, transaction_id):
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.post(
-                    f"{DATABASE_SERVICE_URL}/api/config/extend",
+                    _verify_url(DATABASE_SERVICE_URL, "config/extend"),
                     json={
                         "user_id": user_id,
                         "days": days,
@@ -625,7 +809,7 @@ async def get_payment_history(user_id):
         
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                f"{DATABASE_SERVICE_URL}/api/payments/history/{user_id}", 
+                _verify_url(DATABASE_SERVICE_URL, f"payments/history/{user_id}"), 
                 timeout=10
             ) as response:
                 logger.info(f"Ответ API: код {response.status}")
@@ -668,6 +852,12 @@ async def recreate_config(user_id, geolocation_id=None):
     """
     try:
         logger.info(f"Пересоздание конфигурации для пользователя {user_id} с геолокацией {geolocation_id}")
+        
+        # Проверяем доступность сервисов
+        services_status = await check_services_availability()
+        if not services_status["wireguard"]:
+            logger.error("WireGuard сервис недоступен, невозможно пересоздать конфигурацию")
+            return {"error": "WireGuard сервис недоступен. Пожалуйста, попробуйте позже."}
         
         # Получаем текущую конфигурацию
         current_config = await get_user_config(user_id)
@@ -713,9 +903,17 @@ async def recreate_config(user_id, geolocation_id=None):
             logger.info(f"Деактивация текущей конфигурации с public_key: {public_key}")
             
             try:
+                # Очистка URL wireguard от /api
+                wireguard_base_url = WIREGUARD_SERVICE_URL
+                if wireguard_base_url.endswith('/api'):
+                    wireguard_base_url = wireguard_base_url[:-4]  # Удаляем '/api'
+                
+                deactivate_url = f"{wireguard_base_url}/remove/{public_key}"
+                logger.info(f"Отправляем запрос на деактивацию на URL: {deactivate_url}")
+                
                 async with aiohttp.ClientSession() as session:
                     async with session.delete(
-                        f"{WIREGUARD_SERVICE_URL}/remove/{public_key}", 
+                        deactivate_url, 
                         timeout=10
                     ) as deactivate_response:
                         logger.info(f"Ответ API на деактивацию: код {deactivate_response.status}")
@@ -732,8 +930,17 @@ async def recreate_config(user_id, geolocation_id=None):
         # Отправляем запрос на создание новой конфигурации
         async with aiohttp.ClientSession() as session:
             try:
+                # Формируем URL для запроса
+                wireguard_base_url = WIREGUARD_SERVICE_URL
+                # Удаляем /api из базового URL, если он присутствует
+                if wireguard_base_url.endswith('/api'):
+                    wireguard_base_url = wireguard_base_url[:-4]  # Удаляем '/api'
+                
+                create_url = f"{wireguard_base_url}/create"
+                logger.info(f"Отправляем запрос на URL: {create_url}")
+                
                 async with session.post(
-                    f"{WIREGUARD_SERVICE_URL}/create",
+                    create_url,
                     json=request_data,
                     timeout=30
                 ) as wg_response:
@@ -746,7 +953,7 @@ async def recreate_config(user_id, geolocation_id=None):
                         server_id = wg_data.get("server_id")
                         server_geolocation_id = wg_data.get("geolocation_id")
                         
-                        logger.info(f"Конфигурация получена успешно. Public key: {public_key}, Server ID: {server_id}, Geolocation ID: {server_geolocation_id}")
+                        logger.info(f"Конфигурация получена успешно. Public key: {public_key}, Server ID: {server_id}")
                         
                         # Сохраняем в базе данных через database-service
                         db_data = {
@@ -766,7 +973,7 @@ async def recreate_config(user_id, geolocation_id=None):
                             db_data["server_id"] = server_id
                         
                         async with session.post(
-                            f"{DATABASE_SERVICE_URL}/api/config",
+                            _verify_url(DATABASE_SERVICE_URL, "config"),
                             json=db_data,
                             timeout=20
                         ) as db_response:

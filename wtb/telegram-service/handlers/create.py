@@ -5,9 +5,9 @@ from datetime import datetime
 from io import BytesIO
 
 from core.settings import bot, logger
-from states.states import CreateConfigStates
+from states.states import CreateConfigStates, GeoLocationStates
 from keyboards.keyboards import get_create_confirm_keyboard, get_active_config_keyboard
-from utils.bd import get_user_config, create_new_config, get_config_from_wireguard
+from utils.bd import get_user_config, create_new_config, get_config_from_wireguard, get_available_geolocations
 from utils.qr import generate_config_qr
 
 from keyboards.keyboards import get_geolocation_keyboard
@@ -20,40 +20,84 @@ async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMC
     await bot.answer_callback_query(callback_query.id)
     user_id = callback_query.from_user.id
     
+    try:
+        # Получаем доступные геолокации
+        geolocations = await get_available_geolocations()
+        
+        if not geolocations:
+            await bot.edit_message_text(
+                "❌ <b>Ошибка!</b>\n\n"
+                "Нет доступных геолокаций. Пожалуйста, попробуйте позже.",
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id,
+                parse_mode=ParseMode.HTML
+            )
+            await state.finish()
+            return
+        
+        # Сохраняем список геолокаций в состоянии
+        await state.update_data(geolocations=geolocations, is_creating=True)
+        
+        # Формируем клавиатуру с геолокациями
+        keyboard = get_geolocation_keyboard(geolocations)
+        
+        # Обновляем сообщение с просьбой выбрать геолокацию
+        await bot.edit_message_text(
+            "🌍 <b>Выберите геолокацию для вашего VPN</b>\n\n"
+            "От выбранной геолокации зависит скорость соединения и доступность некоторых сервисов.",
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            parse_mode=ParseMode.HTML,
+            reply_markup=keyboard
+        )
+        
+        # Переходим в состояние выбора геолокации для создания
+        await GeoLocationStates.selecting_geolocation_for_create.set()
+        
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка: {str(e)}", exc_info=True)
+        await bot.edit_message_text(
+            "❌ <b>Произошла ошибка</b>\n\n"
+            "Пожалуйста, попробуйте позже.",
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            parse_mode=ParseMode.HTML
+        )
+        await state.finish()
+
+# Обработчик выбора геолокации для новой конфигурации
+async def process_geolocation_for_create(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обработка выбора геолокации при создании новой конфигурации."""
+    await bot.answer_callback_query(callback_query.id)
+    
+    # Получаем выбранную геолокацию
+    geolocation_id = int(callback_query.data.split('_')[1])
+    user_id = callback_query.from_user.id
+    
+    # Получаем данные из состояния
+    state_data = await state.get_data()
+    geolocations = state_data.get('geolocations', [])
+    
+    # Находим название выбранной геолокации
+    geolocation_name = "Неизвестная геолокация"
+    for geo in geolocations:
+        if geo.get('id') == geolocation_id:
+            geolocation_name = geo.get('name')
+            break
+    
     # Сообщаем пользователю о начале процесса создания
     await bot.edit_message_text(
-        "🔄 <b>Создание конфигурации...</b>\n\n"
-        "Пожалуйста, подождите. Это может занять несколько секунд.",
+        f"🔄 <b>Создание конфигурации...</b>\n\n"
+        f"Выбрана геолокация: <b>{geolocation_name}</b>\n\n"
+        f"Пожалуйста, подождите. Это может занять несколько секунд.",
         chat_id=callback_query.message.chat.id,
         message_id=callback_query.message.message_id,
         parse_mode=ParseMode.HTML
     )
     
     try:
-        # Получаем доступные геолокации
-        geolocations = await get_available_geolocations()
-        if geolocations:
-            # Формируем клавиатуру с геолокациями
-            keyboard = get_geolocation_keyboard(geolocations)
-            
-            await message.reply(
-                "🌍 <b>Выберите геолокацию для вашего VPN</b>\n\n"
-                "От выбранной геолокации зависит скорость соединения и доступность некоторых сервисов.",
-                parse_mode=ParseMode.HTML,
-                reply_markup=keyboard
-            )
-            
-            # Переходим в состояние выбора геолокации
-            await GeoLocationStates.selecting_geolocation.set()
-        else:
-            default_geolocation_id = None
-        
-        # Выбираем геолокацию по умолчанию (например, первую из списка)
-        if geolocations:
-            default_geolocation_id = geolocations[0].get('id')
-        
         # Создаем новую конфигурацию с указанием геолокации
-        config_data = await create_new_config(user_id, geolocation_id=default_geolocation_id)
+        config_data = await create_new_config(user_id, geolocation_id=geolocation_id)
         
         if "error" in config_data:
             await bot.edit_message_text(
@@ -93,7 +137,7 @@ async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMC
                 expiry_text = f"▫️ Срок действия: до <b>{expiry_formatted}</b>\n"
             
             # Информация о геолокации
-            geo_name = db_data.get("geolocation_name", "Неизвестно")
+            geo_name = db_data.get("geolocation_name") or geolocation_name
             geo_text = f"▫️ Геолокация: <b>{geo_name}</b>\n"
         
         # Создаем файл конфигурации
@@ -288,3 +332,5 @@ def register_handlers_create(dp: Dispatcher):
     dp.register_message_handler(create_config, commands=['create'])
     dp.register_message_handler(create_config, lambda message: message.text == "🔑 Создать")
     dp.register_callback_query_handler(create_config_from_button, lambda c: c.data == 'create_config')
+    dp.register_callback_query_handler(confirm_create_config, lambda c: c.data == "confirm_create", state=CreateConfigStates.confirming_create)
+    dp.register_callback_query_handler(process_geolocation_for_create, lambda c: c.data.startswith("geo_"), state=GeoLocationStates.selecting_geolocation_for_create)

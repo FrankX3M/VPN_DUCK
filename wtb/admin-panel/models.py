@@ -45,6 +45,31 @@ class Server:
         self.skip_api_check = skip_api_check
         
     @classmethod
+    def from_dict(cls, data):
+        """Create server object from dictionary."""
+        if not data:
+            return None
+            
+        return cls(
+            id=data.get('id'),
+            server_id=data.get('server_id'),
+            name=data.get('name'),
+            endpoint=data.get('endpoint'),
+            port=data.get('port'),
+            address=data.get('address'),
+            public_key=data.get('public_key'),
+            geolocation_id=data.get('geolocation_id'),
+            location=data.get('location'),
+            geolocation_name=data.get('geolocation_name'),
+            status=data.get('status', 'active'),
+            api_key=data.get('api_key'),
+            api_url=data.get('api_url'),
+            api_path=data.get('api_path'),
+            max_peers=data.get('max_peers'),
+            skip_api_check=data.get('skip_api_check', False)
+        )
+    
+    @classmethod
     def from_remote_server(cls, remote_server):
         """Создание объекта Server из данных remote_servers
         

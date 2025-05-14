@@ -11,3 +11,4 @@ class CreateConfigStates(StatesGroup):
 # Добавляем состояние для выбора геолокации
 class GeoLocationStates(StatesGroup):
     selecting_geolocation = State()
+    selecting_geolocation_for_create = State()  # Состояние выбора геолокации при создании конфигурации
