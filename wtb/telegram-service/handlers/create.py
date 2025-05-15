@@ -13,21 +13,97 @@ from utils.qr import generate_config_qr
 from keyboards.keyboards import get_geolocation_keyboard
 
 # поддержка выбора геолокации во время создания конфигурации
+# async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMContext):
+#     """Подтверждение создания новой конфигурации с возможностью выбора геолокации."""
+#     logger.info(f"Вызван обработчик confirm_create_config с данными: {callback_query.data}")
+    
+#     await bot.answer_callback_query(callback_query.id)
+#     user_id = callback_query.from_user.id
+    
+#     try:
+#         # Получаем доступные геолокации
+#         geolocations = await get_available_geolocations()
+        
+#         if not geolocations:
+#             await bot.edit_message_text(
+#                 "❌ <b>Ошибка!</b>\n\n"
+#                 "Нет доступных геолокаций. Пожалуйста, попробуйте позже.",
+#                 chat_id=callback_query.message.chat.id,
+#                 message_id=callback_query.message.message_id,
+#                 parse_mode=ParseMode.HTML
+#             )
+#             await state.finish()
+#             return
+        
+#         # Сохраняем список геолокаций в состоянии
+#         await state.update_data(geolocations=geolocations, is_creating=True)
+        
+#         # Формируем клавиатуру с геолокациями
+#         keyboard = get_geolocation_keyboard(geolocations)
+        
+#         # Обновляем сообщение с просьбой выбрать геолокацию
+#         await bot.edit_message_text(
+#             "🌍 <b>Выберите геолокацию для вашего VPN</b>\n\n"
+#             "От выбранной геолокации зависит скорость соединения и доступность некоторых сервисов.",
+#             chat_id=callback_query.message.chat.id,
+#             message_id=callback_query.message.message_id,
+#             parse_mode=ParseMode.HTML,
+#             reply_markup=keyboard
+#         )
+        
+#         # Переходим в состояние выбора геолокации для создания
+#         await GeoLocationStates.selecting_geolocation_for_create.set()
+        
+#     except Exception as e:
+#         logger.error(f"Неожиданная ошибка: {str(e)}", exc_info=True)
+#         await bot.edit_message_text(
+#             "❌ <b>Произошла ошибка</b>\n\n"
+#             "Пожалуйста, попробуйте позже.",
+#             chat_id=callback_query.message.chat.id,
+#             message_id=callback_query.message.message_id,
+#             parse_mode=ParseMode.HTML
+#         )
 async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMContext):
     """Подтверждение создания новой конфигурации с возможностью выбора геолокации."""
     logger.info(f"Вызван обработчик confirm_create_config с данными: {callback_query.data}")
     
-    await bot.answer_callback_query(callback_query.id)
-    user_id = callback_query.from_user.id
-    
     try:
-        # Получаем доступные геолокации
-        geolocations = await get_available_geolocations()
+        # Отвечаем на callback query сразу, чтобы не было "часиков" в Telegram
+        await bot.answer_callback_query(callback_query.id)
+        user_id = callback_query.from_user.id
+        logger.info(f"Обработка запроса для пользователя {user_id}")
         
-        if not geolocations:
+        # Сначала отправим пользователю сообщение, что начинаем процесс
+        await bot.edit_message_text(
+            "🔄 <b>Подготовка списка доступных геолокаций...</b>\n\n"
+            "Пожалуйста, подождите.",
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Получаем доступные геолокации с подробным логированием
+        logger.info("Запрашиваем список доступных геолокаций из базы данных")
+        try:
+            geolocations = await get_available_geolocations()
+            logger.info(f"Получены геолокации: {len(geolocations) if geolocations else 0}")
+            
+            if not geolocations:
+                logger.warning("Список геолокаций пуст")
+                await bot.edit_message_text(
+                    "❌ <b>Ошибка!</b>\n\n"
+                    "Нет доступных геолокаций. Пожалуйста, попробуйте позже или обратитесь в поддержку.",
+                    chat_id=callback_query.message.chat.id,
+                    message_id=callback_query.message.message_id,
+                    parse_mode=ParseMode.HTML
+                )
+                await state.finish()
+                return
+        except Exception as geo_error:
+            logger.error(f"Ошибка при получении геолокаций: {str(geo_error)}", exc_info=True)
             await bot.edit_message_text(
                 "❌ <b>Ошибка!</b>\n\n"
-                "Нет доступных геолокаций. Пожалуйста, попробуйте позже.",
+                "Произошла ошибка при получении списка геолокаций. Пожалуйста, попробуйте позже.",
                 chat_id=callback_query.message.chat.id,
                 message_id=callback_query.message.message_id,
                 parse_mode=ParseMode.HTML
@@ -36,33 +112,85 @@ async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMC
             return
         
         # Сохраняем список геолокаций в состоянии
+        logger.info("Сохраняем список геолокаций в состоянии FSM")
         await state.update_data(geolocations=geolocations, is_creating=True)
         
         # Формируем клавиатуру с геолокациями
-        keyboard = get_geolocation_keyboard(geolocations)
+        logger.info("Формируем клавиатуру с геолокациями")
+        try:
+            keyboard = get_geolocation_keyboard(geolocations)
+            logger.info("Клавиатура с геолокациями успешно создана")
+        except Exception as keyboard_error:
+            logger.error(f"Ошибка при создании клавиатуры: {str(keyboard_error)}", exc_info=True)
+            await bot.edit_message_text(
+                "❌ <b>Ошибка!</b>\n\n"
+                "Произошла ошибка при создании меню выбора геолокаций. Пожалуйста, попробуйте позже.",
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id,
+                parse_mode=ParseMode.HTML
+            )
+            await state.finish()
+            return
         
-        # Обновляем сообщение с просьбой выбрать геолокацию
-        await bot.edit_message_text(
-            "🌍 <b>Выберите геолокацию для вашего VPN</b>\n\n"
-            "От выбранной геолокации зависит скорость соединения и доступность некоторых сервисов.",
-            chat_id=callback_query.message.chat.id,
-            message_id=callback_query.message.message_id,
-            parse_mode=ParseMode.HTML,
-            reply_markup=keyboard
-        )
+        # Отправляем сообщение с просьбой выбрать геолокацию
+        logger.info("Отправляем сообщение с просьбой выбрать геолокацию")
+        try:
+            await bot.edit_message_text(
+                "🌍 <b>Выберите геолокацию для вашего VPN</b>\n\n"
+                "От выбранной геолокации зависит скорость соединения и доступность некоторых сервисов.",
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id,
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard
+            )
+            logger.info("Сообщение успешно отправлено")
+        except Exception as message_error:
+            logger.error(f"Ошибка при отправке сообщения: {str(message_error)}", exc_info=True)
+            # Пробуем отправить новое сообщение, если редактирование не удалось
+            try:
+                await bot.send_message(
+                    callback_query.message.chat.id,
+                    "🌍 <b>Выберите геолокацию для вашего VPN</b>\n\n"
+                    "От выбранной геолокации зависит скорость соединения и доступность некоторых сервисов.",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=keyboard
+                )
+                logger.info("Новое сообщение успешно отправлено")
+            except Exception as retry_error:
+                logger.error(f"Ошибка при повторной отправке сообщения: {str(retry_error)}", exc_info=True)
+                await state.finish()
+                return
         
         # Переходим в состояние выбора геолокации для создания
+        logger.info("Переходим в состояние выбора геолокации для создания")
         await GeoLocationStates.selecting_geolocation_for_create.set()
+        logger.info("Состояние успешно установлено")
         
     except Exception as e:
-        logger.error(f"Неожиданная ошибка: {str(e)}", exc_info=True)
-        await bot.edit_message_text(
-            "❌ <b>Произошла ошибка</b>\n\n"
-            "Пожалуйста, попробуйте позже.",
-            chat_id=callback_query.message.chat.id,
-            message_id=callback_query.message.message_id,
-            parse_mode=ParseMode.HTML
-        )
+        logger.error(f"Общая ошибка в обработчике confirm_create_config: {str(e)}", exc_info=True)
+        try:
+            # Пытаемся сообщить пользователю об ошибке
+            await bot.edit_message_text(
+                "❌ <b>Произошла непредвиденная ошибка</b>\n\n"
+                "Пожалуйста, попробуйте позже или обратитесь в поддержку.",
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id,
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as notify_error:
+            logger.error(f"Не удалось уведомить пользователя об ошибке: {str(notify_error)}")
+            # Пробуем отправить новое сообщение
+            try:
+                await bot.send_message(
+                    callback_query.message.chat.id,
+                    "❌ <b>Произошла непредвиденная ошибка</b>\n\n"
+                    "Пожалуйста, попробуйте позже или обратитесь в поддержку.",
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception:
+                pass  # Если и это не удалось, просто логируем
+        
+        # Сбрасываем состояние в любом случае
         await state.finish()
 
 # Обработчик выбора геолокации для новой конфигурации

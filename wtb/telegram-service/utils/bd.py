@@ -9,6 +9,8 @@ import time
 
 from core.settings import DATABASE_SERVICE_URL, WIREGUARD_SERVICE_URL, logger, normalize_api_url
 
+
+
 # Время жизни кэша в секундах
 GEO_CACHE_TTL = 300
 # Переменная для хранения времени последнего обновления
@@ -16,15 +18,18 @@ _geo_cache_last_update = 0
 # Кэш геолокаций
 _geo_cache = []
 
-# Время последней проверки доступности сервисов
-_services_check_last_time = 0
 # Интервал проверки сервисов в секундах (10 минут)
 _SERVICES_CHECK_INTERVAL = 600
+# Время последней проверки доступности сервисов - ДОЛЖНО БЫТЬ ПОСЛЕ определения _SERVICES_CHECK_INTERVAL
+_services_check_last_time = time.time() - _SERVICES_CHECK_INTERVAL - 1
 # Состояние сервисов
 _services_status = {
     "wireguard": False,
     "database": False
 }
+
+
+
 
 # Функция проверки доступности сервисов
 async def check_services_availability():

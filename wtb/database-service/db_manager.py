@@ -1256,25 +1256,25 @@ def unmap_peer(public_key):
         logger.exception(f"Error unmapping peer: {e}")
         return jsonify({"error": str(e)}), 500
         
-@app.route('/api/config/<int:user_id>', methods=['GET'])
-def get_user_config(user_id):
-    """Получение конфигурации пользователя по ID"""
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-                query = """
-                SELECT * FROM user_configs WHERE user_id = %s
-                """
-                cur.execute(query, (user_id,))
-                config = cur.fetchone()
+# @app.route('/api/config/<int:user_id>', methods=['GET'])
+# def get_user_config(user_id):
+#     """Получение конфигурации пользователя по ID"""
+#     try:
+#         with get_db_connection() as conn:
+#             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+#                 query = """
+#                 SELECT * FROM user_configs WHERE user_id = %s
+#                 """
+#                 cur.execute(query, (user_id,))
+#                 config = cur.fetchone()
                 
-                if not config:
-                    return jsonify({"error": "Конфигурация не найдена"}), 404
+#                 if not config:
+#                     return jsonify({"error": "Конфигурация не найдена"}), 404
                 
-                return jsonify({"config": dict(config)})
-    except Exception as e:
-        logger.exception(f"Ошибка при получении конфигурации пользователя: {e}")
-        return jsonify({"error": str(e)}), 500
+#                 return jsonify({"config": dict(config)})
+#     except Exception as e:
+#         logger.exception(f"Ошибка при получении конфигурации пользователя: {e}")
+#         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/geolocations', methods=['GET'])
 def get_geolocations():
@@ -1578,8 +1578,156 @@ def update_servers_status_batch():
         logger.exception(f"Error updating servers status: {e}")
         return jsonify({"error": str(e)}), 500
 
+# @app.route('/api/servers/metrics/add', methods=['POST'])
+# def add_server_metrics():
+#     """Добавление метрик сервера"""
+#     try:
+#         logger.debug(f"Получен запрос на добавление метрик сервера: {request.method} {request.path}")
+#         data = request.json
+#         logger.debug(f"Полученные данные: {data}")
+        
+#         if 'server_id' not in data:
+#             logger.warning("Отсутствует обязательное поле server_id")
+#             return jsonify({"error": "Missing server_id field"}), 400
+        
+#         logger.debug(f"Проверка сервера с ID: {data['server_id']}")    
+#         with get_db_connection() as conn:
+#             # Проверим, существует ли сервер с таким ID
+#             with conn.cursor() as check_cur:
+#                 # Сначала проверяем в таблице remote_servers
+#                 check_cur.execute("SELECT id FROM remote_servers WHERE id = %s", (data['server_id'],))
+#                 server = check_cur.fetchone()
+                
+#                 if not server:
+#                     # Если не нашли в remote_servers, проверяем в таблице servers
+#                     check_cur.execute("SELECT id FROM servers WHERE id = %s", (data['server_id'],))
+#                     server = check_cur.fetchone()
+                    
+#                     if not server:
+#                         logger.warning(f"Сервер с ID {data['server_id']} не найден в базе данных")
+#                         # Создаем запись о сервере перед добавлением метрик
+#                         logger.info(f"Создание записи о сервере {data['server_id']} в таблице servers")
+                        
+#                         try:
+#                             with conn.cursor() as insert_cur:
+#                                 insert_query = """
+#                                 INSERT INTO servers (id, name, status) 
+#                                 VALUES (%s, %s, %s) 
+#                                 RETURNING id
+#                                 """
+#                                 insert_cur.execute(insert_query, (
+#                                     data['server_id'], 
+#                                     f"Автоматически созданный сервер {data['server_id']}", 
+#                                     "active"
+#                                 ))
+#                                 new_server_id = insert_cur.fetchone()[0]
+#                                 conn.commit()
+#                                 logger.info(f"Создан новый сервер с ID: {new_server_id}")
+#                         except Exception as create_err:
+#                             conn.rollback()
+#                             logger.error(f"Ошибка при создании записи о сервере: {create_err}")
+#                             return jsonify({"error": f"Сервер не существует и не удалось его создать: {str(create_err)}"}), 500
+            
+#             with conn.cursor() as cur:
+#                 logger.debug("Подготовка SQL запроса для вставки метрик")
+#                 # Проверим структуру таблицы server_metrics
+#                 try:
+#                     cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'server_metrics'")
+#                     columns = cur.fetchall()
+#                     logger.debug(f"Структура таблицы server_metrics: {columns}")
+                    
+#                     # Определим имена столбцов и составим запрос динамически
+#                     column_names = [col[0] for col in columns]
+#                     valid_fields = ['server_id', 'latency', 'bandwidth', 'jitter', 'packet_loss']
+                    
+#                     # Создаем списки полей и значений для запроса
+#                     insert_fields = ['server_id']
+#                     insert_values = [data['server_id']]
+                    
+#                     for field in valid_fields[1:]:  # Пропускаем server_id, он уже добавлен
+#                         if field in column_names and field in data:
+#                             insert_fields.append(field)
+#                             insert_values.append(data.get(field))
+                    
+#                     # Добавляем поле времени измерения
+#                     time_field = 'measured_at' if 'measured_at' in column_names else 'collected_at'
+#                     insert_fields.append(time_field)
+#                     insert_values.append('NOW()')
+                    
+#                     # Формируем SQL запрос
+#                     placeholders = ', '.join(['%s' if val != 'NOW()' else val for val in insert_values])
+#                     query = f"""
+#                     INSERT INTO server_metrics (
+#                         {', '.join(insert_fields)}
+#                     ) VALUES (
+#                         {placeholders}
+#                     ) RETURNING id
+#                     """
+                    
+#                     # Удаляем 'NOW()' из значений, так как это SQL-выражение
+#                     final_values = [val for val in insert_values if val != 'NOW()']
+                    
+#                     logger.debug(f"Выполнение SQL запроса: {query} с параметрами {final_values}")
+                    
+#                     cur.execute(query, final_values)
+#                     metric_id = cur.fetchone()[0]
+#                     conn.commit()
+#                     logger.info(f"Метрики успешно добавлены для сервера {data['server_id']}, ID метрики: {metric_id}")
+                    
+#                     return jsonify({
+#                         "success": True,
+#                         "message": "Metrics added successfully",
+#                         "metric_id": metric_id
+#                     })
+#                 except Exception as sql_err:
+#                     conn.rollback()
+#                     logger.error(f"Ошибка выполнения SQL запроса: {sql_err}")
+#                     # Попробуем использовать базовый запрос вставки
+#                     try:
+#                         simple_query = """
+#                         INSERT INTO server_metrics (
+#                             server_id,
+#                             latency,
+#                             bandwidth,
+#                             jitter,
+#                             packet_loss,
+#                             measured_at
+#                         ) VALUES (
+#                             %s, %s, %s, %s, %s, NOW()
+#                         ) RETURNING id
+#                         """
+                        
+#                         simple_params = (
+#                             data['server_id'],
+#                             data.get('latency'),
+#                             data.get('bandwidth'),
+#                             data.get('jitter'),
+#                             data.get('packet_loss')
+#                         )
+                        
+#                         logger.debug(f"Выполнение базового SQL запроса с параметрами: {simple_params}")
+#                         cur.execute(simple_query, simple_params)
+#                         metric_id = cur.fetchone()[0]
+#                         conn.commit()
+#                         logger.info(f"Метрики успешно добавлены базовым запросом для сервера {data['server_id']}, ID метрики: {metric_id}")
+                        
+#                         return jsonify({
+#                             "success": True,
+#                             "message": "Metrics added successfully with basic query",
+#                             "metric_id": metric_id
+#                         })
+#                     except Exception as basic_err:
+#                         conn.rollback()
+#                         logger.error(f"Ошибка выполнения базового SQL запроса: {basic_err}")
+#                         raise basic_err
+#     except Exception as e:
+#         logger.exception(f"Ошибка добавления метрик сервера: {e}")
+#         return jsonify({"error": str(e)}), 500
+
+# Файл: /app/db_manager.py
+
 @app.route('/api/servers/metrics/add', methods=['POST'])
-def add_server_metrics():
+def add_server_metrics():  # Удалил параметр 'self'
     """Добавление метрик сервера"""
     try:
         logger.debug(f"Получен запрос на добавление метрик сервера: {request.method} {request.path}")
@@ -1594,7 +1742,9 @@ def add_server_metrics():
         with get_db_connection() as conn:
             # Проверим, существует ли сервер с таким ID
             with conn.cursor() as check_cur:
-                check_cur.execute("SELECT id FROM remote_servers WHERE id = %s", (data['server_id'],))
+                # Изменить запрос для правильного сравнения типов
+                # Преобразуем server_id к строке при сравнении
+                check_cur.execute("SELECT id FROM remote_servers WHERE server_id = %s::text", (data['server_id'],))
                 server_exists = check_cur.fetchone()
                 if not server_exists:
                     logger.warning(f"Сервер с ID {data['server_id']} не найден в базе данных")
@@ -1654,6 +1804,371 @@ def add_server_metrics():
     except Exception as e:
         logger.exception(f"Ошибка добавления метрик сервера: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/config', methods=['POST'])
+def create_user_config():
+    """Создание или обновление конфигурации пользователя"""
+    try:
+        data = request.json
+        logger.debug(f"Получены данные для создания/обновления конфигурации: {data}")
+        
+        if 'user_id' not in data:
+            logger.warning("Отсутствует обязательное поле user_id")
+            return jsonify({"error": "Missing user_id field"}), 400
+        
+        user_id = data['user_id']
+        
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Проверяем, существует ли уже конфигурация для этого пользователя
+                cur.execute("SELECT id FROM user_configs WHERE user_id = %s", (user_id,))
+                existing_config = cur.fetchone()
+                
+                if existing_config:
+                    # Обновляем существующую конфигурацию
+                    logger.info(f"Обновление существующей конфигурации для пользователя {user_id}")
+                    
+                    # Формируем список полей для обновления
+                    update_fields = []
+                    update_values = []
+                    
+                    # Обязательные поля
+                    if 'config' in data:
+                        update_fields.append("config = %s")
+                        update_values.append(data['config'])
+                    
+                    if 'public_key' in data:
+                        update_fields.append("public_key = %s")
+                        update_values.append(data['public_key'])
+                    
+                    if 'active' in data:
+                        update_fields.append("active = %s")
+                        update_values.append(data['active'])
+                    
+                    # Дополнительные поля
+                    if 'geolocation_id' in data:
+                        update_fields.append("geolocation_id = %s")
+                        update_values.append(data['geolocation_id'])
+                    
+                    if 'server_id' in data:
+                        update_fields.append("server_id = %s")
+                        update_values.append(data['server_id'])
+                    
+                    if 'expiry_time' in data:
+                        update_fields.append("expiry_time = %s")
+                        update_values.append(data['expiry_time'])
+                    
+                    # Добавляем поле updated_at
+                    update_fields.append("updated_at = NOW()")
+                    
+                    # Добавляем ID в конец списка параметров
+                    update_values.append(existing_config[0])
+                    
+                    # Выполняем запрос на обновление
+                    update_query = f"""
+                        UPDATE user_configs 
+                        SET {', '.join(update_fields)}
+                        WHERE id = %s
+                        RETURNING id
+                    """
+                    
+                    cur.execute(update_query, update_values)
+                    updated_id = cur.fetchone()[0]
+                    conn.commit()
+                    
+                    logger.info(f"Конфигурация успешно обновлена, ID: {updated_id}")
+                    return jsonify({
+                        "success": True,
+                        "message": "Configuration updated successfully",
+                        "config_id": updated_id
+                    })
+                else:
+                    # Создаем новую конфигурацию
+                    logger.info(f"Создание новой конфигурации для пользователя {user_id}")
+                    
+                    # Базовые поля
+                    fields = ['user_id']
+                    values = [user_id]
+                    
+                    # Добавляем дополнительные поля, если они есть
+                    optional_fields = [
+                        'config', 'public_key', 'geolocation_id', 'server_id', 
+                        'active', 'expiry_time'
+                    ]
+                    
+                    for field in optional_fields:
+                        if field in data:
+                            fields.append(field)
+                            values.append(data[field])
+                    
+                    # Добавляем поле created_at и updated_at
+                    fields.extend(['created_at', 'updated_at'])
+                    placeholders = ['%s'] * len(values) + ['NOW()', 'NOW()']
+                    
+                    # Формируем SQL запрос
+                    insert_query = f"""
+                        INSERT INTO user_configs (
+                            {', '.join(fields)}
+                        ) VALUES (
+                            {', '.join(placeholders)}
+                        ) RETURNING id
+                    """
+                    
+                    cur.execute(insert_query, values)
+                    config_id = cur.fetchone()[0]
+                    conn.commit()
+                    
+                    logger.info(f"Конфигурация успешно создана, ID: {config_id}")
+                    return jsonify({
+                        "success": True,
+                        "message": "Configuration created successfully",
+                        "config_id": config_id
+                    }), 201
+    except Exception as e:
+        logger.exception(f"Ошибка при создании/обновлении конфигурации: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# @app.route('/api/config/<int:user_id>', methods=['GET'])
+# def get_user_config_by_id(user_id):
+#     """Получение конфигурации пользователя по ID"""
+#     try:
+#         with get_db_connection() as conn:
+#             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+#                 # Проверяем в таблице configurations
+#                 query = """
+#                 SELECT * FROM configurations WHERE user_id = %s AND active = TRUE
+#                 """
+#                 cur.execute(query, (user_id,))
+#                 config = cur.fetchone()
+                
+#                 if config:
+#                     return jsonify({"config": dict(config)})
+                
+#                 # Если в configurations не нашли, проверяем в user_configs
+#                 query = """
+#                 SELECT * FROM user_configs WHERE user_id = %s
+#                 """
+#                 cur.execute(query, (user_id,))
+#                 config = cur.fetchone()
+                
+#                 if config:
+#                     return jsonify({"config": dict(config)})
+                
+#                 # Если конфигурация не найдена, создаем заглушку
+#                 logger.warning(f"Конфигурация не найдена для пользователя {user_id}, создаем заглушку")
+#                 return jsonify({
+#                     "config": {
+#                         "user_id": user_id,
+#                         "status": "not_configured",
+#                         "message": "Конфигурация не найдена"
+#                     }
+#                 })
+#     except Exception as e:
+#         logger.exception(f"Ошибка при получении конфигурации пользователя: {e}")
+#         return jsonify({"error": str(e)}), 500
+
+# Файл: database-service/db_manager.py
+
+@app.route('/api/config/<int:user_id>', methods=['GET'])
+def get_user_config(user_id):
+    """Получение конфигурации пользователя по ID"""
+    try:
+        logger.info(f"Запрос конфигурации для пользователя {user_id}")
+        
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # Сначала проверяем в таблице user_configs
+                cur.execute("""
+                    SELECT 
+                        uc.*,
+                        g.name as geolocation_name,
+                        rs.name as server_name
+                    FROM 
+                        user_configs uc
+                    LEFT JOIN 
+                        geolocations g ON uc.geolocation_id = g.id
+                    LEFT JOIN 
+                        remote_servers rs ON uc.server_id = rs.id
+                    WHERE 
+                        uc.user_id = %s
+                    ORDER BY
+                        uc.active DESC, uc.updated_at DESC
+                    LIMIT 1
+                """, (user_id,))
+                
+                config = cur.fetchone()
+                
+                if not config:
+                    # Если в user_configs не нашли, проверяем в других таблицах или создаем пустую запись
+                    logger.warning(f"Конфигурация для пользователя {user_id} не найдена")
+                    
+                    # Если хотите автоматически создавать пустую запись:
+                    # cur.execute("""
+                    #     INSERT INTO user_configs (user_id, active, created_at, updated_at)
+                    #     VALUES (%s, FALSE, NOW(), NOW())
+                    #     RETURNING id
+                    # """, (user_id,))
+                    # conn.commit()
+                    
+                    return jsonify({"error": "User configuration not found"}), 404
+                
+                # Преобразуем datetime объекты в строки
+                result = dict(config)
+                for key, value in result.items():
+                    if isinstance(value, datetime):
+                        result[key] = value.isoformat()
+                
+                logger.info(f"Конфигурация успешно получена для пользователя {user_id}")
+                return jsonify(result)
+    except Exception as e:
+        logger.exception(f"Ошибка при получении конфигурации пользователя: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# Файл: database-service/db_manager.py
+
+@app.route('/api/servers/<server_id>', methods=['GET'])
+def get_server_by_id_or_name(server_id):
+    """Получение информации о сервере по ID или имени сервера"""
+    try:
+        logger.info(f"Запрос информации о сервере {server_id}")
+        
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # Пробуем найти по ID или server_id (для строковых идентификаторов)
+                query = """
+                SELECT 
+                    rs.id, 
+                    rs.server_id, 
+                    rs.name, 
+                    rs.location, 
+                    rs.api_url, 
+                    rs.endpoint,
+                    rs.port,
+                    rs.address,
+                    rs.public_key,
+                    rs.api_path,
+                    rs.skip_api_check, 
+                    rs.geolocation_id, 
+                    rs.auth_type, 
+                    rs.api_key, 
+                    rs.oauth_client_id, 
+                    rs.oauth_client_secret, 
+                    rs.oauth_token_url, 
+                    rs.hmac_secret, 
+                    rs.max_peers, 
+                    rs.is_active,
+                    g.name as geolocation_name
+                FROM 
+                    remote_servers rs
+                LEFT JOIN 
+                    geolocations g ON rs.geolocation_id = g.id
+                WHERE 
+                    rs.id = %s OR rs.server_id = %s
+                """
+                
+                # Преобразуем server_id в число, если он числовой
+                numeric_id = None
+                try:
+                    numeric_id = int(server_id)
+                except ValueError:
+                    # Если не преобразуется в число, оставляем None
+                    pass
+                
+                cur.execute(query, (numeric_id if numeric_id else -1, server_id))
+                server = cur.fetchone()
+                
+                if not server:
+                    # Если сервер не найден, возвращаем ошибку
+                    logger.warning(f"Сервер {server_id} не найден")
+                    
+                    # Если это строковый ID, возможно стоит создать запись автоматически
+                    if isinstance(server_id, str) and server_id.startswith('srv-'):
+                        logger.info(f"Автоматическое создание сервера с ID {server_id}")
+                        
+                        # Создаем базовую запись сервера
+                        cur.execute("""
+                            INSERT INTO remote_servers (
+                                server_id, name, endpoint, port, address, 
+                                public_key, location, is_active
+                            ) VALUES (
+                                %s, %s, %s, %s, %s, %s, %s, %s
+                            ) RETURNING id
+                        """, (
+                            server_id,
+                            f"Auto-created server {server_id}",
+                            "localhost",  # Базовые значения
+                            51820,
+                            "10.0.0.1/24",
+                            "auto_created_public_key",
+                            "Auto-created location",
+                            True
+                        ))
+                        
+                        new_server_id = cur.fetchone()[0]
+                        conn.commit()
+                        
+                        # Повторный запрос для получения созданного сервера
+                        cur.execute(query, (new_server_id, server_id))
+                        server = cur.fetchone()
+                        
+                        if server:
+                            logger.info(f"Сервер {server_id} успешно создан автоматически")
+                            # Преобразование результата для совместимости
+                            server_dict = dict(server)
+                            server_dict['id'] = str(server_dict['id'])
+                            if server_dict['geolocation_id']:
+                                server_dict['geolocation_id'] = str(server_dict['geolocation_id'])
+                            server_dict['status'] = 'active' if server_dict['is_active'] else 'inactive'
+                            
+                            return jsonify({"server": server_dict})
+                    
+                    return jsonify({"error": "Server not found"}), 404
+                
+                # Преобразование результата для совместимости
+                server_dict = dict(server)
+                server_dict['id'] = str(server_dict['id'])
+                if server_dict['geolocation_id']:
+                    server_dict['geolocation_id'] = str(server_dict['geolocation_id'])
+                server_dict['status'] = 'active' if server_dict['is_active'] else 'inactive'
+                
+                return jsonify({"server": server_dict})
+    except Exception as e:
+        logger.exception(f"Ошибка при получении информации о сервере: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/api/status', methods=['GET'])
+def get_api_status():
+    """Проверка статуса API"""
+    try:
+        # Проверяем соединение с базой данных
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                
+                # Собираем информацию о системе
+                from datetime import datetime
+                import os
+                import platform
+                
+                system_info = {
+                    "api_status": "ok",
+                    "service_name": "database-service",
+                    "service_version": os.environ.get("SERVICE_VERSION", "1.0.0"),
+                    "database_connection": "ok",
+                    "system": platform.system(),
+                    "python_version": platform.python_version(),
+                    "current_time": datetime.now().isoformat(),
+                    "uptime": "N/A"  # Требуется дополнительная логика для отслеживания uptime
+                }
+                
+                return jsonify(system_info)
+    except Exception as e:
+        logger.exception(f"Ошибка при проверке статуса API: {e}")
+        return jsonify({
+            "api_status": "error",
+            "error_message": str(e),
+            "service_name": "database-service"
+        }), 500
 
 # Анализ метрик серверов
 @app.route('/api/servers/metrics/analyze', methods=['POST'])

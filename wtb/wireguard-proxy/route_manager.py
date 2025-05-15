@@ -46,6 +46,147 @@ class RouteManager:
         reraise=True
     )
     
+    # def handle_create_request(self):
+    #     """
+    #     Обработка запроса на создание новой конфигурации
+        
+    #     Returns:
+    #         Response: объект flask.Response с результатом обработки запроса
+    #     """
+    #     try:
+    #         # Получаем данные из запроса
+    #         data = request.get_json()
+    #         if not data:
+    #             return jsonify({"error": "Не предоставлены данные"}), 400
+            
+    #         user_id = data.get("user_id")
+    #         geolocation_id = data.get("geolocation_id")
+            
+    #         if not user_id:
+    #             return jsonify({"error": "Не указан user_id"}), 400
+            
+    #         try:
+    #             # Пытаемся получить список доступных серверов
+    #             available_servers = list(self.connection_manager.get_available_servers())
+    #             logger.info(f"Получено {len(available_servers)} серверов")
+    #         except Exception as e:
+    #             logger.warning(f"Ошибка при получении списка серверов: {str(e)}")
+    #             logger.info("Создаем тестовый сервер напрямую")
+    #             # Создаем тестовый сервер вручную
+    #             available_servers = [{
+    #                 'id': '1',
+    #                 'name': 'Test Server',
+    #                 'endpoint': 'wireguard-service',
+    #                 'port': 51820,
+    #                 'location': 'Moscow, Russia',
+    #                 'geolocation_id': '1',
+    #                 'geolocation_name': 'Россия',
+    #                 'public_key': 'test_public_key_placeholder',
+    #                 'address': '10.0.0.1/24',
+    #                 'status': 'active',
+    #                 'load': 0
+    #             }]
+            
+    #         # Если список серверов пуст, создаем тестовый сервер
+    #         if not available_servers:
+    #             logger.warning("Список серверов пуст, создаем тестовый сервер")
+    #             available_servers = [{
+    #                 'id': '1',
+    #                 'name': 'Test Server',
+    #                 'endpoint': 'wireguard-service',
+    #                 'port': 51820,
+    #                 'location': 'Moscow, Russia',
+    #                 'geolocation_id': '1',
+    #                 'geolocation_name': 'Россия',
+    #                 'public_key': 'test_public_key_placeholder',
+    #                 'address': '10.0.0.1/24',
+    #                 'status': 'active',
+    #                 'load': 0
+    #             }]
+            
+    #         # Если указана геолокация, выбираем сервер из этой геолокации или любой, если нет соответствующей геолокации
+    #         if geolocation_id:
+    #             logger.info(f"Выбор сервера для геолокации {geolocation_id}")
+                
+    #             # Получаем список доступных серверов для данной геолокации
+    #             geo_servers = list(filter(
+    #                 lambda s: str(s.get("geolocation_id")) == str(geolocation_id) and s.get("status") in ["active", "online"], 
+    #                 available_servers
+    #             ))
+                
+    #             if not geo_servers:
+    #                 logger.warning(f"Нет доступных серверов для геолокации {geolocation_id}, используем любой доступный сервер")
+    #                 geo_servers = available_servers
+                
+    #             # Сортируем серверы по загрузке (от наименее загруженного к наиболее)
+    #             geo_servers.sort(key=lambda s: s.get("load", 100))
+                
+    #             # Выбираем наименее загруженный сервер
+    #             selected_server = geo_servers[0]
+    #             server_id = selected_server.get("id")
+                
+    #             logger.info(f"Выбран сервер {server_id} с загрузкой {selected_server.get('load', 'N/A')}%")
+    #         else:
+    #             # Если геолокация не указана, выбираем случайный доступный сервер
+    #             logger.info("Геолокация не указана, выбираем сервер случайным образом")
+                
+    #             # Получаем список всех доступных серверов
+    #             active_servers = list(filter(
+    #                 lambda s: s.get("status") in ["active", "online"], 
+    #                 available_servers
+    #             ))
+                
+    #             if not active_servers:
+    #                 logger.warning("Нет активных серверов, используем первый сервер")
+    #                 active_servers = available_servers
+                
+    #             # Сортируем серверы по загрузке (от наименее загруженного к наиболее)
+    #             active_servers.sort(key=lambda s: s.get("load", 100))
+                
+    #             # Выбираем сервер с наименьшей загрузкой
+    #             selected_server = active_servers[0]
+    #             server_id = selected_server.get("id")
+                
+    #             logger.info(f"Выбран сервер {server_id} с загрузкой {selected_server.get('load', 'N/A')}%")
+            
+    #         # Создаем конфигурацию на выбранном сервере
+    #         logger.info(f"Отправляем запрос на создание конфигурации на сервер {server_id}")
+            
+    #         try:
+    #             # Обработка запроса на создание конфигурации
+    #             response = self.connection_manager.send_create_request(server_id, data)
+                
+    #             # Логируем информацию о созданной конфигурации
+    #             if "public_key" in response:
+    #                 logger.info(f"Конфигурация успешно создана на сервере {server_id}. Public key: {response.get('public_key')}")
+                
+    #             # Добавляем информацию о выбранном сервере
+    #             response["server_id"] = server_id
+    #             if "geolocation_id" not in response:
+    #                 response["geolocation_id"] = selected_server.get("geolocation_id")
+                
+    #             # Возвращаем успешный ответ
+    #             return jsonify(response), 201
+                
+    #         except Exception as e:
+    #             # Логируем ошибку
+    #             logger.error(f"Ошибка при создании конфигурации: {str(e)}")
+                
+    #             # Возвращаем ошибку
+    #             return jsonify({"error": str(e)}), 500
+                
+    #     except Exception as e:
+    #         # Если произошла неожиданная ошибка
+    #         logger.error(f"Неожиданная ошибка при обработке запроса: {str(e)}", exc_info=True)
+    #         return jsonify({"error": f"Внутренняя ошибка сервера: {str(e)}"}), 500
+    
+    # @retry(
+    #     stop=stop_after_attempt(3),
+    #     wait=wait_exponential(multiplier=1, min=1, max=10),
+    #     retry=retry_if_exception_type(RemoteServerError),
+    #     reraise=True
+    # )
+
     def handle_create_request(self):
         """
         Обработка запроса на создание новой конфигурации
@@ -53,16 +194,24 @@ class RouteManager:
         Returns:
             Response: объект flask.Response с результатом обработки запроса
         """
+        # Инициализация счетчика запросов и начального времени
+        self.request_count["create"] += 1
+        start_time = time.time()
+        
         try:
             # Получаем данные из запроса
             data = request.get_json()
             if not data:
+                logger.warning("Отсутствуют данные в запросе на создание конфигурации")
+                self.error_count["create"] += 1
                 return jsonify({"error": "Не предоставлены данные"}), 400
             
             user_id = data.get("user_id")
             geolocation_id = data.get("geolocation_id")
             
             if not user_id:
+                logger.warning("Не указан user_id в запросе на создание конфигурации")
+                self.error_count["create"] += 1
                 return jsonify({"error": "Не указан user_id"}), 400
             
             try:
@@ -171,6 +320,7 @@ class RouteManager:
             except Exception as e:
                 # Логируем ошибку
                 logger.error(f"Ошибка при создании конфигурации: {str(e)}")
+                self.error_count["create"] += 1
                 
                 # Возвращаем ошибку
                 return jsonify({"error": str(e)}), 500
@@ -178,14 +328,13 @@ class RouteManager:
         except Exception as e:
             # Если произошла неожиданная ошибка
             logger.error(f"Неожиданная ошибка при обработке запроса: {str(e)}", exc_info=True)
+            self.error_count["create"] += 1
             return jsonify({"error": f"Внутренняя ошибка сервера: {str(e)}"}), 500
-    
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type(RemoteServerError),
-        reraise=True
-    )
+        finally:
+            # Учитываем время выполнения запроса
+            end_time = time.time()
+            logger.debug(f"Время выполнения запроса create: {end_time - start_time:.3f} сек")
+
     def handle_remove_request(self, public_key):
         """
         Обработка запроса на удаление пира

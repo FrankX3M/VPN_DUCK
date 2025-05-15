@@ -1,0 +1,266 @@
+.
+├── 1.txt
+├── admin-panel
+│   ├── api_client.py
+│   ├── app.py
+│   ├── chart_generator.py
+│   ├── config
+│   │   └── users.json
+│   ├── config.py
+│   ├── Dockerfile
+│   ├── entrypoint.sh
+│   ├── forms.py
+│   ├── gunicorn.conf.py
+│   ├── models.py
+│   ├── __pycache__
+│   │   ├── app.cpython-39.pyc
+│   │   ├── config.cpython-39.pyc
+│   │   ├── forms.cpython-39.pyc
+│   │   ├── gunicorn.conf.cpython-39.pyc
+│   │   └── models.cpython-39.pyc
+│   ├── requirements.txt
+│   ├── routes
+│   │   ├── api.py
+│   │   ├── auth.py
+│   │   ├── geolocations.py
+│   │   ├── main.py
+│   │   ├── __pycache__
+│   │   │   ├── api.cpython-39.pyc
+│   │   │   ├── auth.cpython-39.pyc
+│   │   │   ├── geolocations.cpython-39.pyc
+│   │   │   ├── main.cpython-39.pyc
+│   │   │   └── servers.cpython-39.pyc
+│   │   └── servers.py
+│   ├── static
+│   │   ├── css
+│   │   │   ├── bootstrap-icons.css
+│   │   │   ├── bootstrap.min.css
+│   │   │   └── custom.css
+│   │   ├── img
+│   │   │   ├── charts
+│   │   │   ├── favicon.ico
+│   │   │   └── logo.png
+│   │   └── js
+│   │       ├── bootstrap.bundle.min.js
+│   │       ├── components
+│   │       │   └── edit.js
+│   │       └── minimal.js
+│   ├── templates
+│   │   ├── base.html
+│   │   ├── dashboard.html
+│   │   ├── errors
+│   │   │   ├── 404.html
+│   │   │   └── 500.html
+│   │   ├── geolocations
+│   │   │   ├── add.html
+│   │   │   ├── edit.html
+│   │   │   └── index.html
+│   │   ├── index.html
+│   │   ├── login.html
+│   │   ├── partials
+│   │   │   ├── alerts.html
+│   │   │   ├── footer.html
+│   │   │   ├── header.html
+│   │   │   ├── nav.html
+│   │   │   └── server_card.html
+│   │   └── servers
+│   │       ├── add.html
+│   │       ├── details.html
+│   │       ├── edit.html
+│   │       └── index.html
+│   └── utils
+│       ├── chart_generator.py
+│       ├── db_client.py
+│       ├── __init__.py
+│       ├── mock_data.py
+│       ├── __pycache__
+│       │   ├── chart_generator.cpython-39.pyc
+│       │   ├── db_client.cpython-39.pyc
+│       │   ├── __init__.cpython-39.pyc
+│       │   └── template_utils.cpython-39.pyc
+│       └── template_utils.py
+├── admin-panel-arhive
+│   ├── app.py
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── static
+│   │   ├── css
+│   │   │   └── servers.css
+│   │   └── js
+│   │       ├── components
+│   │       │   ├── alerts.js
+│   │       │   ├── api-integration.js
+│   │       │   ├── common.js
+│   │       │   ├── filters.js
+│   │       │   ├── modals.js
+│   │       │   └── utils.js
+│   │       ├── dashboard
+│   │       │   └── index.js
+│   │       ├── geolocations
+│   │       │   └── index.js
+│   │       ├── index
+│   │       │   └── index.js
+│   │       └── servers
+│   │           ├── add.js
+│   │           ├── details.js
+│   │           ├── edit.js
+│   │           └── index.js
+│   └── templates
+│       ├── base.html
+│       ├── components
+│       │   ├── delete_modal.html
+│       │   ├── filters.html
+│       │   ├── server_card.html
+│       │   ├── server_modal.html
+│       │   ├── server_stats.html
+│       │   └── server_table.html
+│       ├── dashboard.html
+│       ├── geolocations.html
+│       ├── index.html
+│       ├── login.html
+│       ├── server_details.html
+│       ├── servers
+│       │   ├── add.html
+│       │   ├── details.html
+│       │   ├── edit.html
+│       │   └── index.html
+│       └── servers.html.del
+├── config
+├── database-service
+│   ├── config
+│   │   └── config.yml
+│   ├── data
+│   ├── db_manager.py
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── setup_database.sh
+│   ├── user_auth_api.py
+│   └── wait-for-postgres.sh
+├── docker-compose.yml
+├── metrics-collector
+│   ├── Dockerfile
+│   ├── README.md
+│   ├── requirements.txt
+│   └── server_metrics_collector.py
+├── migration-service
+│   ├── automatic_migration.py
+│   ├── Dockerfile
+│   ├── README.md
+│   └── requirements.txt
+├── restart.sh
+├── setup.sh
+├── telegram-service
+│   ├── bot.py
+│   ├── core
+│   │   ├── callback_middleware.py
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── callback_middleware.cpython-39.pyc
+│   │   │   ├── __init__.cpython-39.pyc
+│   │   │   └── settings.cpython-39.pyc
+│   │   └── settings.py
+│   ├── create_structure.py
+│   ├── Dockerfile
+│   ├── handlers
+│   │   ├── callback_handlers.py
+│   │   ├── cancel.py
+│   │   ├── config.py
+│   │   ├── create.py
+│   │   ├── direct_callbacks.py
+│   │   ├── extend.py
+│   │   ├── geolocation.py
+│   │   ├── help.py
+│   │   ├── __init__.py
+│   │   ├── init.py
+│   │   ├── payments.py
+│   │   ├── __pycache__
+│   │   │   ├── callback_handlers.cpython-39.pyc
+│   │   │   ├── cancel.cpython-39.pyc
+│   │   │   ├── config.cpython-39.pyc
+│   │   │   ├── create.cpython-39.pyc
+│   │   │   ├── direct_callbacks.cpython-39.pyc
+│   │   │   ├── extend.cpython-39.pyc
+│   │   │   ├── geolocation.cpython-39.pyc
+│   │   │   ├── help.cpython-39.pyc
+│   │   │   ├── __init__.cpython-39.pyc
+│   │   │   ├── init.cpython-39.pyc
+│   │   │   ├── payments.cpython-39.pyc
+│   │   │   ├── recreate.cpython-39.pyc
+│   │   │   ├── stars_info.cpython-39.pyc
+│   │   │   ├── start.cpython-39.pyc
+│   │   │   ├── status.cpython-39.pyc
+│   │   │   └── unknown.cpython-39.pyc
+│   │   ├── recreate.py
+│   │   ├── stars_info.py
+│   │   ├── start.py
+│   │   ├── status.py
+│   │   └── unknown.py
+│   ├── keyboards
+│   │   ├── __init__.py
+│   │   ├── keyboards.py
+│   │   └── __pycache__
+│   │       ├── __init__.cpython-39.pyc
+│   │       └── keyboards.cpython-39.pyc
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── states
+│   │   ├── __pycache__
+│   │   │   └── states.cpython-39.pyc
+│   │   └── states.py
+│   └── utils
+│       ├── bd.py
+│       ├── __init__.py
+│       ├── payment.py
+│       ├── __pycache__
+│       │   ├── bd.cpython-39.pyc
+│       │   ├── __init__.cpython-39.pyc
+│       │   ├── payment.cpython-39.pyc
+│       │   └── qr.cpython-39.pyc
+│       ├── qr.py
+│       └── testwg.py
+└── wireguard-proxy
+    ├── app_config
+    │   ├── __init__.py
+    │   ├── __pycache__
+    │   │   ├── __init__.cpython-39.pyc
+    │   │   └── settings.cpython-39.pyc
+    │   └── settings.py
+    ├── auth
+    │   ├── auth_handler.py
+    │   ├── __init__.py
+    │   └── __pycache__
+    │       ├── auth_handler.cpython-39.pyc
+    │       └── __init__.cpython-39.pyc
+    ├── cache_manager.py
+    ├── config
+    ├── connection_manager.py
+    ├── Dockerfile
+    ├── __init__.py
+    ├── proxy_server.py
+    ├── __pycache__
+    │   ├── cache_manager.cpython-39.pyc
+    │   ├── connection_manager.cpython-39.pyc
+    │   ├── route_manager.cpython-39.pyc
+    │   ├── server_manager.cpython-39.pyc
+    │   └── server_manager_init.cpython-39.pyc
+    ├── requirements.txt
+    ├── route_manager.py
+    ├── server_manager_init.py
+    ├── server_manager.py
+    ├── setup.sh
+    ├── tests_api
+    │   ├── mock_server.py
+    │   ├── wireguard-proxy-api-docs.md
+    │   ├── wireguard-proxy-test.py
+    │   └── wireguard-proxy-test-script.sh
+    └── utils
+        ├── errors.py
+        ├── __init__.py
+        ├── __pycache__
+        │   ├── errors.cpython-39.pyc
+        │   ├── __init__.cpython-39.pyc
+        │   └── retry.cpython-39.pyc
+        ├── retry.py
+        └── validators.py
+
+58 directories, 206 files
