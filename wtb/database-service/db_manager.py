@@ -1832,10 +1832,10 @@ def create_user_config():
                     update_fields = []
                     update_values = []
                     
-                    # Обязательные поля
-                    if 'config' in data:
-                        update_fields.append("config = %s")
-                        update_values.append(data['config'])
+                    # Обязательные поля - исправлена обработка config_text
+                    if 'config_text' in data:
+                        update_fields.append("config_text = %s")
+                        update_values.append(data['config_text'])
                     
                     if 'public_key' in data:
                         update_fields.append("public_key = %s")
@@ -1890,9 +1890,9 @@ def create_user_config():
                     fields = ['user_id']
                     values = [user_id]
                     
-                    # Добавляем дополнительные поля, если они есть
+                    # Исправлено: Добавляем поле config_text вместо config
                     optional_fields = [
-                        'config', 'public_key', 'geolocation_id', 'server_id', 
+                        'config_text', 'public_key', 'geolocation_id', 'server_id', 
                         'active', 'expiry_time'
                     ]
                     

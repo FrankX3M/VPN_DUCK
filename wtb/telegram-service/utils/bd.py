@@ -411,7 +411,7 @@ async def create_new_config(user_id, geolocation_id=None):
                         # Сохраняем в базе данных через database-service
                         db_data = {
                             "user_id": user_id,
-                            "config": config_text,
+                            "config_text": config_text,  # Исправлено на 'config_text'
                             "public_key": public_key,
                             "expiry_time": expiry_time,
                             "active": True
@@ -963,7 +963,7 @@ async def recreate_config(user_id, geolocation_id=None):
                         # Сохраняем в базе данных через database-service
                         db_data = {
                             "user_id": user_id,
-                            "config": config_text,
+                            "config_text": config_text,  # Исправлено на 'config_text'
                             "public_key": public_key,
                             "expiry_time": expiry_time,
                             "active": True
