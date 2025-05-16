@@ -378,9 +378,15 @@ class ConnectionManager:
                     raise ValueError(f"Отсутствует API URL для сервера {server_id}")
                 
                 # Подготовка данных для запроса к удаленному серверу
+                # Генерируем уникальное имя пира с использованием временной метки
+                import uuid
+                timestamp = int(time.time())
+                unique_id = str(uuid.uuid4())[:8]
+                unique_name = f"client_{data.get('user_id')}_{timestamp}_{unique_id}"
+                
                 request_data = {
                     "user_id": data.get("user_id"),
-                    "name": f"client_{data.get('user_id')}",
+                    "name": unique_name,  # Используем уникальное имя с временной меткой и UUID
                     "email": data.get("email", f"user_{data.get('user_id')}@example.com"),
                     "additional_data": data.get("additional_data", {})
                 }
@@ -420,10 +426,11 @@ class ConnectionManager:
                 
                 # Проверка необходимых полей в ответе
                 required_fields = ['config', 'public_key', 'private_key']
-                for field in required_fields:
-                    if field not in result:
-                        logger.error(f"В ответе отсутствует обязательное поле {field}")
-                        raise ValueError(f"Некорректный ответ от сервера, отсутствует поле {field}")
+                missing_fields = [field for field in required_fields if field not in result]
+                
+                if missing_fields:
+                    logger.error(f"В ответе отсутствуют обязательные поля: {', '.join(missing_fields)}")
+                    raise ValueError(f"Некорректный ответ от сервера, отсутствуют поля: {', '.join(missing_fields)}")
                 
                 # Вычисление времени ответа
                 response_time = time.time() - start_time

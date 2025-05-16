@@ -74,7 +74,7 @@ def _load_auth_keys_from_secure_storage():
             logger.info("No test keys file found, using default test keys")
             
             # Добавляем тестовые ключи для серверов из конфигурации
-            from config.settings import MOCK_SERVERS
+            from app_config.settings import MOCK_SERVERS
             
             for server in MOCK_SERVERS:
                 server_id = server.get('id')
@@ -145,13 +145,11 @@ def _get_auth_token(server):
         # Простая аутентификация по API-ключу
         api_key = server.get('api_key')
         if not api_key:
-            # Проверка наличия ключа в безопасном хранилище
-            from utils.secure_storage import get_api_key_from_storage
+            # Используем локальную функцию для получения ключа
             try:
                 api_key = get_api_key_from_storage(server_id)
-            except:
-                # Если функция не определена или произошла ошибка
-                pass
+            except Exception as e:
+                logger.warning(f"Ошибка при получении API ключа из хранилища: {e}")
             
             if not api_key:
                 raise AuthenticationError(f"Missing API key for server {server_id}")
@@ -312,18 +310,26 @@ def rotate_auth_tokens():
     
     return rotated
 
-# Динамический импорт на случай отсутствия безопасного хранилища
-try:
-    from utils.secure_storage import get_api_key_from_storage
-except ImportError:
-    def get_api_key_from_storage(server_id):
-        """
-        Заглушка для функции получения API-ключа из хранилища
+# Определение функции получения API-ключа из хранилища
+def get_api_key_from_storage(server_id):
+    """
+    Функция для получения API-ключа из хранилища
+    
+    Args:
+        server_id (str): ID сервера
         
-        Args:
-            server_id (str): ID сервера
-            
-        Returns:
-            str: API-ключ или None
-        """
-        return None
+    Returns:
+        str: API-ключ или None, если ключ не найден
+    """
+    logger.debug(f"Получение API-ключа для сервера {server_id} из локального хранилища")
+    
+    # В реальном проекте здесь должен быть код для получения ключа из
+    # безопасного хранилища (HashiCorp Vault, AWS Secrets Manager и т.д.)
+    
+    # Для тестового режима возвращаем тестовый ключ
+    if USE_MOCK_DATA or str(server_id).startswith(('test-', 'mock-')):
+        return f"test-key-{server_id}"
+    
+    # Если ключ не найден, возвращаем None
+    logger.warning(f"API-ключ для сервера {server_id} не найден в хранилище")
+    return None

@@ -516,11 +516,26 @@ class ServerManager:
             response_time (float, optional): Время ответа в секундах. По умолчанию 0
         """
         try:
+            # Преобразуем ID сервера в строку для унификации
+            server_id = str(server_id)
+            
             # Игнорируем ошибки при использовании тестовых серверов
-            if server_id.startswith('test-'):
+            if server_id.startswith(('test-', 'mock-')):
                 logger.info(f"Игнорируем запись метрик для тестового сервера {server_id}")
                 return
             
+            # Проверяем, существует ли сервер в списке серверов
+            server_exists = False
+            with self.lock:
+                for server in self.servers:
+                    if str(server.get('id')) == server_id:
+                        server_exists = True
+                        break
+                        
+            if not server_exists:
+                logger.warning(f"Сервер {server_id} не найден в базе данных, метрики не будут записаны")
+                return
+                
             # Проверяем, есть ли запись о метриках для этого сервера в кэше
             cache_key = f"metrics:{server_id}"
             server_metrics = self.cache_manager.get(cache_key)
@@ -530,6 +545,7 @@ class ServerManager:
                     "success_count": 0,
                     "error_count": 0,
                     "total_response_time": 0,
+                    "response_times": [],  # Список для хранения последних 10 времен ответа
                     "last_update": int(time.time())
                 }
             
@@ -539,34 +555,79 @@ class ServerManager:
             else:
                 server_metrics["error_count"] += 1
             
+            # Добавляем время ответа в общую сумму и список последних времен
             server_metrics["total_response_time"] += response_time
+            
+            # Ограничиваем список последних 10 времен ответа
+            if "response_times" not in server_metrics:
+                server_metrics["response_times"] = []
+                
+            server_metrics["response_times"].append(response_time)
+            if len(server_metrics["response_times"]) > 10:
+                server_metrics["response_times"] = server_metrics["response_times"][-10:]
+                
+            # Вычисляем среднее время ответа за последние 10 запросов
+            avg_recent_response_time = sum(server_metrics["response_times"]) / len(server_metrics["response_times"])
+            server_metrics["avg_recent_response_time"] = avg_recent_response_time
+            
             server_metrics["last_update"] = int(time.time())
             
             # Записываем обновленные метрики в кэш
             self.cache_manager.set(cache_key, server_metrics)
             
+            # Обновляем локальные метрики
+            if server_id not in self.server_metrics["requests"]:
+                self.server_metrics["requests"][server_id] = 0
+                self.server_metrics["failures"][server_id] = 0
+                self.server_metrics["response_time"][server_id] = 0
+                
+            self.server_metrics["requests"][server_id] += 1
+            if not success:
+                self.server_metrics["failures"][server_id] += 1
+                
+            # Обновляем среднее время ответа
+            total_requests = self.server_metrics["requests"][server_id]
+            current_avg_time = self.server_metrics["response_time"][server_id]
+            
+            # Вычисляем новое среднее время ответа
+            if total_requests > 1:
+                new_avg_time = ((current_avg_time * (total_requests - 1)) + response_time) / total_requests
+            else:
+                new_avg_time = response_time
+                
+            self.server_metrics["response_time"][server_id] = new_avg_time
+            
             # Пробуем отправить метрики в базу данных
             try:
-                # Используем корректный ID из базы данных, если это реальный сервер
-                # Проверяем, есть ли сервер в списке
-                real_server_id = None
-                for server in self.servers:
-                    if server.get('id') == server_id:
-                        real_server_id = server.get('server_id') or server_id
-                        break
-                        
-                if real_server_id is None:
-                    # Если сервер не найден в списке, используем оригинальный ID
-                    real_server_id = server_id
-                
-                # Проверяем ID сервера в базе данных
-                url = f"{self.database_service_url}/api/servers/{real_server_id}"
-                response = requests.get(url, timeout=5)
-                
-                if response.status_code == 404:
-                    logger.warning(f"Сервер {real_server_id} не найден в базе данных, метрики не будут записаны")
+                # Проверяем, включен ли режим mock-данных
+                if self.fallback_mode or not self.database_service_url:
+                    logger.debug(f"Работаем в режиме отказоустойчивости или отсутствует URL базы данных, метрики не будут отправлены")
                     return
                     
+                # Проверяем наличие сервера в базе данных перед отправкой метрик
+                try:
+                    # Используем корректный ID из базы данных, если это реальный сервер
+                    real_server_id = server_id
+                    
+                    # Проверяем ID сервера в базе данных
+                    url = f"{self.database_service_url}/api/servers/{real_server_id}"
+                    response = requests.get(url, timeout=5)
+                    
+                    if response.status_code == 404:
+                        logger.warning(f"Сервер {real_server_id} не найден в базе данных, метрики не будут записаны")
+                        return
+                    
+                    # Если получен ответ 200, но сервер не активен, также не записываем метрики
+                    if response.status_code == 200:
+                        server_data = response.json()
+                        if not server_data.get('is_active', False):
+                            logger.warning(f"Сервер {real_server_id} не активен, метрики не будут записаны")
+                            return
+                        
+                except requests.RequestException as e:
+                    logger.warning(f"Ошибка при проверке сервера в базе данных: {e}")
+                    return
+                        
                 # Подготовка данных метрик
                 metrics_data = {
                     "server_id": real_server_id,
@@ -581,9 +642,10 @@ class ServerManager:
                 
                 if response.status_code != 200:
                     logger.warning(f"Ошибка при отправке метрик в базу данных: {response.status_code} {response.text}")
+                    
             except Exception as e:
                 logger.warning(f"Ошибка при записи метрик в базу данных: {str(e)}")
-            
+                
         except Exception as e:
             logger.error(f"Ошибка при записи метрик сервера {server_id}: {str(e)}")
             # Игнорируем ошибку, чтобы не прерывать основной процесс
