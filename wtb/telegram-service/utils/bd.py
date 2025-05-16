@@ -696,8 +696,10 @@ async def get_config_from_wireguard(user_id):
             logger.warning(f"Активная конфигурация не найдена для пользователя {user_id}")
             return {"error": "Активная конфигурация не найдена"}
         
-        # Конфигурация хранится непосредственно в БД
-        config_text = config_info.get("config")
+        # ИСПРАВЛЕНИЕ: Используем правильное название поля для конфигурации
+        # Было: config_text = config_info.get("config")
+        # Стало: проверяем оба варианта названия поля
+        config_text = config_info.get("config_text") or config_info.get("config")
         
         if not config_text:
             logger.warning(f"Текст конфигурации отсутствует в БД для пользователя {user_id}")
