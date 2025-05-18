@@ -6,7 +6,11 @@ from typing import Optional
 from aiogram import Bot, Dispatcher
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from dotenv import load_dotenv
 
+
+load_dotenv()
+BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 # # Настройка логирования (может быть перемещена в отдельный модуль)
 # logging.basicConfig(
 #     level=logging.INFO,

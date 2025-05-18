@@ -21,47 +21,6 @@ print_warn() {
 print_step "Остановка всех контейнеров"
 docker compose down
 
-# Обновление конфигурации Konga для использования memory-adapter
-print_step "Обновление конфигурации Konga в docker-compose.yml"
-MEMORY_KONGA_BLOCK=$(cat <<'EOF'
-  # Konga - Admin UI для Kong (с хранением в памяти)
-  konga:
-    image: pantsel/konga:0.14.9
-    container_name: konga
-    depends_on:
-      kong:
-        condition: service_healthy
-    environment:
-      NODE_ENV: production
-      TOKEN_SECRET: ${KONGA_TOKEN_SECRET:-konga_secret_token}
-      DB_ADAPTER: memory
-    ports:
-      - "1337:1337"
-    restart: always
-    networks:
-      - vpn_network
-EOF
-)
-
-# Замена блока Konga в docker-compose.yml
-print_info "Обновление секции Konga в docker-compose.yml"
-TEMP_FILE=$(mktemp)
-sed -n -e '/^  konga:/,$p' docker-compose.yml | grep -n "^  [a-z]" | head -2 | cut -d: -f1 | { 
-    read start
-    read end
-    start=$((start - 1))
-    end=$((end - 1))
-    { head -n $start docker-compose.yml; echo "$MEMORY_KONGA_BLOCK"; tail -n +$end docker-compose.yml; } > "$TEMP_FILE"
-}
-if [ -s "$TEMP_FILE" ]; then
-    mv "$TEMP_FILE" docker-compose.yml
-    print_info "Секция Konga успешно обновлена"
-else
-    print_error "Ошибка при обновлении секции Konga"
-    rm -f "$TEMP_FILE"
-    exit 1
-fi
-
 # Запуск контейнеров в правильном порядке
 print_step "Запуск контейнеров в правильном порядке"
 print_info "1. Запуск базы данных Kong"
@@ -106,3 +65,4 @@ print_step "Запуск остальных контейнеров"
 docker compose up -d
 
 print_step "Скрипт завершен"
+docker system prune -a --volumes -f

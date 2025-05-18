@@ -54,6 +54,8 @@ services:
       - FLASK_ENV=${FLASK_ENV:-production}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+    ports:
+      - "5000:5000"  # Добавлен маппинг портов
     depends_on:
       database-service:
         condition: service_healthy
@@ -234,19 +236,34 @@ services:
     networks:
       - vpn_network
 
-  # Konga - Admin UI для Kong (с хранением в памяти)
-  # Konga - Admin UI для Kong с собственным Dockerfile
-  # Konga - Admin UI для Kong с хранением данных в памяти
-    konga:
+  # Подготовка базы данных для Konga
+  konga-prepare:
+    image: pantsel/konga:0.14.9
+    container_name: konga-prepare
+    command: "-c prepare -a postgres -u postgresql://kong:${KONG_DB_PASSWORD:-kong_pass}@kong-database:5432/konga"
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - vpn_network
+
+  # Konga - Admin UI для Kong
+  konga:
     image: pantsel/konga:0.14.9
     container_name: konga
     depends_on:
       kong:
         condition: service_healthy
+      konga-prepare:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       TOKEN_SECRET: ${KONGA_TOKEN_SECRET:-konga_secret_token}
-      DB_ADAPTER: memory # Использование хранения в памяти вместо подключения к БД
+      DB_ADAPTER: postgres
+      DB_URI: postgresql://kong:${KONG_DB_PASSWORD:-kong_pass}@kong-database:5432/konga
+      KONGA_HOOK_TIMEOUT: 120000
+      DB_PG_SCHEMA: public
     ports:
       - "1337:1337"
     restart: always
@@ -261,19 +278,4 @@ networks:
 # Тома для хранения данных
 volumes:
   postgres_data:
-  # Konga - Admin UI для Kong (с хранением в памяти)
-  konga:
-    image: pantsel/konga:0.14.9
-    container_name: konga
-    depends_on:
-      kong:
-        condition: service_healthy
-    environment:
-      NODE_ENV: production
-      TOKEN_SECRET: ${KONGA_TOKEN_SECRET:-konga_secret_token}
-      DB_ADAPTER: memory
-    ports:
-      - "1337:1337"
-    restart: always
-    networks:
-      - vpn_network
+  kong-data:

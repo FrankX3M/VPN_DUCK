@@ -167,15 +167,15 @@ CREATE TABLE IF NOT EXISTS payments (
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Таблица для хранения информации о серверах
+-- Таблица для хранения информации о серверах с добавленными дефолтными значениями
 CREATE TABLE IF NOT EXISTS servers (
     id SERIAL PRIMARY KEY,
     geolocation_id INTEGER REFERENCES geolocations(id),
-    endpoint TEXT NOT NULL,
-    port INTEGER NOT NULL,
-    public_key TEXT NOT NULL,
-    private_key TEXT NOT NULL,
-    address TEXT NOT NULL,
+    endpoint TEXT NOT NULL DEFAULT 'default.endpoint.com',
+    port INTEGER NOT NULL DEFAULT 51820,
+    public_key TEXT NOT NULL DEFAULT 'default_public_key',
+    private_key TEXT NOT NULL DEFAULT 'default_private_key',
+    address TEXT NOT NULL DEFAULT '10.0.0.1/24',
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     last_check TIMESTAMP,
     load_factor FLOAT DEFAULT 0,
@@ -538,17 +538,32 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Функция для синхронизации между remote_servers и servers
+-- Обновленная функция для синхронизации между remote_servers и servers с обработкой NULL-значений
 CREATE OR REPLACE FUNCTION sync_remote_server_to_server()
 RETURNS TRIGGER AS $$
 DECLARE
     server_id_val INTEGER;
+    default_endpoint TEXT := 'default.endpoint.com';
+    default_port INTEGER := 51820;
+    default_public_key TEXT := 'default_public_key';
+    default_address TEXT := '10.0.0.1/24';
+    default_private_key TEXT := 'default_private_key';
+    endpoint_val TEXT;
+    port_val INTEGER;
+    public_key_val TEXT;
+    address_val TEXT;
 BEGIN
+    -- Устанавливаем дефолтные значения, если некоторые поля NULL
+    endpoint_val := COALESCE(NEW.endpoint, default_endpoint);
+    port_val := COALESCE(NEW.port, default_port);
+    public_key_val := COALESCE(NEW.public_key, default_public_key);
+    address_val := COALESCE(NEW.address, default_address);
+      
     -- Проверяем, существует ли сервер с такими данными
     SELECT id INTO server_id_val FROM servers 
-    WHERE endpoint = NEW.endpoint 
-      AND port = NEW.port 
-      AND public_key = NEW.public_key;
+    WHERE endpoint = endpoint_val
+      AND port = port_val
+      AND public_key = public_key_val;
       
     -- Если сервер не найден, создаем новый
     IF server_id_val IS NULL THEN
@@ -557,16 +572,16 @@ BEGIN
             endpoint,
             port,
             public_key,
-            private_key,  -- здесь используем временный placeholder
+            private_key,
             address,
             status
         ) VALUES (
             NEW.geolocation_id,
-            NEW.endpoint,
-            NEW.port,
-            NEW.public_key,
-            'placeholder_private_key',  -- замените на реальное значение или генерацию
-            NEW.address,
+            endpoint_val,
+            port_val,
+            public_key_val,
+            default_private_key,
+            address_val,
             CASE WHEN NEW.is_active THEN 'active' ELSE 'inactive' END
         )
         RETURNING id INTO server_id_val;
@@ -710,8 +725,7 @@ SET
     skip_api_check = FALSE
 WHERE 
     server_id = 'srv-test-001';
-
--- Добавление тестового удаленного сервера с числовым ID для совместимости
+    
 -- Добавление тестового удаленного сервера с числовым ID для совместимости
 INSERT INTO remote_servers (
    server_id, 
@@ -767,18 +781,23 @@ UPDATE remote_servers
 SET api_url = REPLACE(api_url, ':51820', ':5000')
 WHERE api_url LIKE '%:51820%';
 
--- Процедура синхронизации данных между таблицами
+-- Процедура синхронизации данных между таблицами с учетом дефолтных значений
 DO $$
 DECLARE
    r RECORD;
+   default_endpoint TEXT := 'default.endpoint.com';
+   default_port INTEGER := 51820;
+   default_public_key TEXT := 'default_public_key';
+   default_address TEXT := '10.0.0.1/24';
+   default_private_key TEXT := 'default_private_key';
 BEGIN
    -- Для каждого удаленного сервера
-   FOR r IN SELECT * FROM remote_servers WHERE endpoint IS NOT NULL AND port IS NOT NULL AND public_key IS NOT NULL LOOP
-       -- Проверяем, существует ли сервер с такими же параметрами
+   FOR r IN SELECT * FROM remote_servers LOOP
+       -- Используем COALESCE для замены NULL значений дефолтными
        IF NOT EXISTS (SELECT 1 FROM servers 
-                     WHERE endpoint = r.endpoint 
-                       AND port = r.port 
-                       AND public_key = r.public_key) THEN
+                     WHERE endpoint = COALESCE(r.endpoint, default_endpoint) 
+                       AND port = COALESCE(r.port, default_port) 
+                       AND public_key = COALESCE(r.public_key, default_public_key)) THEN
            -- Вставляем новую запись в servers
            INSERT INTO servers (
                geolocation_id,
@@ -790,19 +809,22 @@ BEGIN
                status
            ) VALUES (
                r.geolocation_id,
-               r.endpoint,
-               r.port,
-               r.public_key,
-               'placeholder_private_key', -- Заменить на реальное значение в продакшене
-               r.address,
+               COALESCE(r.endpoint, default_endpoint),
+               COALESCE(r.port, default_port),
+               COALESCE(r.public_key, default_public_key),
+               default_private_key,
+               COALESCE(r.address, default_address),
                CASE WHEN r.is_active THEN 'active' ELSE 'inactive' END
            );
        END IF;
    END LOOP;
    
-   -- Обновляем маппинг между servers и remote_servers
+   -- Обновляем маппинг между servers и remote_servers с учетом дефолтных значений
    FOR r IN SELECT rs.id as remote_id, s.id as server_id FROM remote_servers rs 
-            JOIN servers s ON rs.endpoint = s.endpoint AND rs.port = s.port AND rs.public_key = s.public_key LOOP
+            JOIN servers s ON 
+                COALESCE(rs.endpoint, default_endpoint) = s.endpoint AND 
+                COALESCE(rs.port, default_port) = s.port AND 
+                COALESCE(rs.public_key, default_public_key) = s.public_key LOOP
        -- Вставляем или обновляем запись в маппинге
        INSERT INTO server_mapping (remote_server_id, server_id)
        VALUES (r.remote_id, r.server_id)
@@ -842,7 +864,7 @@ BEGIN
    END IF;
 END $$;
 
--- Создаем оберточные функции для безопасной работы с API
+-- Создаем оберточные функции для безопасной работы с API, улучшенные для обработки NULL значений
 CREATE OR REPLACE FUNCTION api_add_server_metrics(
    p_server_id TEXT,
    p_latency FLOAT,
@@ -881,14 +903,22 @@ BEGIN
            location,
            api_url,
            geolocation_id,
-           is_active
+           is_active,
+           endpoint,
+           port,
+           public_key,
+           address
        ) VALUES (
            p_server_id,
            'Unknown Server ' || p_server_id,
            'Unknown Location',
            'http://unknown.example.com',
            (SELECT id FROM geolocations WHERE code = 'ru' LIMIT 1),
-           TRUE
+           TRUE,
+           'default.endpoint.com',
+           51820,
+           'default_public_key',
+           '10.0.0.1/24'
        ) RETURNING id INTO server_id_int;
    END IF;
    
@@ -913,7 +943,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Создаем JSON-функцию для работы с API
+-- Создаем JSON-функцию для работы с API с учетом NULL значений
 CREATE OR REPLACE FUNCTION api_add_server_metrics_json(data JSONB)
 RETURNS INTEGER AS $$
 DECLARE
@@ -1041,6 +1071,21 @@ else
    echo -e "${YELLOW}Внимание: Не все необходимые поля в таблице user_configs были найдены (найдено $USER_CONFIGS_COLUMN_COUNT из 7).${NC}"
 fi
 
+# Проверка наличия дефолтных значений в таблице servers
+DEFAULT_VALUES_COUNT=$(run_psql -t -c "
+   SELECT COUNT(*) FROM information_schema.columns 
+   WHERE table_name = 'servers' 
+     AND table_schema = 'public'
+     AND column_name IN ('endpoint', 'port', 'public_key', 'private_key', 'address')
+     AND column_default IS NOT NULL;
+")
+
+if [ "$DEFAULT_VALUES_COUNT" -eq 5 ]; then
+   echo -e "${GREEN}Дефолтные значения для таблицы servers установлены корректно!${NC}"
+else
+   echo -e "${YELLOW}Внимание: Не все дефолтные значения для таблицы servers были установлены (найдено $DEFAULT_VALUES_COUNT из 5).${NC}"
+fi
+
 # Проверка наличия тестовых серверов
 TEST_SERVERS_COUNT=$(run_psql -t -c "
    SELECT COUNT(*) FROM test_servers;
@@ -1074,6 +1119,21 @@ if [ "$VIEW_EXISTS" -eq 1 ]; then
    echo -e "${GREEN}Представление user_configs_view создано успешно!${NC}"
 else
    echo -e "${YELLOW}Внимание: Представление user_configs_view не было создано.${NC}"
+fi
+
+# Проверка наличия функции sync_remote_server_to_server с обработкой NULL
+SYNC_FUNC_NULL_HANDLING=$(run_psql -t -c "
+   SELECT COUNT(*) FROM pg_proc p
+   JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+   WHERE p.proname = 'sync_remote_server_to_server'
+   AND n.nspname = 'public'
+   AND pg_get_functiondef(p.oid) LIKE '%COALESCE%';
+")
+
+if [ "$SYNC_FUNC_NULL_HANDLING" -ge 1 ]; then
+   echo -e "${GREEN}Функция sync_remote_server_to_server с обработкой NULL-значений создана успешно!${NC}"
+else
+   echo -e "${YELLOW}Внимание: Функция sync_remote_server_to_server не обрабатывает NULL-значения должным образом.${NC}"
 fi
 
 # Проверка наличия функции get_server_id

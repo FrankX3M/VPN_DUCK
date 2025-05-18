@@ -7,6 +7,7 @@ from core.settings import dp, bot, logger
 from handlers.init import register_all_handlers
 from core.callback_middleware import CallbackMiddleware
 
+
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
