@@ -7,46 +7,96 @@ from aiogram import Bot, Dispatcher
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
-# Настройка логирования (может быть перемещена в отдельный модуль)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# # Настройка логирования (может быть перемещена в отдельный модуль)
+# logging.basicConfig(
+#     level=logging.INFO,
+#     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# )
+# logger = logging.getLogger(__name__)
+
+# # Функция для нормализации URL API
+# def normalize_api_url(url: str) -> str:
+#     """
+#     Нормализует URL API для взаимодействия с микросервисами.
+    
+#     Args:
+#         url (str): Исходный URL микросервиса
+        
+#     Returns:
+#         str: Нормализованный URL с правильным путем /api
+#     """
+#     if not url:
+#         return ""
+    
+#     # Убираем завершающий слеш, если он есть
+#     url = url.rstrip('/')
+    
+#     # Проверяем, содержит ли URL уже путь /api
+#     if 'wireguard-proxy' in url or 'wireguard-service' in url:
+#         # Для wireguard-proxy, который имеет эндпоинты в корне, не добавляем /api
+#         # Исправляем, если /api уже добавлен
+#         if url.endswith('/api'):
+#             logger.debug(f"Удаляем /api для wireguard-proxy: {url}")
+#             url = url[:-4]  # Удаляем '/api'
+#     else:
+#         # Для других сервисов добавляем /api, если его нет
+#         if not url.endswith('/api') and '/api/' not in url:
+#             url += '/api'
+    
+#     # Исправляем случаи двойного /api/api
+#     url = url.replace('/api/api', '/api')
+    
+#     logger.debug(f"Нормализованный URL: {url}")
+#     return url
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Функция для нормализации URL API
-def normalize_api_url(url: str) -> str:
+# Настройка URL для API Gateway
+API_GATEWAY_URL = os.environ.get('API_GATEWAY_URL', 'http://kong:8000')  # URL API Gateway
+DATABASE_SERVICE_URL = f"{API_GATEWAY_URL}/api"
+WIREGUARD_SERVICE_URL = f"{API_GATEWAY_URL}/vpn"
+
+# Добавление заголовков аутентификации для запросов к API через Kong
+API_HEADERS = {
+    "apikey": os.environ.get('ADMIN_SECRET_KEY', 'fvcfq9d3ycefnvmftiaso'),
+    "Content-Type": "application/json"
+}
+
+# ADMIN_CHAT_ID для уведомлений администраторам
+ADMIN_CHAT_ID = os.environ.get('ADMIN_CHAT_ID', '12345678')
+
+# Получаем токен бота
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    logger.error("BOT_TOKEN не задан! Проверьте переменные окружения.")
+    raise ValueError("Не задан токен бота в переменных окружения.")
+
+# Инициализация бота и диспетчера
+bot = Bot(token=BOT_TOKEN)
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
+
+def normalize_api_url(url):
     """
-    Нормализует URL API для взаимодействия с микросервисами.
+    Нормализует URL API, убирая лишние слеши.
     
     Args:
-        url (str): Исходный URL микросервиса
+        url: URL для нормализации
         
     Returns:
-        str: Нормализованный URL с правильным путем /api
+        str: Нормализованный URL
     """
     if not url:
         return ""
     
-    # Убираем завершающий слеш, если он есть
     url = url.rstrip('/')
+    if not url.endswith('/api'):
+        if '/api/' in url:
+            url = url.split('/api/')[0] + '/api'
+        elif not url.endswith('/api'):
+            url = url + '/api'
     
-    # Проверяем, содержит ли URL уже путь /api
-    if 'wireguard-proxy' in url or 'wireguard-service' in url:
-        # Для wireguard-proxy, который имеет эндпоинты в корне, не добавляем /api
-        # Исправляем, если /api уже добавлен
-        if url.endswith('/api'):
-            logger.debug(f"Удаляем /api для wireguard-proxy: {url}")
-            url = url[:-4]  # Удаляем '/api'
-    else:
-        # Для других сервисов добавляем /api, если его нет
-        if not url.endswith('/api') and '/api/' not in url:
-            url += '/api'
-    
-    # Исправляем случаи двойного /api/api
-    url = url.replace('/api/api', '/api')
-    
-    logger.debug(f"Нормализованный URL: {url}")
     return url
 
 # Получение токена и базовой конфигурации

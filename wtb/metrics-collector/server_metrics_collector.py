@@ -7,6 +7,7 @@ import subprocess
 import json
 import socket
 import statistics
+import jwt
 from datetime import datetime
 
 # Настройка логирования
@@ -17,9 +18,11 @@ logging.basicConfig(
 logger = logging.getLogger("metrics-collector")
 
 # Параметры подключения к API с динамическим определением хостов
-DATABASE_SERVICE_URL = os.getenv('DATABASE_SERVICE_URL', 'http://database-service:5002')
-WIREGUARD_SERVICE_URL = os.getenv('WIREGUARD_SERVICE_URL', 'http://wireguard-proxy:5001')
+API_GATEWAY_URL = os.getenv('API_GATEWAY_URL', 'http://kong:8000')
+DATABASE_SERVICE_URL = f"{API_GATEWAY_URL}/api"
+WIREGUARD_SERVICE_URL = f"{API_GATEWAY_URL}/vpn"
 
+logger.info(f"Используем API_GATEWAY_URL: {API_GATEWAY_URL}")
 logger.info(f"Используем DATABASE_SERVICE_URL: {DATABASE_SERVICE_URL}")
 logger.info(f"Используем WIREGUARD_SERVICE_URL: {WIREGUARD_SERVICE_URL}")
 
@@ -28,12 +31,41 @@ COLLECTION_INTERVAL = int(os.getenv('COLLECTION_INTERVAL', 120))  # Интерв
 PING_COUNT = int(os.getenv('PING_COUNT', 10))  # Количество пингов для измерения
 MAINTENANCE_INTERVAL = int(os.getenv('MAINTENANCE_INTERVAL', 3600))  # Интервал обслуживания в секундах (1 час)
 
+def get_auth_headers():
+    """
+    Получение заголовков аутентификации для запросов к API через Kong
+    """
+    # Для простых запросов, требующих только API Key
+    simple_headers = {
+        "apikey": os.environ.get('ADMIN_SECRET_KEY', 'fvcfq9d3ycefnvmftiaso'),
+        "Content-Type": "application/json"
+    }
+    
+    # Для запросов, требующих JWT аутентификации
+    payload = {
+        "iss": "metrics-collector",
+        "exp": int(time.time()) + 3600,
+        "iat": int(time.time())
+    }
+    
+    secret = os.environ.get('ADMIN_SECRET_KEY', 'fvcfq9d3ycefnvmftiaso')
+    token = jwt.encode(payload, secret, algorithm="HS256")
+    
+    jwt_headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    
+    return simple_headers, jwt_headers
+
 def get_servers():
     """Получает список всех активных серверов из базы данных."""
     try:
-        url = f"{DATABASE_SERVICE_URL}/api/servers"
+        url = f"{DATABASE_SERVICE_URL}/servers"
         logger.info(f"Запрашиваем список серверов с: {url}")
-        response = requests.get(url, timeout=10)
+        
+        simple_headers, jwt_headers = get_auth_headers()
+        response = requests.get(url, headers=simple_headers, timeout=10)
         
         if response.status_code != 200:
             logger.error(f"Ошибка при запросе к API: {response.status_code}, {response.text}")
@@ -140,11 +172,14 @@ def update_server_metrics(server_id, active_connections):
             "response_time": 0.1  # Заглушка для времени ответа
         }
         
-        # Отправляем данные в API базы данных
-        url = f"{DATABASE_SERVICE_URL}/api/server_metrics/add"
+        # Получаем заголовки аутентификации для API Gateway
+        _, jwt_headers = get_auth_headers()
+        
+        # Отправляем данные в API базы данных через API Gateway
+        url = f"{DATABASE_SERVICE_URL}/server_metrics/add"
         logger.debug(f"Отправка метрик на URL: {url}, данные: {metrics_data}")
         
-        response = requests.post(url, json=metrics_data, timeout=10)
+        response = requests.post(url, json=metrics_data, headers=jwt_headers, timeout=10)
         
         if response.status_code == 200:
             logger.info(f"Метрики успешно обновлены для сервера {server_id}")
@@ -167,7 +202,7 @@ def main():
     
     while True:
         try:
-            # Получаем список серверов
+            # Получаем список серверов через API Gateway
             servers = get_servers()
             
             if not servers:
@@ -194,7 +229,7 @@ def main():
                     server_id = server.get("id")
                     logger.info(f"Найден наш сервер: {server_id}")
                     
-                    # Обновляем метрики сервера
+                    # Обновляем метрики сервера через API Gateway
                     update_server_metrics(server_id, active_connections)
                     break
             

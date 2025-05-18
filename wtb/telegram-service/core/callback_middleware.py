@@ -10,7 +10,8 @@ import time
 from keyboards.keyboards import get_active_config_keyboard, get_create_config_keyboard
 from utils.bd import get_user_config, create_new_config, get_config_from_wireguard
 from utils.qr import generate_config_qr
-from core.settings import bot, logger
+# Импортируем API_HEADERS из настроек
+from core.settings import bot, logger, API_HEADERS
 from utils.bd import get_user_config, create_new_config, get_config_from_wireguard, are_servers_available
 
 
@@ -558,18 +559,6 @@ class CallbackMiddleware(BaseMiddleware):
             
             return True
                 
-        except Exception as e:
-            self.logger.error(f"Middleware: ошибка при создании конфигурации: {str(e)}", exc_info=True)
-            await self.bot.edit_message_text(
-                "❌ <b>Произошла ошибка</b>\n\n"
-                "Пожалуйста, попробуйте позже.",
-                chat_id=callback_query.message.chat.id,
-                message_id=callback_query.message.message_id,
-                parse_mode=ParseMode.HTML
-            )
-            
-            return True
-                    
         except Exception as e:
             self.logger.error(f"Middleware: ошибка при создании конфигурации: {str(e)}", exc_info=True)
             await self.bot.edit_message_text(

@@ -124,6 +124,19 @@ def get_auth_headers(server):
         # Возвращаем базовые заголовки без токена
         return {"Content-Type": "application/json"}
 
+def verify_auth_from_gateway(headers):
+    """Проверка аутентификации, когда запрос приходит через API Gateway"""
+    # Проверка заголовка X-Consumer-Username, добавляемого Kong
+    if 'X-Consumer-Username' in headers:
+        return True, headers.get('X-Consumer-Username')
+    
+    # Проверка заголовка X-Consumer-ID, добавляемого Kong
+    if 'X-Consumer-ID' in headers:
+        return True, headers.get('X-Consumer-ID')
+    
+    # Если нет заголовка от Gateway, используем стандартную проверку
+    return verify_auth(headers)
+
 @retry_on_connection_error(max_attempts=3, min_wait=1, max_wait=10)
 def _get_auth_token(server):
     """
@@ -333,3 +346,15 @@ def get_api_key_from_storage(server_id):
     # Если ключ не найден, возвращаем None
     logger.warning(f"API-ключ для сервера {server_id} не найден в хранилище")
     return None
+
+def verify_auth(headers):
+    """Базовая проверка аутентификации запроса"""
+    # Здесь должна быть ваша стандартная логика проверки аутентификации
+    # Это заглушка, которую нужно заменить на реальную проверку
+    auth_header = headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header[7:]
+        # Проверка токена
+        # ...
+        return True, "authorized_user"
+    return False, None

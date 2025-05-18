@@ -27,7 +27,7 @@ from app_config.settings import (
 )
 # Импорт модуля инициализации ServerManager
 from server_manager_init import initialize_server_manager
-from auth.auth_handler import init_auth_handler
+from auth.auth_handler import init_auth_handler, verify_auth_from_gateway
 
 # Настройка логирования
 logger = logging.getLogger('wireguard-proxy')
@@ -74,41 +74,6 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
-# Запуск фоновых задач
-# def background_server_updater():
-#     """Фоновая задача для обновления информации о серверах"""
-#     retry_count = 0
-#     max_retry_count = 10
-#     retry_delay = 5
-#     
-#     while not shutdown_event.is_set():
-#         try:
-#             # Обновление информации о серверах
-#             server_manager.update_servers_info()
-#             
-#             # При успехе сбрасываем счетчик повторных попыток
-#             retry_count = 0
-#             retry_delay = 5
-#             
-#             # Ожидание следующего обновления (проверка на событие завершения)
-#             shutdown_event.wait(60)  # 1 минута между обновлениями
-#             
-#         except Exception as e:
-#             # Увеличиваем счетчик повторных попыток
-#             retry_count += 1
-#             logger.error(f"Error in server updater background task: {e}")
-#             
-#             if retry_count >= max_retry_count:
-#                 logger.warning(f"Max retries ({max_retry_count}) exceeded in server updater, using longer interval")
-#                 # Используем более длительный интервал при постоянных ошибках
-#                 shutdown_event.wait(300)  # 5 минут после достижения лимита повторов
-#                 retry_count = 0  # Сбрасываем счетчик
-#             else:
-#                 # Экспоненциальное увеличение задержки между попытками
-#                 retry_delay = min(retry_delay * 2, 120)
-#                 logger.info(f"Retrying in {retry_delay} seconds...")
-#                 shutdown_event.wait(retry_delay)
-
 # Запуск фоновых потоков
 def start_background_threads():
     """Запуск всех фоновых потоков"""
@@ -117,6 +82,22 @@ def start_background_threads():
     # Поток обновления информации о серверах теперь запускается через initialize_server_manager
     
     logger.info("Background threads started")
+
+# Middleware для проверки заголовков от API Gateway
+@app.before_request
+def before_request():
+    # Поддержка X-Forwarded заголовков от API Gateway
+    if 'X-Forwarded-For' in request.headers:
+        request.remote_addr = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    
+    if 'X-Forwarded-Proto' in request.headers:
+        request.scheme = request.headers.get('X-Forwarded-Proto')
+    
+    # Добавление поддержки аутентификации через Kong
+    if 'X-Consumer-Username' in request.headers:
+        # Kong добавляет этот заголовок для аутентифицированных запросов
+        request.consumer = request.headers.get('X-Consumer-Username')
+        logger.info(f"Request from Kong consumer: {request.consumer}")
 
 # Endpoints API
 @app.route('/health', methods=['GET'])
@@ -146,6 +127,14 @@ def create_configuration():
     try:
         logger.info("Received create configuration request")
         
+        # Проверка аутентификации через API Gateway
+        is_authenticated, consumer = verify_auth_from_gateway(request.headers)
+        if not is_authenticated:
+            logger.warning("Unauthorized request to create configuration")
+            return jsonify({"error": "Unauthorized", "details": "Authentication required"}), 401
+        
+        logger.info(f"Authenticated request from consumer: {consumer}")
+        
         # Передаем управление в route_manager
         return route_manager.handle_create_request()
         
@@ -164,6 +153,14 @@ def remove_peer(public_key):
     """Удаление пира с удаленного сервера по публичному ключу"""
     try:
         logger.info(f"Received remove request for public key: {public_key}")
+        
+        # Проверка аутентификации через API Gateway
+        is_authenticated, consumer = verify_auth_from_gateway(request.headers)
+        if not is_authenticated:
+            logger.warning("Unauthorized request to remove peer")
+            return jsonify({"error": "Unauthorized", "details": "Authentication required"}), 401
+        
+        logger.info(f"Authenticated request from consumer: {consumer}")
         
         # Маршрутизация запроса на удаление через менеджер
         result = route_manager.handle_remove_request(public_key)
@@ -254,9 +251,13 @@ def get_metrics():
 def add_server():
     """Добавление нового удаленного сервера (только для админов)"""
     try:
-        data = request.json
-        # Здесь должна быть проверка аутентификации админа
+        # Проверка аутентификации через API Gateway для админских операций
+        is_authenticated, consumer = verify_auth_from_gateway(request.headers)
+        if not is_authenticated or consumer not in ['admin-user', 'admin-panel']:
+            logger.warning(f"Unauthorized admin request from consumer: {consumer}")
+            return jsonify({"error": "Unauthorized", "details": "Admin privileges required"}), 403
         
+        data = request.json
         result = server_manager.add_server(data)
         return jsonify(result)
     except Exception as e:
@@ -267,7 +268,11 @@ def add_server():
 def remove_server(server_id):
     """Удаление удаленного сервера (только для админов)"""
     try:
-        # Здесь должна быть проверка аутентификации админа
+        # Проверка аутентификации через API Gateway для админских операций
+        is_authenticated, consumer = verify_auth_from_gateway(request.headers)
+        if not is_authenticated or consumer not in ['admin-user', 'admin-panel']:
+            logger.warning(f"Unauthorized admin request from consumer: {consumer}")
+            return jsonify({"error": "Unauthorized", "details": "Admin privileges required"}), 403
         
         result = server_manager.remove_server(server_id)
         return jsonify(result)
@@ -279,6 +284,12 @@ def remove_server(server_id):
 def reset_cache():
     """Сброс кэша (только для админов)"""
     try:
+        # Проверка аутентификации через API Gateway для админских операций
+        is_authenticated, consumer = verify_auth_from_gateway(request.headers)
+        if not is_authenticated or consumer not in ['admin-user', 'admin-panel']:
+            logger.warning(f"Unauthorized admin request from consumer: {consumer}")
+            return jsonify({"error": "Unauthorized", "details": "Admin privileges required"}), 403
+        
         cache_manager.clear()
         return jsonify({"status": "success", "message": "Cache cleared successfully"})
     except Exception as e:
@@ -303,7 +314,8 @@ def get_debug_config():
             "active": server_manager.fallback_mode
         },
         "services": {
-            "database_url": DATABASE_SERVICE_URL
+            "database_url": DATABASE_SERVICE_URL,
+            "api_gateway_url": os.environ.get('API_GATEWAY_URL', 'http://kong:8000')
         },
         "background_processes": {
             thread.name: "running" if thread.is_alive() else "stopped"

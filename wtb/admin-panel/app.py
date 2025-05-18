@@ -1,6 +1,8 @@
 import os
 import sys
 import logging
+import time
+import jwt
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 from flask_login import LoginManager
@@ -25,6 +27,42 @@ from models import User
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Настройка URL для API Gateway
+API_GATEWAY_URL = os.environ.get('API_GATEWAY_URL', 'http://kong:8000')
+DATABASE_SERVICE_URL = f"{API_GATEWAY_URL}/api"
+WIREGUARD_SERVICE_URL = f"{API_GATEWAY_URL}/vpn"
+
+# Функция для получения JWT токена для запросов
+def get_jwt_token():
+    """
+    Создание JWT токена для аутентификации
+    """
+    payload = {
+        "iss": "admin-panel",  # issuer - должен совпадать с key в конфигурации Kong
+        "exp": int(time.time()) + 3600,  # срок действия - 1 час
+        "iat": int(time.time()),  # время выпуска
+        "roles": ["admin"]  # роли для ACL плагина
+    }
+    
+    secret = os.environ.get('ADMIN_SECRET_KEY', 'fvcfq9d3ycefnvmftiaso')
+    token = jwt.encode(payload, secret, algorithm="HS256")
+    
+    return token
+
+# Middleware для добавления JWT в запросы
+class JWTMiddleware:
+    def __init__(self, app):
+        self.app = app
+        
+    def __call__(self, environ, start_response):
+        def _start_response(status, headers, exc_info=None):
+            # Добавляем заголовок Authorization с JWT токеном
+            if environ.get('PATH_INFO', '').startswith('/api/'):
+                headers.append(('Authorization', f'Bearer {get_jwt_token()}'))
+            return start_response(status, headers, exc_info)
+        
+        return self.app(environ, _start_response)
+
 def create_app(config_class=Config):
     # Initialize Flask-application
     app = Flask(__name__)
@@ -33,6 +71,16 @@ def create_app(config_class=Config):
 
     # Настройка кэширования статических файлов
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 43200  # 12 часов по умолчанию
+    
+    # Логирование настройки URL
+    logger.info(f"Используем API_GATEWAY_URL: {API_GATEWAY_URL}")
+    logger.info(f"Используем DATABASE_SERVICE_URL: {DATABASE_SERVICE_URL}")
+    logger.info(f"Используем WIREGUARD_SERVICE_URL: {WIREGUARD_SERVICE_URL}")
+    
+    # Добавляем пути API Gateway в конфигурацию приложения
+    app.config['API_GATEWAY_URL'] = API_GATEWAY_URL
+    app.config['DATABASE_SERVICE_URL'] = DATABASE_SERVICE_URL
+    app.config['WIREGUARD_SERVICE_URL'] = WIREGUARD_SERVICE_URL
     
     # Конфигурация типов файлов и их времени кэширования
     app.config['STATIC_CACHE_CONFIG'] = {
@@ -58,6 +106,9 @@ def create_app(config_class=Config):
     app.register_blueprint(servers_bp, url_prefix='/servers')
     app.register_blueprint(geolocations_bp, url_prefix='/geolocations')
     app.register_blueprint(api_bp, url_prefix='/api')
+
+    # Применение middleware для JWT
+    app.wsgi_app = JWTMiddleware(app.wsgi_app)
 
     # Ensure static directories exist
     for static_dir in ['css', 'js', 'img']:
@@ -301,7 +352,6 @@ def create_app(config_class=Config):
 
 # Create app instance
 app = create_app()
-
 
 @app.template_filter('datetime')
 def datetime_filter(value, format='%Y-%m-%d %H:%M:%S'):

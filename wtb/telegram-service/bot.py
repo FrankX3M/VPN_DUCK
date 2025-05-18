@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import os
 from aiogram import executor
 
 from core.settings import dp, bot, logger
@@ -10,6 +11,22 @@ from core.callback_middleware import CallbackMiddleware
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Настройка URL для API Gateway
+API_GATEWAY_URL = os.environ.get('API_GATEWAY_URL', 'http://kong:8000')  # URL API Gateway
+DATABASE_SERVICE_URL = f"{API_GATEWAY_URL}/api"
+WIREGUARD_PROXY_URL = f"{API_GATEWAY_URL}/vpn"
+
+# Добавление заголовков аутентификации для запросов к API через Kong
+HEADERS = {
+    "apikey": os.environ.get('ADMIN_SECRET_KEY', 'fvcfq9d3ycefnvmftiaso'),
+    "Content-Type": "application/json"
+}
+
+# Экспортируем глобальные параметры для использования в других модулях
+# Эти параметры будут импортироваться в других файлах
+os.environ['DATABASE_SERVICE_URL'] = DATABASE_SERVICE_URL
+os.environ['WIREGUARD_PROXY_URL'] = WIREGUARD_PROXY_URL
+
 async def on_startup(dp):
     """Set up bot on startup."""
     logging.info("Bot started!")
@@ -18,6 +35,11 @@ async def on_startup(dp):
         # Логируем информацию о боте
         bot_info = await bot.get_me()
         logger.info(f"Bot connected as @{bot_info.username} (ID: {bot_info.id})")
+        
+        # Логируем информацию о настроенных URL
+        logger.info(f"Используем API_GATEWAY_URL: {API_GATEWAY_URL}")
+        logger.info(f"Используем DATABASE_SERVICE_URL: {DATABASE_SERVICE_URL}")
+        logger.info(f"Используем WIREGUARD_PROXY_URL: {WIREGUARD_PROXY_URL}")
         
         # Сначала регистрируем middleware (до регистрации обработчиков)
         logger.info("Setting up middleware...")
