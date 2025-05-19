@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
+
 # # Настройка логирования (может быть перемещена в отдельный модуль)
 # logging.basicConfig(
 #     level=logging.INFO,
@@ -71,11 +72,15 @@ API_HEADERS = {
 ADMIN_CHAT_ID = os.environ.get('ADMIN_CHAT_ID', '12345678')
 
 # Получаем токен бота
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+# BOT_TOKEN = os.environ.get("BOT_TOKEN")
+# if not BOT_TOKEN:
+#     logger.error("BOT_TOKEN не задан! Проверьте переменные окружения.")
+#     raise ValueError("Не задан токен бота в переменных окружения.")
+BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN") or os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     logger.error("BOT_TOKEN не задан! Проверьте переменные окружения.")
     raise ValueError("Не задан токен бота в переменных окружения.")
-
+    
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()

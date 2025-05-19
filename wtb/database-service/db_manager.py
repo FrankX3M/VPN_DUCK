@@ -404,6 +404,127 @@ def get_server(server_id):
 #         logger.exception(f"Error adding server: {e}")
 #         return jsonify({"error": str(e)}), 500
 
+# @app.route('/api/servers/add', methods=['POST'])
+# def add_server_route():
+#     """Adding a new remote server"""
+#     try:
+#         data = request.json
+        
+#         # Debug output of request data
+#         logger.info(f"Received data for adding server: {data}")
+        
+#         # Check required fields
+#         required_fields = ['name', 'endpoint', 'port', 'address', 'public_key', 'geolocation_id']
+#         missing_fields = [field for field in required_fields if field not in data]
+        
+#         if missing_fields:
+#             logger.error(f"Missing required fields: {missing_fields}")
+#             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+        
+#         # Validate data types
+#         try:
+#             if 'port' in data and isinstance(data['port'], str):
+#                 data['port'] = int(data['port'])
+            
+#             if 'geolocation_id' in data and isinstance(data['geolocation_id'], str):
+#                 data['geolocation_id'] = int(data['geolocation_id'])
+                
+#             # Convert boolean fields
+#             if 'skip_api_check' in data and isinstance(data['skip_api_check'], str):
+#                 data['skip_api_check'] = data['skip_api_check'].lower() in ('true', 'yes', '1', 'y')
+#         except ValueError as e:
+#             logger.error(f"Data type conversion error: {str(e)}")
+#             return jsonify({"error": f"Data type error: {str(e)}"}), 400
+        
+#         # Generate unique server_id if not provided
+#         if 'server_id' not in data:
+#             import uuid
+#             data['server_id'] = f"srv-{uuid.uuid4().hex[:8]}"
+        
+#         # Create API URL if not provided
+#         if 'api_url' not in data or not data['api_url']:
+#             data['api_url'] = f"http://{data['endpoint']}:5000"
+        
+#         # Use default API path if not provided
+#         if 'api_path' not in data or not data['api_path']:
+#             data['api_path'] = '/status'
+            
+#         # Location (for backwards compatibility)
+#         if 'location' not in data:
+#             with get_db_connection() as conn:
+#                 with conn.cursor() as cur:
+#                     cur.execute("SELECT name FROM geolocations WHERE id = %s", (data['geolocation_id'],))
+#                     geo = cur.fetchone()
+#                     if geo:
+#                         data['location'] = geo[0]
+#                     else:
+#                         data['location'] = "Unknown location"
+        
+#         with get_db_connection() as conn:
+#             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+#                 query = """
+#                 INSERT INTO remote_servers (
+#                     server_id, 
+#                     name, 
+#                     location, 
+#                     endpoint,
+#                     port,
+#                     address,
+#                     public_key,
+#                     api_url, 
+#                     api_path,
+#                     geolocation_id, 
+#                     auth_type, 
+#                     api_key, 
+#                     max_peers, 
+#                     is_active,
+#                     skip_api_check
+#                 ) VALUES (
+#                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+#                 ) RETURNING id, server_id, name, endpoint, port, address, public_key, api_url, api_path, 
+#                           geolocation_id, auth_type, max_peers, is_active, skip_api_check
+#                 """
+                
+#                 # Set default values for optional fields
+#                 is_active = data.get('status', 'active') == 'active'
+                
+#                 cur.execute(query, (
+#                     data['server_id'],
+#                     data['name'],
+#                     data.get('location', 'Unknown'),
+#                     data['endpoint'],
+#                     data['port'],
+#                     data['address'],
+#                     data['public_key'],
+#                     data['api_url'],
+#                     data['api_path'],
+#                     data['geolocation_id'],
+#                     data.get('auth_type', 'api_key'),
+#                     data.get('api_key'),
+#                     data.get('max_peers', 100),
+#                     is_active,
+#                     data.get('skip_api_check', False)
+#                 ))
+                
+#                 server = cur.fetchone()
+#                 conn.commit()
+                
+#                 # Форматирование ответа для совместимости с приложением
+#                 formatted_server = dict(server)
+#                 formatted_server['id'] = str(formatted_server['id'])
+                
+#                 if formatted_server['geolocation_id']:
+#                     formatted_server['geolocation_id'] = str(formatted_server['geolocation_id'])
+                    
+#                 # Преобразуем is_active в status
+#                 formatted_server['status'] = 'active' if formatted_server.get('is_active', True) else 'inactive'
+                
+#                 logger.info(f"Server successfully added! ID: {formatted_server['id']}")
+                
+#                 return jsonify(formatted_server)
+#     except Exception as e:
+#         logger.exception(f"Error adding server: {e}")
+#         return jsonify({"error": str(e)}), 500
 @app.route('/api/servers/add', methods=['POST'])
 def add_server_route():
     """Adding a new remote server"""
@@ -443,7 +564,7 @@ def add_server_route():
         
         # Create API URL if not provided
         if 'api_url' not in data or not data['api_url']:
-            data['api_url'] = f"http://{data['endpoint']}:5000"
+            data['api_url'] = f"http://{data['endpoint']}:{data.get('port', 51820)}/api"
         
         # Use default API path if not provided
         if 'api_path' not in data or not data['api_path']:
@@ -492,7 +613,7 @@ def add_server_route():
                     data['server_id'],
                     data['name'],
                     data.get('location', 'Unknown'),
-                    data['endpoint'],
+                    data['endpoint'],  # Убедимся, что endpoint всегда передается
                     data['port'],
                     data['address'],
                     data['public_key'],
@@ -525,8 +646,6 @@ def add_server_route():
     except Exception as e:
         logger.exception(f"Error adding server: {e}")
         return jsonify({"error": str(e)}), 500
-
-
 
 @app.route('/api/servers', methods=['POST'])
 def add_server():
@@ -1726,8 +1845,87 @@ def update_servers_status_batch():
 
 # Файл: /app/db_manager.py
 
+# @app.route('/api/servers/metrics/add', methods=['POST'])
+# def add_server_metrics():  # Удалил параметр 'self'
+#     """Добавление метрик сервера"""
+#     try:
+#         logger.debug(f"Получен запрос на добавление метрик сервера: {request.method} {request.path}")
+#         data = request.json
+#         logger.debug(f"Полученные данные: {data}")
+        
+#         if 'server_id' not in data:
+#             logger.warning("Отсутствует обязательное поле server_id")
+#             return jsonify({"error": "Missing server_id field"}), 400
+        
+#         logger.debug(f"Проверка сервера с ID: {data['server_id']}")    
+#         with get_db_connection() as conn:
+#             # Проверим, существует ли сервер с таким ID
+#             with conn.cursor() as check_cur:
+#                 # Изменить запрос для правильного сравнения типов
+#                 # Преобразуем server_id к строке при сравнении
+#                 check_cur.execute("SELECT id FROM remote_servers WHERE server_id = %s::text", (data['server_id'],))
+#                 server_exists = check_cur.fetchone()
+#                 if not server_exists:
+#                     logger.warning(f"Сервер с ID {data['server_id']} не найден в базе данных")
+#                     # Проверим в логах, что именно приходит в server_id
+#                     logger.debug(f"Тип данных server_id: {type(data['server_id'])}, значение: {data['server_id']}")
+                    
+#                     # Вместо ошибки создадим запись о неизвестном сервере
+#                     logger.info(f"Создание записи метрик для неизвестного сервера {data['server_id']}")
+            
+#             with conn.cursor() as cur:
+#                 logger.debug("Подготовка SQL запроса для вставки метрик")
+#                 query = """
+#                 INSERT INTO server_metrics (
+#                     server_id,
+#                     latency,
+#                     bandwidth,
+#                     jitter,
+#                     packet_loss,
+#                     measured_at
+#                 ) VALUES (
+#                     %s, %s, %s, %s, %s, NOW()
+#                 ) RETURNING id
+#                 """
+                
+#                 params = (
+#                     data['server_id'],
+#                     data.get('latency'),
+#                     data.get('bandwidth'),
+#                     data.get('jitter'),
+#                     data.get('packet_loss')
+#                 )
+#                 logger.debug(f"Выполнение SQL запроса с параметрами: {params}")
+                
+#                 try:
+#                     cur.execute(query, params)
+#                     metric_id = cur.fetchone()[0]
+#                     conn.commit()
+#                     logger.info(f"Метрики успешно добавлены для сервера {data['server_id']}, ID метрики: {metric_id}")
+                    
+#                     return jsonify({
+#                         "success": True,
+#                         "message": "Metrics added successfully",
+#                         "metric_id": metric_id
+#                     })
+#                 except Exception as sql_err:
+#                     conn.rollback()
+#                     logger.error(f"Ошибка выполнения SQL запроса: {sql_err}")
+#                     # Проверим структуру таблицы
+#                     try:
+#                         cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'server_metrics'")
+#                         columns = cur.fetchall()
+#                         logger.debug(f"Структура таблицы server_metrics: {columns}")
+#                     except Exception as schema_err:
+#                         logger.error(f"Не удалось получить структуру таблицы server_metrics: {schema_err}")
+                    
+#                     raise sql_err
+#     except Exception as e:
+#         logger.exception(f"Ошибка добавления метрик сервера: {e}")
+#         return jsonify({"error": str(e)}), 500
+# 
 @app.route('/api/servers/metrics/add', methods=['POST'])
-def add_server_metrics():  # Удалил параметр 'self'
+def add_server_metrics():
     """Добавление метрик сервера"""
     try:
         logger.debug(f"Получен запрос на добавление метрик сервера: {request.method} {request.path}")
@@ -1738,22 +1936,127 @@ def add_server_metrics():  # Удалил параметр 'self'
             logger.warning("Отсутствует обязательное поле server_id")
             return jsonify({"error": "Missing server_id field"}), 400
         
-        logger.debug(f"Проверка сервера с ID: {data['server_id']}")    
+        server_id = data['server_id']
+        if isinstance(server_id, str) and server_id.isdigit():
+            server_id = int(server_id)
+        
+        logger.debug(f"Проверка сервера с ID: {server_id}")
         with get_db_connection() as conn:
-            # Проверим, существует ли сервер с таким ID
             with conn.cursor() as check_cur:
-                # Изменить запрос для правильного сравнения типов
-                # Преобразуем server_id к строке при сравнении
-                check_cur.execute("SELECT id FROM remote_servers WHERE server_id = %s::text", (data['server_id'],))
+                # Сначала проверим наличие сервера в таблице servers
+                check_cur.execute("SELECT id FROM servers WHERE id = %s", (server_id,))
                 server_exists = check_cur.fetchone()
+                
                 if not server_exists:
-                    logger.warning(f"Сервер с ID {data['server_id']} не найден в базе данных")
-                    # Проверим в логах, что именно приходит в server_id
-                    logger.debug(f"Тип данных server_id: {type(data['server_id'])}, значение: {data['server_id']}")
+                    logger.warning(f"Сервер с ID {server_id} не найден в таблице servers")
                     
-                    # Вместо ошибки создадим запись о неизвестном сервере
-                    logger.info(f"Создание записи метрик для неизвестного сервера {data['server_id']}")
+                    # Проверим, есть ли запись в remote_servers
+                    check_cur.execute("""
+                        SELECT id, endpoint, port, public_key, address, geolocation_id, is_active 
+                        FROM remote_servers 
+                        WHERE id = %s OR server_id = %s
+                    """, (server_id, str(server_id)))
+                    
+                    remote_server = check_cur.fetchone()
+                    
+                    if remote_server:
+                        # Создаем запись в таблице servers
+                        logger.info(f"Найден сервер в remote_servers, создаем запись в servers для ID {server_id}")
+                        try:
+                            with conn.cursor() as insert_cur:
+                                insert_query = """
+                                INSERT INTO servers (
+                                    id, geolocation_id, endpoint, port, public_key, 
+                                    private_key, address, status
+                                ) 
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s) 
+                                RETURNING id
+                                """
+                                
+                                # Распаковываем данные из remote_servers
+                                rs_id, endpoint, port, public_key, address, geolocation_id, is_active = remote_server
+                                
+                                insert_cur.execute(insert_query, (
+                                    server_id,
+                                    geolocation_id,
+                                    endpoint or 'default-endpoint.com',
+                                    port or 51820,
+                                    public_key or 'default-public-key',
+                                    'placeholder_private_key',
+                                    address or '10.0.0.1/24',
+                                    'active' if is_active else 'inactive'
+                                ))
+                                
+                                new_server_id = insert_cur.fetchone()[0]
+                                conn.commit()
+                                logger.info(f"Создана запись в servers с ID: {new_server_id}")
+                            
+                            # Продолжаем с добавлением метрик
+                        except Exception as create_err:
+                            conn.rollback()
+                            logger.error(f"Ошибка при создании записи в servers: {create_err}")
+                            return jsonify({"error": f"Failed to create server record: {str(create_err)}"}), 500
+                    else:
+                        # Создаем новый сервер, так как его нет ни в servers, ни в remote_servers
+                        logger.warning(f"Сервер не найден ни в одной таблице. Создаем новый сервер для ID {server_id}")
+                        try:
+                            with conn.cursor() as insert_cur:
+                                # Сначала создаем запись в remote_servers
+                                rs_query = """
+                                INSERT INTO remote_servers (
+                                    id, server_id, name, endpoint, port, public_key, 
+                                    address, is_active, geolocation_id
+                                ) 
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) 
+                                RETURNING id
+                                """
+                                
+                                insert_cur.execute(rs_query, (
+                                    server_id,
+                                    f"srv-auto-{server_id}",
+                                    f"Auto-created server {server_id}",
+                                    'default-endpoint.com',
+                                    51820,
+                                    'default-public-key',
+                                    '10.0.0.1/24',
+                                    True,
+                                    1  # Используем геолокацию по умолчанию
+                                ))
+                                
+                                rs_id = insert_cur.fetchone()[0]
+                                
+                                # Теперь создаем запись в servers
+                                s_query = """
+                                INSERT INTO servers (
+                                    id, geolocation_id, endpoint, port, public_key, 
+                                    private_key, address, status
+                                ) 
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s) 
+                                RETURNING id
+                                """
+                                
+                                insert_cur.execute(s_query, (
+                                    server_id,
+                                    1,  # Геолокация по умолчанию
+                                    'default-endpoint.com',
+                                    51820,
+                                    'default-public-key',
+                                    'placeholder_private_key',
+                                    '10.0.0.1/24',
+                                    'active'
+                                ))
+                                
+                                s_id = insert_cur.fetchone()[0]
+                                conn.commit()
+                                logger.info(f"Созданы записи в обеих таблицах: remote_servers.id={rs_id}, servers.id={s_id}")
+                            
+                            # Продолжаем с добавлением метрик
+                        except Exception as create_err:
+                            conn.rollback()
+                            logger.error(f"Ошибка при создании новых записей: {create_err}")
+                            return jsonify({"error": f"Failed to create server records: {str(create_err)}"}), 500
             
+            # Теперь добавляем метрики
             with conn.cursor() as cur:
                 logger.debug("Подготовка SQL запроса для вставки метрик")
                 query = """
@@ -1770,7 +2073,7 @@ def add_server_metrics():  # Удалил параметр 'self'
                 """
                 
                 params = (
-                    data['server_id'],
+                    server_id,
                     data.get('latency'),
                     data.get('bandwidth'),
                     data.get('jitter'),
@@ -1782,7 +2085,7 @@ def add_server_metrics():  # Удалил параметр 'self'
                     cur.execute(query, params)
                     metric_id = cur.fetchone()[0]
                     conn.commit()
-                    logger.info(f"Метрики успешно добавлены для сервера {data['server_id']}, ID метрики: {metric_id}")
+                    logger.info(f"Метрики успешно добавлены для сервера {server_id}, ID метрики: {metric_id}")
                     
                     return jsonify({
                         "success": True,
@@ -1792,7 +2095,7 @@ def add_server_metrics():  # Удалил параметр 'self'
                 except Exception as sql_err:
                     conn.rollback()
                     logger.error(f"Ошибка выполнения SQL запроса: {sql_err}")
-                    # Проверим структуру таблицы
+                    # Проверим структуру таблицы для диагностики
                     try:
                         cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'server_metrics'")
                         columns = cur.fetchall()
