@@ -248,6 +248,112 @@ class ServerManager:
             self._check_servers_availability()
             self.last_update = datetime.now()
     
+    # def _check_servers_availability(self):
+    #     """Проверка доступности каждого сервера"""
+    #     for server in self.servers:
+    #         server_id = str(server.get('id'))  # Преобразуем ID в строку
+    #         server_url = server.get('api_url')
+            
+    #         # Пропускаем проверку для тестовых серверов
+    #         if server_id.startswith('test-'):
+    #             self.server_status[server_id] = "online"
+    #             self._set_mock_server_data(server_id, server)
+    #             continue
+            
+    #         if not server_url:
+    #             self.server_status[server_id] = "offline"
+    #             logger.warning(f"No API URL for server {server_id}")
+    #             continue
+            
+    #         try:
+    #             start_time = time.time()
+    #             server_status_url = f"{server_url}/status"
+    #             logger.info(f"Checking server status for {server_id} at {server_status_url}")
+                
+    #             response = requests.get(server_status_url, timeout=SERVER_STATUS_CHECK_TIMEOUT)
+    #             response_time = time.time() - start_time
+                
+    #             if response.status_code == 200:
+    #                 self.server_status[server_id] = "online"
+                    
+    #                 # Обновление метрик
+    #                 server_data = response.json()
+    #                 peers_count = server_data.get('peers_count', 0)
+    #                 self.server_load[server_id] = {
+    #                     "peers_count": peers_count,
+    #                     "load": server_data.get('load', 0),
+    #                     "response_time": response_time,
+    #                     "cpu_usage": server_data.get('cpu_usage', 30),
+    #                     "memory_usage": server_data.get('memory_usage', 40),
+    #                     "uptime": server_data.get('uptime', 3600),
+    #                     "latency_ms": server_data.get('latency_ms', 30),
+    #                     "packet_loss": server_data.get('packet_loss', 0),
+    #                     "mocked": False
+    #                 }
+                    
+    #                 logger.info(f"Server {server_id} is online with {peers_count} peers")
+    #             else:
+    #                 logger.warning(f"Server {server_id} returned status code {response.status_code}")
+    #                 # Возвращаем мокированные данные
+    #                 self._set_mock_server_data(server_id, server, is_degraded=True)
+            
+    #         except requests.RequestException as e:
+    #             logger.warning(f"Server {server_id} is not available: {e}")
+    #             # Возвращаем мокированные данные
+    #             self._set_mock_server_data(server_id, server, is_degraded=True)
+    # Исправленная функция _check_servers_availability в server_manager.py
+    # def _check_servers_availability(self):
+    #     """Проверка доступности каждого сервера"""
+    #     for server in self.servers:
+    #         server_id = str(server.get('id'))  # Преобразуем ID в строку
+    #         server_url = server.get('api_url')
+            
+    #         # Пропускаем проверку для тестовых серверов
+    #         if server_id.startswith('test-'):
+    #             self.server_status[server_id] = "online"
+    #             self._set_mock_server_data(server_id, server)
+    #             continue
+            
+    #         if not server_url:
+    #             self.server_status[server_id] = "offline"
+    #             logger.warning(f"No API URL for server {server_id}")
+    #             continue
+            
+    #         try:
+    #             start_time = time.time()
+    #             # Исправленный URL - напрямую используем переданный api_url
+    #             server_status_url = f"{server_url}/status"
+    #             logger.info(f"Checking server status for {server_id} at {server_status_url}")
+
+    #             if response.status_code == 200:
+    #                 self.server_status[server_id] = "online"
+                    
+    #                 # Обновление метрик
+    #                 server_data = response.json()
+    #                 peers_count = server_data.get('peers_count', 0)
+    #                 self.server_load[server_id] = {
+    #                     "peers_count": peers_count,
+    #                     "load": server_data.get('load', 0),
+    #                     "response_time": response_time,
+    #                     "cpu_usage": server_data.get('cpu_usage', 30),
+    #                     "memory_usage": server_data.get('memory_usage', 40),
+    #                     "uptime": server_data.get('uptime', 3600),
+    #                     "latency_ms": server_data.get('latency_ms', 30),
+    #                     "packet_loss": server_data.get('packet_loss', 0),
+    #                     "mocked": False
+    #                 }
+                    
+    #                 logger.info(f"Server {server_id} is online with {peers_count} peers")
+    #             else:
+    #                 logger.warning(f"Server {server_id} returned status code {response.status_code}")
+    #                 # Возвращаем мокированные данные
+    #                 self._set_mock_server_data(server_id, server, is_degraded=True)
+            
+    #         except requests.RequestException as e:
+    #             logger.warning(f"Server {server_id} is not available: {e}")
+    #             # Возвращаем мокированные данные
+    #             self._set_mock_server_data(server_id, server, is_degraded=True)
+
     def _check_servers_availability(self):
         """Проверка доступности каждого сервера"""
         for server in self.servers:
@@ -267,12 +373,14 @@ class ServerManager:
             
             try:
                 start_time = time.time()
+                # Исправленный URL - напрямую используем переданный api_url
                 server_status_url = f"{server_url}/status"
                 logger.info(f"Checking server status for {server_id} at {server_status_url}")
                 
+                # Здесь добавляем отсутствующую строку кода для выполнения запроса
                 response = requests.get(server_status_url, timeout=SERVER_STATUS_CHECK_TIMEOUT)
                 response_time = time.time() - start_time
-                
+
                 if response.status_code == 200:
                     self.server_status[server_id] = "online"
                     

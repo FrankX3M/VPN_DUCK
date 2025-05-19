@@ -2272,6 +2272,60 @@ def create_user_config():
 
 # Файл: database-service/db_manager.py
 
+# @app.route('/api/config/<int:user_id>', methods=['GET'])
+# def get_user_config(user_id):
+#     """Получение конфигурации пользователя по ID"""
+#     try:
+#         logger.info(f"Запрос конфигурации для пользователя {user_id}")
+        
+#         with get_db_connection() as conn:
+#             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+#                 # Сначала проверяем в таблице user_configs
+#                 cur.execute("""
+#                     SELECT 
+#                         uc.*,
+#                         g.name as geolocation_name,
+#                         rs.name as server_name
+#                     FROM 
+#                         user_configs uc
+#                     LEFT JOIN 
+#                         geolocations g ON uc.geolocation_id = g.id
+#                     LEFT JOIN 
+#                         remote_servers rs ON uc.server_id = rs.id
+#                     WHERE 
+#                         uc.user_id = %s
+#                     ORDER BY
+#                         uc.active DESC, uc.updated_at DESC
+#                     LIMIT 1
+#                 """, (user_id,))
+                
+#                 config = cur.fetchone()
+                
+#                 if not config:
+#                     # Если в user_configs не нашли, проверяем в других таблицах или создаем пустую запись
+#                     logger.warning(f"Конфигурация для пользователя {user_id} не найдена")
+                    
+#                     # Если хотите автоматически создавать пустую запись:
+#                     # cur.execute("""
+#                     #     INSERT INTO user_configs (user_id, active, created_at, updated_at)
+#                     #     VALUES (%s, FALSE, NOW(), NOW())
+#                     #     RETURNING id
+#                     # """, (user_id,))
+#                     # conn.commit()
+                    
+#                     return jsonify({"error": "User configuration not found"}), 404
+                
+#                 # Преобразуем datetime объекты в строки
+#                 result = dict(config)
+#                 for key, value in result.items():
+#                     if isinstance(value, datetime):
+#                         result[key] = value.isoformat()
+                
+#                 logger.info(f"Конфигурация успешно получена для пользователя {user_id}")
+#                 return jsonify(result)
+#     except Exception as e:
+#         logger.exception(f"Ошибка при получении конфигурации пользователя: {e}")
+#         return jsonify({"error": str(e)}), 500
 @app.route('/api/config/<int:user_id>', methods=['GET'])
 def get_user_config(user_id):
     """Получение конфигурации пользователя по ID"""
@@ -2302,18 +2356,40 @@ def get_user_config(user_id):
                 config = cur.fetchone()
                 
                 if not config:
-                    # Если в user_configs не нашли, проверяем в других таблицах или создаем пустую запись
-                    logger.warning(f"Конфигурация для пользователя {user_id} не найдена")
+                    # Создаем пустую конфигурацию, если не найдена
+                    logger.info(f"Конфигурация для пользователя {user_id} не найдена, создаем новую")
                     
-                    # Если хотите автоматически создавать пустую запись:
-                    # cur.execute("""
-                    #     INSERT INTO user_configs (user_id, active, created_at, updated_at)
-                    #     VALUES (%s, FALSE, NOW(), NOW())
-                    #     RETURNING id
-                    # """, (user_id,))
-                    # conn.commit()
+                    # Находим оптимальный сервер для пользователя
+                    cur.execute("""
+                        SELECT id FROM remote_servers 
+                        WHERE is_active = TRUE 
+                        ORDER BY 
+                            (SELECT COUNT(*) FROM user_configs WHERE server_id = remote_servers.id) ASC
+                        LIMIT 1
+                    """)
+                    server_row = cur.fetchone()
+                    server_id = server_row['id'] if server_row else None
                     
-                    return jsonify({"error": "User configuration not found"}), 404
+                    # Создаем базовую конфигурацию
+                    cur.execute("""
+                        INSERT INTO user_configs 
+                        (user_id, active, created_at, updated_at, server_id)
+                        VALUES (%s, TRUE, NOW(), NOW(), %s)
+                        RETURNING id, user_id, active, created_at, updated_at, server_id
+                    """, (user_id, server_id))
+                    conn.commit()
+                    
+                    # Получаем созданную конфигурацию
+                    new_config = cur.fetchone()
+                    result = dict(new_config)
+                    
+                    # Преобразуем datetime объекты в строки
+                    for key, value in result.items():
+                        if isinstance(value, datetime):
+                            result[key] = value.isoformat()
+                    
+                    logger.info(f"Создана новая конфигурация для пользователя {user_id}")
+                    return jsonify(result)
                 
                 # Преобразуем datetime объекты в строки
                 result = dict(config)
@@ -2326,7 +2402,7 @@ def get_user_config(user_id):
     except Exception as e:
         logger.exception(f"Ошибка при получении конфигурации пользователя: {e}")
         return jsonify({"error": str(e)}), 500
-
+        
 # Файл: database-service/db_manager.py
 
 @app.route('/api/servers/<server_id>', methods=['GET'])

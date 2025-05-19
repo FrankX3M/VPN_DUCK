@@ -7,7 +7,10 @@ import subprocess
 import json
 import socket
 import statistics
-import PyJWT as jwt
+try:
+    import PyJWT as jwt
+except ImportError:
+    import jwt
 from datetime import datetime
 
 # Настройка логирования

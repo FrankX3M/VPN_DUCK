@@ -122,7 +122,7 @@ services:
   # Сервис сбора метрик
   metrics-collector:
     build: ./metrics-collector
-    restart: always
+    restart: no
     volumes:
       - ./metrics-collector:/app
     environment:
