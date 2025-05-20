@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timedelta
 from functools import lru_cache
 import time
-
+import os
 from core.settings import DATABASE_SERVICE_URL, WIREGUARD_SERVICE_URL, logger, normalize_api_url, API_HEADERS, ADMIN_CHAT_ID
 
 
@@ -47,16 +47,19 @@ async def check_services_availability():
         # Если прошло мало времени с последней проверки, возвращаем текущее состояние
         return _services_status
     
-    logger.info("Выполняем проверку доступности сервисов")
+    logger.info("Проверяем доступность сервисов перед созданием конфигурации")
+    
+    # Получаем базовый URL API Gateway из переменных окружения
+    api_gateway_url = os.environ.get('API_GATEWAY_URL', 'http://kong:8000')
+    logger.info(f"Используем API_GATEWAY_URL: {api_gateway_url}")
     
     # Проверка API Gateway (Kong)
     try:
         async with aiohttp.ClientSession() as session:
-            kong_url = API_GATEWAY_URL
-            logger.info(f"Проверка доступности API Gateway: {kong_url}")
+            logger.info(f"Проверка доступности API Gateway: {api_gateway_url}")
             
             try:
-                async with session.get(kong_url, timeout=5) as response:
+                async with session.get(api_gateway_url, timeout=5) as response:
                     if response.status in [200, 404]:  # 404 тоже нормальный ответ для корневого URL
                         logger.info(f"API Gateway доступен, статус: {response.status}")
                     else:
@@ -66,10 +69,14 @@ async def check_services_availability():
     except Exception as e:
         logger.error(f"Общая ошибка при проверке API Gateway: {str(e)}")
     
+    # Создаем URL для database-service на основе базового URL
+    database_service_url = f"{api_gateway_url}/api"
+    wireguard_service_url = f"{api_gateway_url}/vpn"
+    
     # Проверка database-service
     try:
         async with aiohttp.ClientSession() as session:
-            url = _verify_url(DATABASE_SERVICE_URL, "status")
+            url = f"{database_service_url}/status"
             logger.info(f"Проверка доступности database-service: {url}")
             
             try:
@@ -90,79 +97,67 @@ async def check_services_availability():
         _services_status["database"] = False
         logger.error(f"Общая ошибка при проверке database-service: {str(e)}")
     
-    # Проверка wireguard-service через Kong
-    if WIREGUARD_SERVICE_URL:
-        try:
-            # Получаем базовый URL без /api для wireguard-proxy
-            wireguard_base_url = WIREGUARD_SERVICE_URL
-            if wireguard_base_url.endswith('/api'):
-                wireguard_base_url = wireguard_base_url[:-4]  # Удаляем '/api'
+    # Проверка wireguard-service
+    try:
+        # Сначала пробуем через эндпоинт /status
+        url = f"{wireguard_service_url}/status"
+        logger.info(f"Проверка доступности wireguard-service по URL: {url}")
+        
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(url, timeout=5, headers=API_HEADERS) as response:
+                    if response.status == 200:
+                        _services_status["wireguard"] = True
+                        logger.info("wireguard-service доступен через /status")
+                        # Логируем информацию для диагностики
+                        response_data = await response.json()
+                        logger.info(f"Информация о wireguard-service: {response_data}")
+                    else:
+                        logger.warning(f"Эндпоинт /status вернул код: {response.status}")
+            except Exception as e:
+                logger.warning(f"Ошибка при проверке /status: {str(e)}")
             
-            async with aiohttp.ClientSession() as session:
-                # Сначала пробуем через эндпоинт /status
-                url = f"{wireguard_base_url}/status"
-                logger.info(f"Проверка доступности wireguard-service по URL: {url}")
+            # Если /status недоступен или вернул ошибку, пробуем через /health
+            if not _services_status["wireguard"]:
+                url = f"{wireguard_service_url}/health"
+                logger.info(f"Пробуем запасной URL для проверки: {url}")
                 
                 try:
                     async with session.get(url, timeout=5, headers=API_HEADERS) as response:
                         if response.status == 200:
                             _services_status["wireguard"] = True
-                            logger.info("wireguard-service доступен через /status")
-                            
-                            # Логируем информацию для диагностики
-                            response_data = await response.json()
-                            logger.info(f"Информация о wireguard-service: {response_data}")
+                            logger.info("wireguard-service доступен через /health")
                         else:
-                            logger.warning(f"Эндпоинт /status вернул код: {response.status}")
+                            logger.warning(f"Эндпоинт /health вернул код: {response.status}")
                 except Exception as e:
-                    logger.warning(f"Ошибка при проверке /status: {str(e)}")
+                    logger.error(f"Ошибка при проверке /health: {str(e)}")
+            
+            # Если предыдущие проверки не сработали, пробуем /servers
+            if not _services_status["wireguard"]:
+                url = f"{wireguard_service_url}/servers"
+                logger.info(f"Пробуем проверку через /servers: {url}")
                 
-                # Если /status недоступен или вернул ошибку, пробуем через /health
-                if not _services_status["wireguard"]:
-                    url = f"{wireguard_base_url}/health"
-                    logger.info(f"Пробуем запасной URL для проверки: {url}")
-                    
-                    try:
-                        async with session.get(url, timeout=5, headers=API_HEADERS) as response:
-                            if response.status == 200:
-                                _services_status["wireguard"] = True
-                                logger.info("wireguard-service доступен через /health")
-                            else:
-                                _services_status["wireguard"] = False
-                                logger.warning(f"Эндпоинт /health вернул код: {response.status}")
-                    except Exception as e:
-                        _services_status["wireguard"] = False
-                        logger.error(f"Ошибка при проверке /health: {str(e)}")
-                
-                # Если предыдущие проверки не сработали, пробуем /servers
-                if not _services_status["wireguard"]:
-                    url = f"{wireguard_base_url}/servers"
-                    logger.info(f"Пробуем проверку через /servers: {url}")
-                    
-                    try:
-                        async with session.get(url, timeout=5, headers=API_HEADERS) as response:
-                            if response.status == 200:
-                                _services_status["wireguard"] = True
-                                logger.info("wireguard-service доступен через /servers")
-                                
-                                # Логируем информацию о доступных серверах
-                                servers_data = await response.json()
-                                servers = servers_data.get("servers", [])
-                                logger.info(f"Доступные серверы: {len(servers)}")
-                                for server in servers:
-                                    logger.info(f"Сервер ID: {server.get('id')}, Статус: {server.get('status', 'unknown')}")
-                            else:
-                                _services_status["wireguard"] = False
-                                logger.warning(f"Эндпоинт /servers вернул код: {response.status}")
-                    except Exception as e:
-                        _services_status["wireguard"] = False
-                        logger.error(f"Ошибка при проверке /servers: {str(e)}")
-        except Exception as e:
-            _services_status["wireguard"] = False
-            logger.error(f"Ошибка при проверке wireguard-service: {str(e)}")
-    else:
+                try:
+                    async with session.get(url, timeout=5, headers=API_HEADERS) as response:
+                        if response.status == 200:
+                            _services_status["wireguard"] = True
+                            logger.info("wireguard-service доступен через /servers")
+                            
+                            # Логируем информацию о доступных серверах
+                            servers_data = await response.json()
+                            servers = servers_data.get("servers", [])
+                            logger.info(f"Доступные серверы: {len(servers)}")
+                            for server in servers:
+                                logger.info(f"Сервер ID: {server.get('id')}, Статус: {server.get('status', 'unknown')}")
+                        else:
+                            _services_status["wireguard"] = False
+                            logger.warning(f"Эндпоинт /servers вернул код: {response.status}")
+                except Exception as e:
+                    _services_status["wireguard"] = False
+                    logger.error(f"Ошибка при проверке /servers: {str(e)}")
+    except Exception as e:
         _services_status["wireguard"] = False
-        logger.warning("URL wireguard-service не настроен")
+        logger.error(f"Ошибка при проверке wireguard-service: {str(e)}")
     
     # Обновляем время последней проверки
     _services_check_last_time = current_time
