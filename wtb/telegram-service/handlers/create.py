@@ -63,6 +63,100 @@ from keyboards.keyboards import get_geolocation_keyboard
 #             message_id=callback_query.message.message_id,
 #             parse_mode=ParseMode.HTML
 #         )
+async def direct_create_handler(callback_query: types.CallbackQuery):
+    """Прямое создание конфигурации - показывает список геолокаций."""
+    logger.info(f"Вызван direct_create_handler с данными: {callback_query.data}")
+    
+    try:
+        await bot.answer_callback_query(callback_query.id)
+        user_id = callback_query.from_user.id
+        
+        # Получаем список доступных геолокаций
+        try:
+            geolocations = await get_available_geolocations()
+            
+            if not geolocations:
+                await bot.edit_message_text(
+                    "⚠️ <b>Нет доступных геолокаций</b>\n\n"
+                    "Попробуйте позже.",
+                    chat_id=callback_query.message.chat.id,
+                    message_id=callback_query.message.message_id,
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            
+            # Формируем клавиатуру с геолокациями
+            keyboard = InlineKeyboardMarkup(row_width=1)
+            
+            # Добавляем кнопки для каждой геолокации
+            for geo in geolocations:
+                geo_id = geo.get('id')
+                geo_name = geo.get('name', "")
+                server_count = geo.get('active_servers_count', 0)
+                
+                # Форматируем текст кнопки
+                button_text = f"{geo_name} ({server_count} серверов)"
+                
+                keyboard.add(
+                    InlineKeyboardButton(button_text, callback_data=f"geo_{geo_id}")
+                )
+            
+            # Добавляем кнопку отмены
+            keyboard.add(
+                InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")
+            )
+            
+            await bot.edit_message_text(
+                f"🌍 <b>Выберите геолокацию для вашего VPN</b>\n\n"
+                f"От выбранной геолокации зависит скорость соединения и доступность некоторых сервисов.",
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id,
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard
+            )
+            
+            # Переводим пользователя в состояние выбора геолокации
+            await GeoLocationStates.selecting_geolocation_for_create.set()
+            
+        except Exception as e:
+            logger.error(f"Ошибка при получении геолокаций: {str(e)}", exc_info=True)
+            await bot.edit_message_text(
+                "❌ <b>Произошла ошибка при получении геолокаций</b>\n\n"
+                "Пожалуйста, попробуйте позже.",
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id,
+                parse_mode=ParseMode.HTML
+            )
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка в direct_create_handler: {str(e)}", exc_info=True)
+        try:
+            await bot.edit_message_text(
+                "❌ <b>Произошла ошибка</b>\n\n"
+                "Пожалуйста, попробуйте позже.",
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id,
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as message_error:
+            logger.error(f"Ошибка при отправке сообщения об ошибке: {str(message_error)}")
+
+async def cancel_create_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    """Отмена процесса создания конфигурации."""
+    await bot.answer_callback_query(callback_query.id)
+    
+    # Сбрасываем состояние
+    current_state = await state.get_state()
+    if current_state:
+        await state.finish()
+    
+    await bot.edit_message_text(
+        "❌ <b>Создание конфигурации отменено</b>\n\n"
+        "Вы можете создать конфигурацию позже, когда будете готовы.",
+        chat_id=callback_query.message.chat.id,
+        message_id=callback_query.message.message_id,
+        parse_mode=ParseMode.HTML
+    )
+
 async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMContext):
     """Подтверждение создания новой конфигурации с возможностью выбора геолокации."""
     logger.info(f"Вызван обработчик confirm_create_config с данными: {callback_query.data}")
@@ -462,3 +556,5 @@ def register_handlers_create(dp: Dispatcher):
     dp.register_callback_query_handler(create_config_from_button, lambda c: c.data == 'create_config')
     dp.register_callback_query_handler(confirm_create_config, lambda c: c.data == "confirm_create", state=CreateConfigStates.confirming_create)
     dp.register_callback_query_handler(process_geolocation_for_create, lambda c: c.data.startswith("geo_"), state=GeoLocationStates.selecting_geolocation_for_create)
+    dp.register_callback_query_handler(direct_create_handler, lambda c: c.data == 'direct_create')
+    dp.register_callback_query_handler(cancel_create_handler, lambda c: c.data == 'cancel_create', state='*')

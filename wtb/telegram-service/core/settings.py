@@ -194,10 +194,17 @@ def setup_bot():
     return bot, dp
 
 # Получение дополнительных конфигураций
-WIREGUARD_SERVICE_URL = normalize_api_url(os.getenv('WIREGUARD_SERVICE_URL', ''))
-DATABASE_SERVICE_URL = normalize_api_url(os.getenv('DATABASE_SERVICE_URL', 'http://database-service:5002'))
+# WIREGUARD_SERVICE_URL = normalize_api_url(os.getenv('WIREGUARD_SERVICE_URL', ''))
+# DATABASE_SERVICE_URL = normalize_api_url(os.getenv('DATABASE_SERVICE_URL', 'http://database-service:5002'))
+API_GATEWAY_URL = os.environ.get('API_GATEWAY_URL', 'http://kong:8000')  # URL API Gateway
+DATABASE_SERVICE_URL = f"{API_GATEWAY_URL}/api"
+WIREGUARD_SERVICE_URL = f"{API_GATEWAY_URL}/vpn"
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', 'ваш_id_чата')
 REMOTE_ONLY = os.getenv('REMOTE_ONLY', 'false').lower() == 'true'
+API_HEADERS = {
+    "apikey": os.environ.get('ADMIN_SECRET_KEY', 'fvcfq9d3ycefnvmftiaso'),
+    "Content-Type": "application/json"
+}
 
 # Логируем информацию о сервисах при запуске
 logger.info(f"WIREGUARD_SERVICE_URL: {WIREGUARD_SERVICE_URL}")

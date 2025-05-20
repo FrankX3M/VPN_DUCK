@@ -64,10 +64,11 @@ def get_auth_headers():
 def get_servers():
     """Получает список всех активных серверов из базы данных."""
     try:
-        # Изменяем URL для получения серверов - напрямую обращаемся к сервису БД
-        url = f"{DATABASE_SERVICE_URL}/servers/all"  # Используем правильный эндпоинт
+        # Изменяем URL для получения серверов - обращаемся к сервису БД через API Gateway
+        url = f"{DATABASE_SERVICE_URL}/servers/all"
         logger.info(f"Запрашиваем список серверов с: {url}")
         
+        # Получаем заголовки аутентификации
         simple_headers, jwt_headers = get_auth_headers()
      
         # Пробуем разные эндпоинты, если первый не сработает
@@ -81,6 +82,8 @@ def get_servers():
             try:
                 full_url = f"{DATABASE_SERVICE_URL}{endpoint}"
                 logger.info(f"Пробуем получить серверы с: {full_url}")
+                
+                # Используем simple_headers для запросов, которые требуют только API Key
                 response = requests.get(full_url, headers=simple_headers, timeout=10)
                 
                 if response.status_code == 200:
@@ -91,6 +94,22 @@ def get_servers():
                     logger.warning(f"Ошибка при запросе к {full_url}: {response.status_code}, {response.text}")
             except Exception as e:
                 logger.warning(f"Ошибка при запросе к {full_url}: {str(e)}")
+        
+        # Попробуем получить серверы через wireguard-proxy
+        try:
+            proxy_url = f"{WIREGUARD_SERVICE_URL}/servers"
+            logger.info(f"Пробуем получить серверы через wireguard-proxy: {proxy_url}")
+            
+            response = requests.get(proxy_url, headers=simple_headers, timeout=10)
+            
+            if response.status_code == 200:
+                servers = response.json().get("servers", [])
+                logger.info(f"Получено {len(servers)} серверов через wireguard-proxy")
+                return servers
+            else:
+                logger.warning(f"Ошибка при запросе к wireguard-proxy: {response.status_code}, {response.text}")
+        except Exception as e:
+            logger.warning(f"Ошибка при запросе к wireguard-proxy: {str(e)}")
         
         # Если все URL не сработали, создаем тестовый сервер
         logger.warning("Все попытки получить серверы не удались, используем тестовый сервер")
