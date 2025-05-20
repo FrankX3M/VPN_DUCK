@@ -20,6 +20,7 @@ print_warn() {
 # Остановка всех контейнеров
 print_step "Остановка всех контейнеров"
 docker compose down
+docker compose build --no-cache 
 
 # Запуск контейнеров в правильном порядке
 print_step "Запуск контейнеров в правильном порядке"
