@@ -79,7 +79,11 @@
 │       │   └── template_utils.cpython-39.pyc
 │       └── template_utils.py
 ├── api-gateway
-│   └── setup-kong.sh
+│   ├── check-kong.sh
+│   ├── direct-setup-kong.sh
+│   ├── kong.yml
+│   ├── setup-kong.sh
+│   └── test-endpoints.sh
 ├── config
 ├── create-konga-db.sh
 ├── database-service
@@ -227,4 +231,4 @@
         ├── retry.py
         └── validators.py
 
-48 directories, 180 files
+48 directories, 184 files

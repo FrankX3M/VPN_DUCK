@@ -12,7 +12,7 @@ echo -e "${BLUE}=== Настройка Kong API Gateway ===${NC}"
 
 # Параметры подключения к Kong
 KONG_ADMIN_URL="http://localhost:8001"
-CONFIG_FILE="kong.yml"
+CONFIG_FILE="/app/api-gateway/kong.yml" # Обновленный путь к файлу
 
 # Функция для проверки доступности Kong
 check_kong_availability() {

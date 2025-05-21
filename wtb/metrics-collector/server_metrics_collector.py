@@ -15,44 +15,50 @@ from datetime import datetime
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("metrics-collector")
 
-# Параметры подключения к API с динамическим определением хостов
+# Конфигурация подключения к API Gateway
 API_GATEWAY_URL = os.getenv('API_GATEWAY_URL', 'http://kong:8000')
-DATABASE_SERVICE_URL = f"{API_GATEWAY_URL}/api"
-WIREGUARD_SERVICE_URL = f"{API_GATEWAY_URL}/vpn"
+ADMIN_SECRET_KEY = os.getenv('ADMIN_SECRET_KEY', 'fvcfq9d3ycefnvmftiaso')
 
-logger.info(f"Используем API_GATEWAY_URL: {API_GATEWAY_URL}")
-logger.info(f"Используем DATABASE_SERVICE_URL: {DATABASE_SERVICE_URL}")
-logger.info(f"Используем WIREGUARD_SERVICE_URL: {WIREGUARD_SERVICE_URL}")
-
-# Другие параметры
+# Параметры сбора данных
 COLLECTION_INTERVAL = int(os.getenv('COLLECTION_INTERVAL', 120))  # Интервал сбора в секундах (2 минуты по умолчанию)
 PING_COUNT = int(os.getenv('PING_COUNT', 10))  # Количество пингов для измерения
 MAINTENANCE_INTERVAL = int(os.getenv('MAINTENANCE_INTERVAL', 3600))  # Интервал обслуживания в секундах (1 час)
+STARTUP_DELAY = int(os.getenv('STARTUP_DELAY', 30))  # Задержка запуска в секундах
+
+# Логирование начальной конфигурации
+logger.info(f"Используем API_GATEWAY_URL: {API_GATEWAY_URL}")
+logger.info(f"Интервал сбора данных: {COLLECTION_INTERVAL} секунд")
 
 def get_auth_headers():
     """
-    Получение заголовков аутентификации для запросов к API через Kong
+    Создает и возвращает заголовки аутентификации для API запросов
+    
+    Returns:
+        tuple: (simple_headers, jwt_headers) - два типа заголовков для разных типов аутентификации
     """
-    # Для простых запросов, требующих только API Key
+    # API Key для простой аутентификации
     simple_headers = {
-        "apikey": os.environ.get('ADMIN_SECRET_KEY', 'fvcfq9d3ycefnvmftiaso'),
+        "apikey": ADMIN_SECRET_KEY,
         "Content-Type": "application/json"
     }
     
-    # Для запросов, требующих JWT аутентификации
+    # JWT токен для более сложной аутентификации
     payload = {
         "iss": "metrics-collector",
         "exp": int(time.time()) + 3600,
         "iat": int(time.time())
     }
     
-    secret = os.environ.get('ADMIN_SECRET_KEY', 'fvcfq9d3ycefnvmftiaso')
-    token = jwt.encode(payload, secret, algorithm="HS256")
+    token = jwt.encode(payload, ADMIN_SECRET_KEY, algorithm="HS256")
+    
+    # Если jwt.encode вернул bytes в PyJWT <2.0.0, преобразуем в строку
+    if isinstance(token, bytes):
+        token = token.decode('utf-8')
     
     jwt_headers = {
         "Authorization": f"Bearer {token}",
@@ -62,86 +68,88 @@ def get_auth_headers():
     return simple_headers, jwt_headers
 
 def get_servers():
-    """Получает список всех активных серверов из базы данных."""
-    try:
-        # Изменяем URL для получения серверов - обращаемся к сервису БД через API Gateway
-        url = f"{DATABASE_SERVICE_URL}/servers/all"
-        logger.info(f"Запрашиваем список серверов с: {url}")
+    """
+    Получает список всех активных серверов через API Gateway.
+    
+    Пробует использовать разные эндпоинты, если первый не сработал.
+    
+    Returns:
+        list: Список серверов или пустой список в случае ошибки
+    """
+    simple_headers, jwt_headers = get_auth_headers()
+    
+    # Список возможных эндпоинтов для получения серверов
+    endpoint_configs = [
+        {"url": f"{API_GATEWAY_URL}/api/servers/all", "headers": simple_headers},
+        {"url": f"{API_GATEWAY_URL}/api/servers", "headers": simple_headers},
+        {"url": f"{API_GATEWAY_URL}/api/servers/active", "headers": simple_headers},
+        {"url": f"{API_GATEWAY_URL}/vpn/servers", "headers": simple_headers},
+        # Добавим варианты с JWT аутентификацией
+        {"url": f"{API_GATEWAY_URL}/api/servers/all", "headers": jwt_headers},
+        {"url": f"{API_GATEWAY_URL}/api/servers", "headers": jwt_headers},
+        {"url": f"{API_GATEWAY_URL}/api/servers/active", "headers": jwt_headers},
+        {"url": f"{API_GATEWAY_URL}/vpn/servers", "headers": jwt_headers}
+    ]
+    
+    for config in endpoint_configs:
+        full_url = config["url"]
+        headers = config["headers"]
+        logger.info(f"Пробуем получить серверы с: {full_url}")
         
-        # Получаем заголовки аутентификации
-        simple_headers, jwt_headers = get_auth_headers()
-     
-        # Пробуем разные эндпоинты, если первый не сработает
-        endpoints = [
-            "/servers/all",
-            "/servers",
-            "/servers/active"
-        ]
-        
-        for endpoint in endpoints:
-            try:
-                full_url = f"{DATABASE_SERVICE_URL}{endpoint}"
-                logger.info(f"Пробуем получить серверы с: {full_url}")
-                
-                # Используем simple_headers для запросов, которые требуют только API Key
-                response = requests.get(full_url, headers=simple_headers, timeout=10)
-                
-                if response.status_code == 200:
-                    servers = response.json().get("servers", [])
-                    logger.info(f"Получено {len(servers)} серверов")
-                    return servers
-                else:
-                    logger.warning(f"Ошибка при запросе к {full_url}: {response.status_code}, {response.text}")
-            except Exception as e:
-                logger.warning(f"Ошибка при запросе к {full_url}: {str(e)}")
-        
-        # Попробуем получить серверы через wireguard-proxy
         try:
-            proxy_url = f"{WIREGUARD_SERVICE_URL}/servers"
-            logger.info(f"Пробуем получить серверы через wireguard-proxy: {proxy_url}")
-            
-            response = requests.get(proxy_url, headers=simple_headers, timeout=10)
+            response = requests.get(
+                full_url,
+                headers=headers,
+                timeout=10
+            )
             
             if response.status_code == 200:
-                servers = response.json().get("servers", [])
-                logger.info(f"Получено {len(servers)} серверов через wireguard-proxy")
-                return servers
+                try:
+                    data = response.json()
+                    
+                    # Обработка разных форматов ответа
+                    if isinstance(data, dict) and "servers" in data:
+                        servers = data["servers"]
+                    elif isinstance(data, list):
+                        servers = data
+                    else:
+                        logger.warning(f"Неожиданный формат данных: {data}")
+                        continue
+                    
+                    if servers:
+                        logger.info(f"Получено {len(servers)} серверов с {full_url}")
+                        return servers
+                    else:
+                        logger.warning(f"Получен пустой список серверов с {full_url}")
+                        
+                except ValueError as e:
+                    logger.warning(f"Ошибка парсинга JSON с {full_url}: {str(e)}")
             else:
-                logger.warning(f"Ошибка при запросе к wireguard-proxy: {response.status_code}, {response.text}")
-        except Exception as e:
-            logger.warning(f"Ошибка при запросе к wireguard-proxy: {str(e)}")
-        
-        # Если все URL не сработали, создаем тестовый сервер
-        logger.warning("Все попытки получить серверы не удались, используем тестовый сервер")
-        return [{
-            'id': 1,
-            'name': 'Тестовый сервер',
-            'endpoint': 'localhost',
-            'port': 51820,
-            'location': 'Тестовое расположение',
-            'geolocation_id': 1,
-            'public_key': get_wireguard_public_key(),  # Функция для получения публичного ключа
-            'status': 'active'
-        }]
-    except Exception as e:
-        logger.error(f"Ошибка при запросе к API для получения серверов: {str(e)}")
-        # Возвращаем тестовый сервер в случае ошибки
-        return [{
-            'id': 1,
-            'name': 'Тестовый сервер (fallback)',
-            'endpoint': 'localhost',
-            'port': 51820,
-            'location': 'Тестовое расположение',
-            'geolocation_id': 1,
-            'public_key': get_wireguard_public_key(),  # Функция для получения публичного ключа
-            'status': 'active'
-        }]
-    
-    return []
+                logger.warning(f"Неудачный запрос к {full_url}: код {response.status_code}, ответ: {response.text}")
+                
+        except requests.RequestException as e:
+            logger.warning(f"Ошибка запроса к {full_url}: {str(e)}")
+            
+    # Если все запросы неудачны, возвращаем тестовый сервер
+    logger.warning("Не удалось получить список серверов, использую тестовый сервер")
+    return [{
+        'id': 1,
+        'name': 'Тестовый сервер',
+        'endpoint': 'localhost',
+        'port': 51820,
+        'location': 'Тестовое расположение',
+        'geolocation_id': 1,
+        'public_key': get_wireguard_public_key(),
+        'status': 'active'
+    }]
 
-# Функция для получения публичного ключа WireGuard локально
 def get_wireguard_public_key():
-    """Получает публичный ключ WireGuard интерфейса."""
+    """
+    Получает публичный ключ WireGuard интерфейса.
+    
+    Returns:
+        str: Публичный ключ или строка "unknown_key" в случае ошибки
+    """
     try:
         wg_result = subprocess.run(
             ["wg", "show", "all", "dump"],
@@ -168,9 +176,13 @@ def get_wireguard_public_key():
         return "unknown_key"
 
 def get_wireguard_status():
-    """Получает статус WireGuard и информацию о пирах."""
+    """
+    Получает статус WireGuard и информацию о пирах.
+    
+    Returns:
+        dict: Словарь с информацией об интерфейсе и пирах или None в случае ошибки
+    """
     try:
-        # Получаем данные из интерфейса WireGuard
         wg_result = subprocess.run(
             ["wg", "show", "all", "dump"],
             stdout=subprocess.PIPE,
@@ -223,7 +235,18 @@ def get_wireguard_status():
         return None
 
 def count_active_connections(peers):
-    """Подсчитывает количество активных подключений на основе последнего handshake."""
+    """
+    Подсчитывает количество активных подключений на основе последнего handshake.
+    
+    Args:
+        peers (list): Список пиров WireGuard
+        
+    Returns:
+        int: Количество активных подключений
+    """
+    if not peers:
+        return 0
+        
     try:
         active_count = 0
         current_time = int(time.time())
@@ -240,13 +263,18 @@ def count_active_connections(peers):
         logger.error(f"Ошибка при подсчете активных подключений: {str(e)}")
         return 0
 
-def update_server_metrics(server_id, active_connections):
+def update_server_metrics(server_id, active_connections, latency=None, packet_loss=None):
     """
     Обновляет метрики сервера в базе данных.
     
     Args:
         server_id (str): ID сервера
         active_connections (int): Количество активных подключений
+        latency (float, optional): Задержка в мс
+        packet_loss (float, optional): Потеря пакетов в %
+        
+    Returns:
+        bool: True если успешно, False в случае ошибки
     """
     try:
         logger.info(f"Обновление метрик для сервера {server_id}: {active_connections} активных подключений")
@@ -254,39 +282,175 @@ def update_server_metrics(server_id, active_connections):
         # Подготавливаем данные для отправки в API
         metrics_data = {
             "server_id": server_id,
+            "timestamp": datetime.now().isoformat(),
             "peers_count": active_connections,
             "is_available": True,
-            "success": True,
-            "response_time": 0.1  # Заглушка для времени ответа
+            "success": True
         }
         
+        # Добавляем дополнительные метрики, если они предоставлены
+        if latency is not None:
+            metrics_data["latency"] = latency
+        
+        if packet_loss is not None:
+            metrics_data["packet_loss"] = packet_loss
+        
         # Получаем заголовки аутентификации для API Gateway
-        _, jwt_headers = get_auth_headers()
+        simple_headers, jwt_headers = get_auth_headers()
         
-        # Отправляем данные в API базы данных через API Gateway
-        url = f"{DATABASE_SERVICE_URL}/server_metrics/add"
-        logger.debug(f"Отправка метрик на URL: {url}, данные: {metrics_data}")
+        # Пробуем разные эндпоинты для отправки метрик
+        endpoints = [
+            "/api/server_metrics/add",
+            "/api/metrics/add",
+            "/api/servers/update_metrics"
+        ]
         
-        response = requests.post(url, json=metrics_data, headers=jwt_headers, timeout=10)
+        for endpoint in endpoints:
+            url = f"{API_GATEWAY_URL}{endpoint}"
+            logger.debug(f"Отправка метрик на URL: {url}")
+            
+            try:
+                response = requests.post(
+                    url,
+                    json=metrics_data,
+                    headers=simple_headers,  # Используем простую аутентификацию
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    logger.info(f"Метрики успешно обновлены для сервера {server_id}")
+                    return True
+                else:
+                    logger.warning(f"Ошибка при отправке метрик на {url}: {response.status_code}")
+                    
+                    # Попробуем с JWT аутентификацией, если API Key не сработал
+                    response = requests.post(
+                        url,
+                        json=metrics_data,
+                        headers=jwt_headers,
+                        timeout=10
+                    )
+                    
+                    if response.status_code == 200:
+                        logger.info(f"Метрики успешно обновлены для сервера {server_id} с JWT")
+                        return True
+                    else:
+                        logger.warning(f"Ошибка при отправке метрик с JWT на {url}: {response.status_code}")
+                        
+            except requests.RequestException as e:
+                logger.warning(f"Ошибка запроса к {url}: {str(e)}")
         
-        if response.status_code == 200:
-            logger.info(f"Метрики успешно обновлены для сервера {server_id}")
-            return True
-        else:
-            logger.error(f"Ошибка при обновлении метрик: {response.status_code}, {response.text}")
-            return False
+        logger.error(f"Не удалось обновить метрики сервера {server_id} через все доступные эндпоинты")
+        return False
+        
     except Exception as e:
         logger.error(f"Ошибка при обновлении метрик сервера {server_id}: {str(e)}")
         return False
 
+def measure_latency(server_endpoint, count=10):
+    """
+    Измеряет задержку до сервера с помощью ping.
+    
+    Args:
+        server_endpoint (str): IP-адрес или домен сервера
+        count (int): Количество ping-запросов
+        
+    Returns:
+        tuple: (средняя задержка в мс, процент потери пакетов)
+    """
+    try:
+        # Определяем команду ping в зависимости от ОС
+        if os.name == 'posix':  # Linux или macOS
+            cmd = ["ping", "-c", str(count), server_endpoint]
+        else:  # Windows
+            cmd = ["ping", "-n", str(count), server_endpoint]
+            
+        logger.debug(f"Выполнение команды: {' '.join(cmd)}")
+        
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            logger.warning(f"Ping к {server_endpoint} не удался: {result.stderr}")
+            return None, 100.0  # 100% потери пакетов
+            
+        # Парсим результаты ping для Linux/macOS
+        if os.name == 'posix':
+            # Извлекаем строку потери пакетов
+            packet_loss_line = [line for line in result.stdout.split('\n') if "packet loss" in line]
+            if packet_loss_line:
+                # Обычный формат: "4 packets transmitted, 4 received, 0% packet loss"
+                parts = packet_loss_line[0].split(',')
+                for part in parts:
+                    if "packet loss" in part:
+                        packet_loss = float(part.strip().split('%')[0])
+                        break
+                else:
+                    packet_loss = 0
+            else:
+                packet_loss = 0
+                
+            # Извлекаем строку со статистикой времени
+            rtt_line = [line for line in result.stdout.split('\n') if "min/avg/max" in line]
+            if rtt_line:
+                # Обычный формат: "rtt min/avg/max/mdev = 0.055/0.132/0.223/0.062 ms"
+                rtt_values = rtt_line[0].split('=')[1].strip().split('/')
+                avg_latency = float(rtt_values[1])
+            else:
+                avg_latency = None
+        else:
+            # Парсинг для Windows
+            lines = result.stdout.split('\n')
+            packet_loss_line = [line for line in lines if "Lost" in line or "loss" in line]
+            if packet_loss_line:
+                parts = packet_loss_line[0].split(',')
+                for part in parts:
+                    if "Lost" in part or "loss" in part:
+                        try:
+                            # Формат типа: "Lost = 0 (0% loss)"
+                            packet_loss = float(part.strip().split('%')[0].split('(')[1])
+                        except:
+                            packet_loss = 0
+                        break
+                else:
+                    packet_loss = 0
+            else:
+                packet_loss = 0
+                
+            # Извлекаем строку со средним временем
+            avg_line = [line for line in lines if "Average" in line]
+            if avg_line:
+                # Формат типа: "Average = 10ms"
+                try:
+                    avg_latency = float(avg_line[0].split('=')[1].strip().replace('ms', ''))
+                except:
+                    avg_latency = None
+            else:
+                avg_latency = None
+        
+        return avg_latency, packet_loss
+        
+    except subprocess.TimeoutExpired:
+        logger.error(f"Timeout при выполнении ping к {server_endpoint}")
+        return None, 100.0
+    except Exception as e:
+        logger.error(f"Ошибка при измерении задержки: {str(e)}")
+        return None, 100.0
+
 def main():
-    """Основная функция для сбора и обновления метрик."""
+    """
+    Основная функция для сбора и обновления метрик.
+    """
     logger.info("Запуск сервиса сбора метрик")
     
     # Ждем, пока другие сервисы запустятся
-    startup_delay = int(os.getenv('STARTUP_DELAY', 30))
-    logger.info(f"Ожидание {startup_delay} секунд для запуска других сервисов...")
-    time.sleep(startup_delay)
+    logger.info(f"Ожидание {STARTUP_DELAY} секунд для запуска других сервисов...")
+    time.sleep(STARTUP_DELAY)
     
     while True:
         try:
@@ -309,17 +473,32 @@ def main():
             # Подсчитываем активные подключения
             active_connections = count_active_connections(wg_status.get("peers", []))
             
-            # Обновляем метрики для каждого сервера
+            # Находим наш сервер и обновляем его метрики
+            found_server = False
             for server in servers:
                 # Проверяем, что это наш сервер (по публичному ключу)
                 server_public_key = server.get("public_key")
-                if server_public_key == wg_status.get("interface", {}).get("public_key"):
+                interface_public_key = wg_status.get("interface", {}).get("public_key")
+                
+                if server_public_key == interface_public_key:
                     server_id = server.get("id")
                     logger.info(f"Найден наш сервер: {server_id}")
+                    found_server = True
+                    
+                    # Измеряем задержку если это возможно
+                    server_endpoint = server.get("endpoint")
+                    latency, packet_loss = None, None
+                    
+                    if server_endpoint and server_endpoint != "localhost":
+                        latency, packet_loss = measure_latency(server_endpoint, PING_COUNT)
+                        logger.info(f"Измеренная задержка до {server_endpoint}: {latency}ms, потеря пакетов: {packet_loss}%")
                     
                     # Обновляем метрики сервера через API Gateway
-                    update_server_metrics(server_id, active_connections)
+                    update_server_metrics(server_id, active_connections, latency, packet_loss)
                     break
+            
+            if not found_server:
+                logger.warning("Не найден соответствующий сервер в списке. Проверьте публичные ключи.")
             
             # Ждем до следующего обновления
             logger.info(f"Ожидание {COLLECTION_INTERVAL} секунд до следующего обновления...")

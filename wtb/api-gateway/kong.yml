@@ -1,0 +1,61 @@
+_format_version: "2.1"
+_transform: true
+
+services:
+  - name: database-service
+    url: http://database-service:5002
+    protocol: http
+    host: database-service
+    port: 5002
+    path: /
+    retries: 5
+    connect_timeout: 5000
+    write_timeout: 10000
+    read_timeout: 10000
+    routes:
+      - name: database-api-route
+        protocols: ["http", "https"]
+        paths: ["/api"]
+        strip_path: false
+        preserve_host: true
+        regex_priority: 200
+      - name: database-root-route
+        protocols: ["http", "https"]
+        paths: ["/"]
+        strip_path: false
+        preserve_host: true
+        regex_priority: 100
+
+  - name: wireguard-proxy
+    url: http://wireguard-proxy:5001
+    protocol: http
+    host: wireguard-proxy
+    port: 5001
+    path: /
+    retries: 5
+    connect_timeout: 5000
+    write_timeout: 10000
+    read_timeout: 10000
+    routes:
+      - name: wireguard-api-route
+        protocols: ["http", "https"]
+        paths: ["/vpn"]
+        strip_path: false
+        preserve_host: true
+        regex_priority: 200
+      - name: wireguard-health-route
+        protocols: ["http", "https"]
+        paths: ["/health"]
+        strip_path: false
+        preserve_host: true
+        regex_priority: 100
+
+plugins:
+  - name: key-auth
+    config:
+      key_names:
+        - apikey
+      hide_credentials: true
+      anonymous: null
+      key_in_body: false
+      run_on_preflight: true
