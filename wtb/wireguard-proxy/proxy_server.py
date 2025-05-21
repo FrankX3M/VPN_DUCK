@@ -23,6 +23,7 @@ from app_config.settings import (
     DEBUG, 
     USE_MOCK_DATA, 
     FALLBACK_MODE_ENABLED,
+    DATABASE_SERVICE_URL,
     wait_for_services
 )
 # Импорт модуля инициализации ServerManager

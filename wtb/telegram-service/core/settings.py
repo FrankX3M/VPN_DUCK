@@ -8,59 +8,19 @@ from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
-
+# Загружаем переменные окружения из .env файла
 load_dotenv()
-BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-# # Настройка логирования (может быть перемещена в отдельный модуль)
-# logging.basicConfig(
-#     level=logging.INFO,
-#     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-# )
-# logger = logging.getLogger(__name__)
-
-# # Функция для нормализации URL API
-# def normalize_api_url(url: str) -> str:
-#     """
-#     Нормализует URL API для взаимодействия с микросервисами.
-    
-#     Args:
-#         url (str): Исходный URL микросервиса
-        
-#     Returns:
-#         str: Нормализованный URL с правильным путем /api
-#     """
-#     if not url:
-#         return ""
-    
-#     # Убираем завершающий слеш, если он есть
-#     url = url.rstrip('/')
-    
-#     # Проверяем, содержит ли URL уже путь /api
-#     if 'wireguard-proxy' in url or 'wireguard-service' in url:
-#         # Для wireguard-proxy, который имеет эндпоинты в корне, не добавляем /api
-#         # Исправляем, если /api уже добавлен
-#         if url.endswith('/api'):
-#             logger.debug(f"Удаляем /api для wireguard-proxy: {url}")
-#             url = url[:-4]  # Удаляем '/api'
-#     else:
-#         # Для других сервисов добавляем /api, если его нет
-#         if not url.endswith('/api') and '/api/' not in url:
-#             url += '/api'
-    
-#     # Исправляем случаи двойного /api/api
-#     url = url.replace('/api/api', '/api')
-    
-#     logger.debug(f"Нормализованный URL: {url}")
-#     return url
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Настройка URL для API Gateway
-API_GATEWAY_URL = os.environ.get('API_GATEWAY_URL', 'http://kong:8000')  # URL API Gateway
-DATABASE_SERVICE_URL = f"{API_GATEWAY_URL}/api"
-WIREGUARD_SERVICE_URL = f"{API_GATEWAY_URL}/vpn"
+API_GATEWAY_URL = os.environ.get('API_GATEWAY_URL', 'http://kong:8000')
+
+# Важно: пути соответствуют путям в Kong API Gateway
+DATABASE_SERVICE_URL = f"{API_GATEWAY_URL}/api"  # В Kong определён маршрут /api
+WIREGUARD_SERVICE_URL = f"{API_GATEWAY_URL}/vpn"  # В Kong определён маршрут /vpn
 
 # Добавление заголовков аутентификации для запросов к API через Kong
 API_HEADERS = {
@@ -71,16 +31,12 @@ API_HEADERS = {
 # ADMIN_CHAT_ID для уведомлений администраторам
 ADMIN_CHAT_ID = os.environ.get('ADMIN_CHAT_ID', '12345678')
 
-# Получаем токен бота
-# BOT_TOKEN = os.environ.get("BOT_TOKEN")
-# if not BOT_TOKEN:
-#     logger.error("BOT_TOKEN не задан! Проверьте переменные окружения.")
-#     raise ValueError("Не задан токен бота в переменных окружения.")
+# Получаем токен бота из TELEGRAM_TOKEN или BOT_TOKEN (для обратной совместимости)
 BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN") or os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     logger.error("BOT_TOKEN не задан! Проверьте переменные окружения.")
     raise ValueError("Не задан токен бота в переменных окружения.")
-    
+
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
@@ -99,10 +55,15 @@ def normalize_api_url(url):
     if not url:
         return ""
     
+    # Убираем завершающий слеш, если он есть
     url = url.rstrip('/')
+    
+    # Проверяем, содержит ли URL уже путь /api
     if not url.endswith('/api'):
+        # Если URL содержит /api/ в середине, возвращаем URL до /api
         if '/api/' in url:
             url = url.split('/api/')[0] + '/api'
+        # Если URL не заканчивается на /api, добавляем /api
         elif not url.endswith('/api'):
             url = url + '/api'
     
@@ -180,49 +141,8 @@ def initialize_bot():
         logger.critical(f"Ошибка инициализации бота: {e}", exc_info=True)
         raise
 
-# Глобальные переменные для использования в других модулях
-bot = None
-dp = None
-
-def setup_bot():
-    """
-    Настраивает глобальные переменные бота.
-    Вызывается при импорте модуля или в начале приложения.
-    """
-    global bot, dp
-    bot, dp = initialize_bot()
-    return bot, dp
-
-# Получение дополнительных конфигураций
-# WIREGUARD_SERVICE_URL = normalize_api_url(os.getenv('WIREGUARD_SERVICE_URL', ''))
-# DATABASE_SERVICE_URL = normalize_api_url(os.getenv('DATABASE_SERVICE_URL', 'http://database-service:5002'))
-API_GATEWAY_URL = os.environ.get('API_GATEWAY_URL', 'http://kong:8000')  # URL API Gateway
-DATABASE_SERVICE_URL = f"{API_GATEWAY_URL}/api"
-WIREGUARD_SERVICE_URL = f"{API_GATEWAY_URL}/vpn"
-ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', 'ваш_id_чата')
+# Дополнительные настройки
 REMOTE_ONLY = os.getenv('REMOTE_ONLY', 'false').lower() == 'true'
-API_HEADERS = {
-    "apikey": os.environ.get('ADMIN_SECRET_KEY', 'fvcfq9d3ycefnvmftiaso'),
-    "Content-Type": "application/json"
-}
-
-# Логируем информацию о сервисах при запуске
-logger.info(f"WIREGUARD_SERVICE_URL: {WIREGUARD_SERVICE_URL}")
-logger.info(f"DATABASE_SERVICE_URL: {DATABASE_SERVICE_URL}")
-
-# Проверка работы функции нормализации URL
-test_urls = [
-    "http://example.com",
-    "http://example.com/",
-    "http://example.com/api",
-    "http://example.com/api/",
-    "http://example.com/api/endpoint",
-    "http://example.com/api/api/endpoint"
-]
-logger.info("Тестирование функции normalize_api_url:")
-for url in test_urls:
-    normalized = normalize_api_url(url)
-    logger.info(f"  Исходный: {url} -> Нормализованный: {normalized}")
 
 # Константы для продления
 EXTEND_OPTIONS = [
@@ -245,6 +165,101 @@ def set_state(user_id, state_name):
     logger.info(f"Устанавливаем состояние {state_name} для пользователя {user_id}")
     # Реальная установка состояния происходит в обработчиках
 
-# Автоматическая настройка при импорте
-if bot is None or dp is None:
-    setup_bot()
+# Функция для проверки доступности сервисов
+def check_services_availability():
+    """
+    Проверяет доступность API Gateway и других сервисов.
+    
+    Returns:
+        dict: Статус доступности каждого сервиса
+    """
+    services_status = {
+        "api_gateway": False,
+        "database": False,
+        "wireguard": False
+    }
+    
+    # Проверка API Gateway
+    logger.info(f"Проверка доступности API Gateway: {API_GATEWAY_URL}")
+    try:
+        response = requests.get(API_GATEWAY_URL, timeout=5)
+        if response.status_code:  # Любой статус-код означает, что сервис отвечает
+            services_status["api_gateway"] = True
+            logger.info(f"API Gateway доступен, статус: {response.status_code}")
+    except Exception as e:
+        logger.warning(f"API Gateway недоступен: {str(e)}")
+    
+    # Проверка database-service
+    db_check_url = f"{DATABASE_SERVICE_URL}/status"
+    logger.info(f"Проверка доступности database-service: {db_check_url}")
+    try:
+        response = requests.get(db_check_url, headers=API_HEADERS, timeout=5)
+        if response.status_code == 200:
+            services_status["database"] = True
+            logger.info("database-service доступен")
+        else:
+            logger.warning(f"database-service недоступен, код: {response.status_code}")
+            logger.warning(f"Тело ответа: {response.text}")
+    except Exception as e:
+        logger.warning(f"Ошибка при проверке database-service: {str(e)}")
+    
+    # Проверка wireguard-service
+    logger.info(f"Проверка доступности wireguard-service по URL: {WIREGUARD_SERVICE_URL}/status")
+    try:
+        response = requests.get(f"{WIREGUARD_SERVICE_URL}/status", headers=API_HEADERS, timeout=5)
+        if response.status_code == 200:
+            services_status["wireguard"] = True
+            logger.info("wireguard-service доступен")
+        else:
+            logger.warning(f"Эндпоинт /status вернул код: {response.status_code}")
+            
+            # Пробуем запасной URL
+            logger.info(f"Пробуем запасной URL для проверки: {WIREGUARD_SERVICE_URL}/health")
+            try:
+                response = requests.get(f"{WIREGUARD_SERVICE_URL}/health", headers=API_HEADERS, timeout=5)
+                if response.status_code == 200:
+                    services_status["wireguard"] = True
+                    logger.info("wireguard-service доступен через /health")
+                else:
+                    logger.warning(f"Эндпоинт /health вернул код: {response.status_code}")
+                    
+                    # Пробуем третий вариант
+                    logger.info(f"Пробуем проверку через /servers: {WIREGUARD_SERVICE_URL}/servers")
+                    response = requests.get(f"{WIREGUARD_SERVICE_URL}/servers", headers=API_HEADERS, timeout=5)
+                    if response.status_code == 200:
+                        services_status["wireguard"] = True
+                        logger.info("wireguard-service доступен через /servers")
+                    else:
+                        logger.warning(f"Эндпоинт /servers вернул код: {response.status_code}")
+            except Exception as e:
+                logger.warning(f"Ошибка при проверке запасного URL: {str(e)}")
+    except Exception as e:
+        logger.warning(f"Ошибка при проверке wireguard-service: {str(e)}")
+    
+    logger.info(f"Состояние сервисов: database={services_status['database']}, wireguard={services_status['wireguard']}")
+    return services_status
+
+# Пробуем библиотеку requests, если её нет - устанавливаем через переменную, чтобы не импортировать в глобальной области
+try:
+    import requests
+except ImportError:
+    logger.warning("Библиотека requests не установлена, используйте pip install requests")
+    requests = None
+
+# Вывод информации о настройках при импорте модуля
+logger.info(f"WIREGUARD_SERVICE_URL: {WIREGUARD_SERVICE_URL}")
+logger.info(f"DATABASE_SERVICE_URL: {DATABASE_SERVICE_URL}")
+
+# Проверка работы функции нормализации URL
+test_urls = [
+    "http://example.com",
+    "http://example.com/",
+    "http://example.com/api",
+    "http://example.com/api/",
+    "http://example.com/api/endpoint",
+    "http://example.com/api/api/endpoint"
+]
+logger.info("Тестирование функции normalize_api_url:")
+for url in test_urls:
+    normalized = normalize_api_url(url)
+    logger.info(f"  Исходный: {url} -> Нормализованный: {normalized}")

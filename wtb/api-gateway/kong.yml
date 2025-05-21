@@ -1,6 +1,4 @@
-_format_version: "2.1"
-_transform: true
-
+# Изменение в файле /api-gateway/kong.yml
 services:
   - name: database-service
     url: http://database-service:5002
@@ -16,7 +14,7 @@ services:
       - name: database-api-route
         protocols: ["http", "https"]
         paths: ["/api"]
-        strip_path: false
+        strip_path: true # Изменено с false на true
         preserve_host: true
         regex_priority: 200
       - name: database-root-route
@@ -40,7 +38,7 @@ services:
       - name: wireguard-api-route
         protocols: ["http", "https"]
         paths: ["/vpn"]
-        strip_path: false
+        strip_path: true # Изменено с false на true
         preserve_host: true
         regex_priority: 200
       - name: wireguard-health-route
@@ -49,7 +47,6 @@ services:
         strip_path: false
         preserve_host: true
         regex_priority: 100
-
 plugins:
   - name: key-auth
     config:
