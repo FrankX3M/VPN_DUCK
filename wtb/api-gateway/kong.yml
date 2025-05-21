@@ -1,11 +1,11 @@
-# Изменение в файле /api-gateway/kong.yml
+# Исправленная конфигурация Kong API Gateway (kong.yml)
 services:
   - name: database-service
     url: http://database-service:5002
     protocol: http
     host: database-service
     port: 5002
-    path: /
+    path: /api  # Изменено: добавлен префикс /api в базовый путь
     retries: 5
     connect_timeout: 5000
     write_timeout: 10000
@@ -14,7 +14,7 @@ services:
       - name: database-api-route
         protocols: ["http", "https"]
         paths: ["/api"]
-        strip_path: true # Изменено с false на true
+        strip_path: true  # Оставляем true, но меняем path в url
         preserve_host: true
         regex_priority: 200
       - name: database-root-route
@@ -29,7 +29,7 @@ services:
     protocol: http
     host: wireguard-proxy
     port: 5001
-    path: /
+    path: /  # Базовый путь без префикса
     retries: 5
     connect_timeout: 5000
     write_timeout: 10000
@@ -38,7 +38,7 @@ services:
       - name: wireguard-api-route
         protocols: ["http", "https"]
         paths: ["/vpn"]
-        strip_path: true # Изменено с false на true
+        strip_path: true  # Оставляем true, т.к. маршруты в wireguard-proxy не имеют префикса
         preserve_host: true
         regex_priority: 200
       - name: wireguard-health-route
