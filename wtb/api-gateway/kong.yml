@@ -1,11 +1,14 @@
-# Исправленная конфигурация Kong API Gateway (kong.yml)
+# api-gateway/kong.yml
+_format_version: "3.0"
+_transform: true
+
 services:
   - name: database-service
-    url: http://database-service:5002
+    url: http://wtb-database-service-1:5002
     protocol: http
-    host: database-service
+    host: wtb-database-service-1
     port: 5002
-    path: /api  # Изменено: добавлен префикс /api в базовый путь
+    path: /
     retries: 5
     connect_timeout: 5000
     write_timeout: 10000
@@ -14,39 +17,40 @@ services:
       - name: database-api-route
         protocols: ["http", "https"]
         paths: ["/api"]
-        strip_path: true  # Оставляем true, но меняем path в url
-        preserve_host: true
-        regex_priority: 200
-      - name: database-root-route
-        protocols: ["http", "https"]
-        paths: ["/"]
         strip_path: false
-        preserve_host: true
+        preserve_host: false
+        regex_priority: 200
+      - name: database-health-route
+        protocols: ["http", "https"]
+        paths: ["/health"]
+        strip_path: false
+        preserve_host: false
         regex_priority: 100
 
   - name: wireguard-proxy
-    url: http://wireguard-proxy:5001
+    url: http://wtb-wireguard-proxy-1:5001
     protocol: http
-    host: wireguard-proxy
+    host: wtb-wireguard-proxy-1
     port: 5001
-    path: /  # Базовый путь без префикса
+    path: /
     retries: 5
     connect_timeout: 5000
     write_timeout: 10000
     read_timeout: 10000
     routes:
-      - name: wireguard-api-route
+      - name: wireguard-vpn-route
         protocols: ["http", "https"]
         paths: ["/vpn"]
-        strip_path: true  # Оставляем true, т.к. маршруты в wireguard-proxy не имеют префикса
-        preserve_host: true
+        strip_path: true
+        preserve_host: false
         regex_priority: 200
       - name: wireguard-health-route
         protocols: ["http", "https"]
-        paths: ["/health"]
-        strip_path: false
-        preserve_host: true
+        paths: ["/wg-health"]
+        strip_path: true
+        preserve_host: false
         regex_priority: 100
+
 plugins:
   - name: key-auth
     config:
@@ -56,3 +60,8 @@ plugins:
       anonymous: null
       key_in_body: false
       run_on_preflight: true
+
+consumers:
+  - username: admin
+    keyauth_credentials:
+      - key: fvcfq9d3ycefnvmftiaso

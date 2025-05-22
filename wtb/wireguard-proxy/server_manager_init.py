@@ -50,7 +50,7 @@ def initialize_server_manager(cache_manager, shutdown_event, background_threads)
     
     # Регистрируем поток в списке фоновых потоков
     background_threads.append(update_thread)
-    
+
     logger.info("Запущена фоновая задача обновления серверов")
     logger.info("Запущен фоновый поток обновления информации о серверах с интервалом 60 сек.")
     logger.info("Менеджер серверов успешно инициализирован. Интервал обновления: 60 сек.")
