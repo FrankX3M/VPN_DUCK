@@ -203,7 +203,10 @@ def _verify_url(url, endpoint=""):
     return full_url
 
 async def get_available_geolocations():
-    """Получает список доступных геолокаций из базы данных с кэшированием."""
+    """
+    Получает список доступных геолокаций с подсчетом активных серверов.
+    Исправленная версия с правильным подсчетом серверов.
+    """
     global _geo_cache, _geo_cache_last_update
     
     # Проверяем, не истек ли срок действия кэша
@@ -213,39 +216,115 @@ async def get_available_geolocations():
         return _geo_cache
     
     try:
-        logger.info("Получение доступных геолокаций (обновление кэша)")
+        logger.info("Получение доступных геолокаций с подсчетом серверов (обновление кэша)")
         
         async with aiohttp.ClientSession() as session:
-            url = _verify_url(DATABASE_SERVICE_URL, "geolocations/available")
+            # Получаем список всех геолокаций
+            geolocations_url = _verify_url(DATABASE_SERVICE_URL, "geolocations")
             
             # Добавляем заголовки авторизации
             headers = API_HEADERS.copy()
             
-            async with session.get(url, timeout=10, headers=headers) as response:
-                logger.info(f"Ответ API: код {response.status}")
+            # Сначала получаем список всех геолокаций
+            async with session.get(geolocations_url, timeout=10, headers=headers) as geo_response:
+                logger.info(f"Ответ API геолокаций: код {geo_response.status}")
                 
-                if response.status == 200:
-                    data = await response.json()
-                    geolocations = data.get("geolocations", [])
+                if geo_response.status != 200:
+                    logger.error(f"Ошибка получения геолокаций: {geo_response.status}, тело: {await geo_response.text()}")
+                    # Возвращаем кэшированные данные если есть
+                    if _geo_cache:
+                        logger.warning("Возвращаем устаревшие кэшированные данные из-за ошибки API")
+                        return _geo_cache
+                    return []
+                
+                geolocations_data = await geo_response.json()
+                all_geolocations = geolocations_data.get("geolocations", [])
+                logger.info(f"Получено {len(all_geolocations)} геолокаций")
+            
+            # Получаем список всех серверов
+            servers_url = _verify_url(DATABASE_SERVICE_URL, "servers")
+            
+            async with session.get(servers_url, timeout=10, headers=headers) as servers_response:
+                logger.info(f"Ответ API серверов: код {servers_response.status}")
+                
+                if servers_response.status != 200:
+                    logger.error(f"Ошибка получения серверов: {servers_response.status}, тело: {await servers_response.text()}")
+                    # Если не можем получить серверы, возвращаем геолокации с 0 серверов
+                    result_geolocations = []
+                    for geo in all_geolocations:
+                        geo_info = {
+                            'id': geo.get('id'),
+                            'name': geo.get('name', 'Неизвестная геолокация'),
+                            'active_servers_count': 0
+                        }
+                        result_geolocations.append(geo_info)
                     
-                    # Обновляем кэш и время обновления
-                    _geo_cache = geolocations
+                    # Обновляем кэш
+                    _geo_cache = result_geolocations
                     _geo_cache_last_update = current_time
+                    return result_geolocations
+                
+                servers_data = await servers_response.json()
+                all_servers = servers_data.get("servers", [])
+                logger.info(f"Получено {len(all_servers)} серверов")
+            
+            # Подсчитываем активные сервера для каждой геолокации
+            result_geolocations = []
+            
+            for geo in all_geolocations:
+                geo_id = geo.get('id')
+                geo_name = geo.get('name', 'Неизвестная геолокация')
+                
+                # Подсчитываем активные сервера для данной геолокации
+                active_servers_count = 0
+                for server in all_servers:
+                    server_geo_id = server.get('geolocation_id')
+                    server_status = server.get('status', '').lower()
                     
-                    return geolocations
+                    # Проверяем соответствие геолокации и статус активности
+                    if (server_geo_id == geo_id and 
+                        server_status in ['active', 'активный', 'активен']):
+                        active_servers_count += 1
                 
-                # Подробный вывод информации об ошибке
-                logger.error(f"Ошибка API: {response.status}, тело: {await response.text()}")
+                # Добавляем геолокацию только если есть активные сервера
+                # или если нужно показывать все геолокации
+                geo_info = {
+                    'id': geo_id,
+                    'name': geo_name,
+                    'active_servers_count': active_servers_count
+                }
                 
-                # Возвращаем кэшированные данные даже если они устарели, вместо пустого списка
-                if _geo_cache:
-                    logger.warning("Возвращаем устаревшие кэшированные данные из-за ошибки API")
-                    return _geo_cache
+                logger.info(f"Геолокация '{geo_name}' (ID: {geo_id}): {active_servers_count} активных серверов")
                 
-                return []
+                # Добавляем геолокацию в список (даже с 0 серверов для отладки)
+                result_geolocations.append(geo_info)
+            
+            # Фильтруем геолокации с активными серверами
+            available_geolocations = [geo for geo in result_geolocations if geo['active_servers_count'] > 0]
+            
+            logger.info(f"Доступно {len(available_geolocations)} геолокаций с активными серверами")
+            
+            # Если нет доступных геолокаций, возвращаем все для отладки
+            if not available_geolocations:
+                logger.warning("Нет геолокаций с активными серверами, возвращаем все геолокации для отладки")
+                available_geolocations = result_geolocations
+            
+            # Обновляем кэш и время обновления
+            _geo_cache = available_geolocations
+            _geo_cache_last_update = current_time
+            
+            return available_geolocations
                 
+    except asyncio.TimeoutError:
+        logger.error("Превышено время ожидания при получении геолокаций")
+        # Возвращаем кэшированные данные если есть
+        if _geo_cache:
+            logger.warning("Возвращаем устаревшие кэшированные данные из-за таймаута")
+            return _geo_cache
+        return []
+        
     except Exception as e:
-        logger.error(f"Ошибка запроса доступных геолокаций: {str(e)}")
+        logger.error(f"Ошибка запроса доступных геолокаций: {str(e)}", exc_info=True)
         
         # Возвращаем кэшированные данные даже если они устарели, в случае ошибки
         if _geo_cache:
@@ -514,15 +593,57 @@ async def create_new_config(user_id, geolocation_id=None):
         logger.error(f"Общая ошибка при создании конфигурации: {str(e)}")
         return {"error": f"Ошибка при создании конфигурации: {str(e)}. Пожалуйста, попробуйте позже."}
 
+# async def get_all_user_configs(user_id):
+#     """Получает все конфигурации пользователя из базы данных."""
+#     try:
+#         logger.info(f"Получение всех конфигураций для пользователя {user_id}")
+        
+#         async with aiohttp.ClientSession() as session:
+#             async with session.get(
+#                 _verify_url(DATABASE_SERVICE_URL, f"configs/get_all/{user_id}"), 
+#                 timeout=15
+#             ) as response:
+                
+#                 logger.info(f"Ответ API: код {response.status}")
+                
+#                 if response.status == 200:
+#                     return await response.json()
+                
+#                 # Подробный вывод информации об ошибке
+#                 error_message = "Ошибка при получении конфигураций."
+#                 response_text = await response.text()
+                
+#                 if response.headers.get('content-type') == 'application/json':
+#                     try:
+#                         response_data = await response.json()
+#                         if "error" in response_data:
+#                             error_message = response_data.get("error")
+#                     except:
+#                         logger.error(f"Не удалось декодировать JSON-ответ: {response_text}")
+                
+#                 logger.error(f"Ошибка API: {error_message}")
+#                 return {"error": error_message}
+                
+#     except aiohttp.ClientError as e:
+#         logger.error(f"Ошибка клиента aiohttp при запросе к API: {str(e)}")
+#         return {"error": f"Ошибка соединения при получении конфигураций: {str(e)}. Пожалуйста, попробуйте позже."}
+#     except asyncio.TimeoutError:
+#         logger.error("Превышено время ожидания ответа от сервера")
+#         return {"error": "Превышено время ожидания ответа от сервера. Пожалуйста, попробуйте позже."}
+#     except Exception as e:
+#         logger.error(f"Ошибка при запросе к API: {str(e)}")
+#         return {"error": f"Ошибка при получении конфигураций: {str(e)}. Пожалуйста, попробуйте позже."}
 async def get_all_user_configs(user_id):
     """Получает все конфигурации пользователя из базы данных."""
     try:
         logger.info(f"Получение всех конфигураций для пользователя {user_id}")
         
         async with aiohttp.ClientSession() as session:
+            # ИСПРАВЛЕНИЕ: Добавляем API_HEADERS к запросу
             async with session.get(
                 _verify_url(DATABASE_SERVICE_URL, f"configs/get_all/{user_id}"), 
-                timeout=15
+                timeout=15,
+                headers=API_HEADERS
             ) as response:
                 
                 logger.info(f"Ответ API: код {response.status}")
@@ -555,6 +676,51 @@ async def get_all_user_configs(user_id):
         logger.error(f"Ошибка при запросе к API: {str(e)}")
         return {"error": f"Ошибка при получении конфигураций: {str(e)}. Пожалуйста, попробуйте позже."}
 
+# async def get_user_config(user_id):
+#     """Получает конфигурацию пользователя из базы данных."""
+#     try:
+#         logger.info(f"Получение конфигурации для пользователя {user_id}")
+#         url = _verify_url(DATABASE_SERVICE_URL, f"config/{user_id}")
+#         logger.info(f"Используем URL: {url}")
+        
+#         async with aiohttp.ClientSession() as session:
+#             try:
+#                 async with session.get(url, timeout=10) as response:
+#                     logger.info(f"Ответ API: код {response.status}")
+                    
+#                     if response.status == 200:
+#                         return await response.json()
+#                     elif response.status == 404:
+#                         logger.info(f"Конфигурация для пользователя {user_id} не найдена (404)")
+#                         return None
+#                     else:
+#                         # Подробный вывод информации об ошибке
+#                         logger.error(f"Ошибка API: {response.status}, тело: {await response.text()}")
+                        
+#                         # Пытаемся повторить запрос один раз при серверных ошибках
+#                         if response.status >= 500:
+#                             logger.info(f"Повторяем запрос после серверной ошибки {response.status}")
+#                             await asyncio.sleep(1)  # Небольшая задержка перед повторным запросом
+                            
+#                             async with session.get(url, timeout=10) as retry_response:
+#                                 if retry_response.status == 200:
+#                                     logger.info("Повторный запрос успешен")
+#                                     return await retry_response.json()
+                        
+#                         return None
+#             except asyncio.TimeoutError:
+#                 logger.error(f"Превышено время ожидания при запросе конфигурации пользователя {user_id}")
+#                 return None
+                
+#     except aiohttp.ClientError as e:
+#         logger.error(f"Ошибка клиента aiohttp при запросе конфигурации пользователя: {str(e)}")
+#         return None
+#     except asyncio.TimeoutError:
+#         logger.error("Превышено время ожидания ответа от сервера")
+#         return None
+#     except Exception as e:
+#         logger.error(f"Ошибка запроса конфигурации пользователя: {str(e)}")
+#         return None
 async def get_user_config(user_id):
     """Получает конфигурацию пользователя из базы данных."""
     try:
@@ -564,7 +730,8 @@ async def get_user_config(user_id):
         
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(url, timeout=10) as response:
+                # ИСПРАВЛЕНИЕ: Добавляем API_HEADERS к запросу
+                async with session.get(url, timeout=10, headers=API_HEADERS) as response:
                     logger.info(f"Ответ API: код {response.status}")
                     
                     if response.status == 200:
@@ -581,7 +748,8 @@ async def get_user_config(user_id):
                             logger.info(f"Повторяем запрос после серверной ошибки {response.status}")
                             await asyncio.sleep(1)  # Небольшая задержка перед повторным запросом
                             
-                            async with session.get(url, timeout=10) as retry_response:
+                            # ИСПРАВЛЕНИЕ: Добавляем API_HEADERS к повторному запросу
+                            async with session.get(url, timeout=10, headers=API_HEADERS) as retry_response:
                                 if retry_response.status == 200:
                                     logger.info("Повторный запрос успешен")
                                     return await retry_response.json()
@@ -638,6 +806,42 @@ async def are_servers_available():
         logger.error(f"Ошибка при проверке доступных серверов: {str(e)}")
         return False
 
+# async def get_servers_for_geolocation(geolocation_id):
+#     """
+#     Получает список серверов для указанной геолокации.
+    
+#     Args:
+#         geolocation_id: ID геолокации
+        
+#     Returns:
+#         list: Список серверов для данной геолокации
+#     """
+#     try:
+#         logger.info(f"Получение серверов для геолокации {geolocation_id}")
+        
+#         async with aiohttp.ClientSession() as session:
+#             async with session.get(
+#                 _verify_url(DATABASE_SERVICE_URL, f"servers/geolocation/{geolocation_id}"),
+#                 timeout=10
+#             ) as response:
+#                 logger.info(f"Ответ API получения серверов: код {response.status}")
+                
+#                 if response.status == 200:
+#                     data = await response.json()
+#                     return data.get("servers", [])
+                
+#                 # Если серверы не найдены, возвращаем пустой список
+#                 if response.status == 404:
+#                     logger.warning(f"Серверы для геолокации {geolocation_id} не найдены")
+#                     return []
+                
+#                 # Подробный вывод информации об ошибке
+#                 logger.error(f"Ошибка API при получении серверов: {response.status}, тело: {await response.text()}")
+#                 return []
+                
+#     except Exception as e:
+#         logger.error(f"Ошибка при получении серверов для геолокации: {str(e)}", exc_info=True)
+#         return []
 async def get_servers_for_geolocation(geolocation_id):
     """
     Получает список серверов для указанной геолокации.
@@ -652,9 +856,11 @@ async def get_servers_for_geolocation(geolocation_id):
         logger.info(f"Получение серверов для геолокации {geolocation_id}")
         
         async with aiohttp.ClientSession() as session:
+            # ИСПРАВЛЕНИЕ: Добавляем API_HEADERS к запросу
             async with session.get(
                 _verify_url(DATABASE_SERVICE_URL, f"servers/geolocation/{geolocation_id}"),
-                timeout=10
+                timeout=10,
+                headers=API_HEADERS
             ) as response:
                 logger.info(f"Ответ API получения серверов: код {response.status}")
                 
@@ -694,6 +900,35 @@ async def get_user_location(user_id):
         logger.error(f"Ошибка при получении локации пользователя: {str(e)}", exc_info=True)
         return None
 
+# async def update_user_location(user_id, location):
+#     """
+#     Обновляет геолокацию пользователя.
+    
+#     Args:
+#         user_id (int): ID пользователя
+#         location (str): Новая геолокация
+        
+#     Returns:
+#         bool: True, если обновление прошло успешно, иначе False
+#     """
+#     try:
+#         async with aiohttp.ClientSession() as session:
+#             async with session.put(
+#                 _verify_url(DATABASE_SERVICE_URL, "user/location"),
+#                 json={
+#                     "user_id": user_id,
+#                     "location": location
+#                 },
+#                 timeout=10
+#             ) as response:
+#                 if response.status in [200, 201]:
+#                     return True
+                
+#                 logger.error(f"Ошибка при обновлении локации: {response.status}")
+#                 return False
+#     except Exception as e:
+#         logger.error(f"Ошибка при обновлении локации пользователя: {str(e)}", exc_info=True)
+#         return False
 async def update_user_location(user_id, location):
     """
     Обновляет геолокацию пользователя.
@@ -707,13 +942,15 @@ async def update_user_location(user_id, location):
     """
     try:
         async with aiohttp.ClientSession() as session:
+            # ИСПРАВЛЕНИЕ: Добавляем API_HEADERS к запросу
             async with session.put(
                 _verify_url(DATABASE_SERVICE_URL, "user/location"),
                 json={
                     "user_id": user_id,
                     "location": location
                 },
-                timeout=10
+                timeout=10,
+                headers=API_HEADERS
             ) as response:
                 if response.status in [200, 201]:
                     return True
@@ -849,15 +1086,51 @@ async def extend_config(user_id, days, stars, transaction_id):
         logger.error(f"Неожиданная ошибка при продлении конфигурации: {str(unexpected_error)}", exc_info=True)
         return {"error": "Внутренняя ошибка при продлении. Обратитесь в поддержку."}
 
+# async def get_payment_history(user_id):
+#     """Получает историю платежей пользователя."""
+#     try:
+#         logger.info(f"Получение истории платежей для пользователя {user_id}")
+        
+#         async with aiohttp.ClientSession() as session:
+#             async with session.get(
+#                 _verify_url(DATABASE_SERVICE_URL, f"payments/history/{user_id}"), 
+#                 timeout=10
+#             ) as response:
+#                 logger.info(f"Ответ API: код {response.status}")
+                
+#                 if response.status == 200:
+#                     return await response.json()
+                
+#                 # Подробный вывод информации об ошибке
+#                 logger.error(f"Ошибка API: {response.status}, тело: {await response.text()}")
+                
+#                 error_message = "Не удалось получить историю платежей. Попробуйте позже."
+#                 if response.headers.get('content-type') == 'application/json':
+#                     try:
+#                         response_data = await response.json()
+#                         if "error" in response_data:
+#                             error_message = response_data.get("error")
+#                     except Exception as json_error:
+#                         logger.error(f"Ошибка при разборе JSON: {str(json_error)}")
+                
+#                 return {"error": error_message}
+#     except aiohttp.ClientError as e:
+#         logger.error(f"Ошибка клиента aiohttp при запросе к API: {str(e)}")
+#         return {"error": f"Ошибка при получении истории платежей: {str(e)}. Пожалуйста, попробуйте позже."}
+#     except Exception as e:
+#         logger.error(f"Ошибка при запросе к API: {str(e)}")
+#         return {"error": f"Ошибка при получении истории платежей: {str(e)}. Пожалуйста, попробуйте позже."}
 async def get_payment_history(user_id):
     """Получает историю платежей пользователя."""
     try:
         logger.info(f"Получение истории платежей для пользователя {user_id}")
         
         async with aiohttp.ClientSession() as session:
+            # ИСПРАВЛЕНИЕ: Добавляем API_HEADERS к запросу
             async with session.get(
                 _verify_url(DATABASE_SERVICE_URL, f"payments/history/{user_id}"), 
-                timeout=10
+                timeout=10,
+                headers=API_HEADERS
             ) as response:
                 logger.info(f"Ответ API: код {response.status}")
                 

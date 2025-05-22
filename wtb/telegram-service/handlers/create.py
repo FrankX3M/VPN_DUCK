@@ -12,57 +12,37 @@ from utils.qr import generate_config_qr
 
 from keyboards.keyboards import get_geolocation_keyboard
 
-# поддержка выбора геолокации во время создания конфигурации
-# async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMContext):
-#     """Подтверждение создания новой конфигурации с возможностью выбора геолокации."""
-#     logger.info(f"Вызван обработчик confirm_create_config с данными: {callback_query.data}")
+
+def safe_parse_datetime(dt_value):
+    """Безопасно парсит datetime из различных форматов"""
+    if dt_value is None:
+        return None
     
-#     await bot.answer_callback_query(callback_query.id)
-#     user_id = callback_query.from_user.id
+    # Если уже datetime объект
+    if isinstance(dt_value, datetime):
+        return dt_value
     
-#     try:
-#         # Получаем доступные геолокации
-#         geolocations = await get_available_geolocations()
-        
-#         if not geolocations:
-#             await bot.edit_message_text(
-#                 "❌ <b>Ошибка!</b>\n\n"
-#                 "Нет доступных геолокаций. Пожалуйста, попробуйте позже.",
-#                 chat_id=callback_query.message.chat.id,
-#                 message_id=callback_query.message.message_id,
-#                 parse_mode=ParseMode.HTML
-#             )
-#             await state.finish()
-#             return
-        
-#         # Сохраняем список геолокаций в состоянии
-#         await state.update_data(geolocations=geolocations, is_creating=True)
-        
-#         # Формируем клавиатуру с геолокациями
-#         keyboard = get_geolocation_keyboard(geolocations)
-        
-#         # Обновляем сообщение с просьбой выбрать геолокацию
-#         await bot.edit_message_text(
-#             "🌍 <b>Выберите геолокацию для вашего VPN</b>\n\n"
-#             "От выбранной геолокации зависит скорость соединения и доступность некоторых сервисов.",
-#             chat_id=callback_query.message.chat.id,
-#             message_id=callback_query.message.message_id,
-#             parse_mode=ParseMode.HTML,
-#             reply_markup=keyboard
-#         )
-        
-#         # Переходим в состояние выбора геолокации для создания
-#         await GeoLocationStates.selecting_geolocation_for_create.set()
-        
-#     except Exception as e:
-#         logger.error(f"Неожиданная ошибка: {str(e)}", exc_info=True)
-#         await bot.edit_message_text(
-#             "❌ <b>Произошла ошибка</b>\n\n"
-#             "Пожалуйста, попробуйте позже.",
-#             chat_id=callback_query.message.chat.id,
-#             message_id=callback_query.message.message_id,
-#             parse_mode=ParseMode.HTML
-#         )
+    # Если строка
+    if isinstance(dt_value, str):
+        try:
+            # Пробуем fromisoformat
+            return datetime.fromisoformat(dt_value.replace('Z', '+00:00'))
+        except ValueError:
+            try:
+                # Пробуем strptime для других форматов
+                return datetime.strptime(dt_value, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                try:
+                    # Пробуем без времени
+                    return datetime.strptime(dt_value, '%Y-%m-%d')
+                except ValueError:
+                    logger.error(f"Не удалось распарсить дату: {dt_value}")
+                    return None
+    
+    logger.error(f"Неизвестный тип даты: {type(dt_value)} = {dt_value}")
+    return None
+
+
 async def direct_create_handler(callback_query: types.CallbackQuery):
     """Прямое создание конфигурации - показывает список геолокаций."""
     logger.info(f"Вызван direct_create_handler с данными: {callback_query.data}")
@@ -140,6 +120,7 @@ async def direct_create_handler(callback_query: types.CallbackQuery):
         except Exception as message_error:
             logger.error(f"Ошибка при отправке сообщения об ошибке: {str(message_error)}")
 
+
 async def cancel_create_handler(callback_query: types.CallbackQuery, state: FSMContext):
     """Отмена процесса создания конфигурации."""
     await bot.answer_callback_query(callback_query.id)
@@ -156,6 +137,7 @@ async def cancel_create_handler(callback_query: types.CallbackQuery, state: FSMC
         message_id=callback_query.message.message_id,
         parse_mode=ParseMode.HTML
     )
+
 
 async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMContext):
     """Подтверждение создания новой конфигурации с возможностью выбора геолокации."""
@@ -287,7 +269,7 @@ async def confirm_create_config(callback_query: types.CallbackQuery, state: FSMC
         # Сбрасываем состояние в любом случае
         await state.finish()
 
-# Обработчик выбора геолокации для новой конфигурации
+
 async def process_geolocation_for_create(callback_query: types.CallbackQuery, state: FSMContext):
     """Обработка выбора геолокации при создании новой конфигурации."""
     await bot.answer_callback_query(callback_query.id)
@@ -351,12 +333,16 @@ async def process_geolocation_for_create(callback_query: types.CallbackQuery, st
         geo_text = ""
         
         if db_data:
-            # Информация о сроке действия
+            # Информация о сроке действия - ИСПРАВЛЕННАЯ ВЕРСИЯ
             expiry_time = db_data.get("expiry_time")
             if expiry_time:
-                expiry_dt = datetime.fromisoformat(expiry_time)
-                expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
-                expiry_text = f"▫️ Срок действия: до <b>{expiry_formatted}</b>\n"
+                expiry_dt = safe_parse_datetime(expiry_time)
+                if expiry_dt:
+                    expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
+                    expiry_text = f"▫️ Срок действия: до <b>{expiry_formatted}</b>\n"
+                else:
+                    logger.warning(f"Не удалось распарсить дату истечения: {expiry_time}")
+                    expiry_text = f"▫️ Срок действия: <b>неизвестно</b>\n"
             
             # Информация о геолокации
             geo_name = db_data.get("geolocation_name") or geolocation_name
@@ -435,7 +421,7 @@ async def process_geolocation_for_create(callback_query: types.CallbackQuery, st
     # Сбрасываем состояние
     await state.finish()
 
-# Обработчик для создания новой конфигурации
+
 async def create_config(message: types.Message, state: FSMContext):
     """Создание новой конфигурации WireGuard."""
     # Сначала завершаем предыдущее состояние, если было
@@ -452,8 +438,14 @@ async def create_config(message: types.Message, state: FSMContext):
         if config and config.get("active", False):
             # У пользователя уже есть активная конфигурация
             expiry_time = config.get("expiry_time")
-            expiry_dt = datetime.fromisoformat(expiry_time)
-            expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
+            
+            # ИСПРАВЛЕНИЕ: Безопасный парсинг даты
+            expiry_dt = safe_parse_datetime(expiry_time)
+            if expiry_dt is None:
+                logger.warning(f"Не удалось получить дату истечения для пользователя {user_id}, используем текущую дату")
+                expiry_formatted = "неизвестно"
+            else:
+                expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
             
             await message.reply(
                 f"⚠️ <b>У вас уже есть активная конфигурация!</b>\n\n"
@@ -486,7 +478,7 @@ async def create_config(message: types.Message, state: FSMContext):
             parse_mode=ParseMode.HTML
         )
 
-# Обработчик для inline-кнопки создания конфигурации
+
 async def create_config_from_button(callback_query: types.CallbackQuery, state: FSMContext):
     """Начало процесса создания через inline кнопку."""
     logger.info(f"Вызван обработчик create_config_from_button с callback_data: {callback_query.data}")
@@ -508,8 +500,14 @@ async def create_config_from_button(callback_query: types.CallbackQuery, state: 
         if config and config.get("active", False):
             # У пользователя уже есть активная конфигурация
             expiry_time = config.get("expiry_time")
-            expiry_dt = datetime.fromisoformat(expiry_time)
-            expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
+            
+            # ИСПРАВЛЕНИЕ: Безопасный парсинг даты
+            expiry_dt = safe_parse_datetime(expiry_time)
+            if expiry_dt is None:
+                logger.warning(f"Не удалось получить дату истечения для пользователя {user_id}, используем текущую дату")
+                expiry_formatted = "неизвестно"
+            else:
+                expiry_formatted = expiry_dt.strftime("%d.%m.%Y %H:%M:%S")
             
             await bot.send_message(
                 user_id,
@@ -548,6 +546,7 @@ async def create_config_from_button(callback_query: types.CallbackQuery, state: 
             parse_mode=ParseMode.HTML
         )
 
+
 def register_handlers_create(dp: Dispatcher):
     """Регистрирует обработчики для создания конфигурации."""
     # Основные хендлеры
@@ -558,3 +557,4 @@ def register_handlers_create(dp: Dispatcher):
     dp.register_callback_query_handler(process_geolocation_for_create, lambda c: c.data.startswith("geo_"), state=GeoLocationStates.selecting_geolocation_for_create)
     dp.register_callback_query_handler(direct_create_handler, lambda c: c.data == 'direct_create')
     dp.register_callback_query_handler(cancel_create_handler, lambda c: c.data == 'cancel_create', state='*')
+    
