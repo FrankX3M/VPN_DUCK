@@ -4,9 +4,9 @@ _transform: true
 
 services:
   - name: database-service
-    url: http://wtb-database-service-1:5002
+    url: http://database-service:5002
     protocol: http
-    host: wtb-database-service-1
+    host: database-service
     port: 5002
     path: /
     retries: 5
@@ -28,9 +28,9 @@ services:
         regex_priority: 100
 
   - name: wireguard-proxy
-    url: http://wtb-wireguard-proxy-1:5001
+    url: http://wireguard-proxy:5001
     protocol: http
-    host: wtb-wireguard-proxy-1
+    host: wireguard-proxy
     port: 5001
     path: /
     retries: 5

@@ -17,6 +17,85 @@ services:
     networks:
       - vpn_network
 
+  # Kong Database
+  kong-database:
+    image: postgres:11
+    container_name: kong-database
+    environment:
+      POSTGRES_USER: kong
+      POSTGRES_DB: kong
+      POSTGRES_PASSWORD: ${KONG_DB_PASSWORD:-kong_pass}
+    volumes:
+      - kong-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "kong"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - vpn_network
+
+  # Kong Migration - используем официальный образ
+# Kong Migration - исправленная версия
+  kong-migration:
+    image: kong:3.9-ubuntu
+    container_name: kong-migration
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: ${KONG_DB_PASSWORD:-kong_pass}
+      KONG_PG_DATABASE: kong
+    # Изменяем команду на migrations up
+    command: ["kong", "migrations", "up"]
+    restart: "no"
+    networks:
+      - vpn_network
+
+  # Kong API Gateway
+# Kong API Gateway - с автоматическими миграциями
+  kong:
+    build: ./api-gateway
+    container_name: kong-gateway
+    depends_on:
+      kong-database:
+        condition: service_healthy
+      kong-migration:
+        condition: service_completed_successfully
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: ${KONG_DB_PASSWORD:-kong_pass}
+      KONG_PG_DATABASE: kong
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_ADMIN_GUI_URL: http://localhost:8002
+      # Разрешаем Kong запускаться без миграций (для отладки)
+      KONG_NGINX_DAEMON: "off"
+    ports:
+      - "8000:8000"
+      - "8443:8443"
+      - "8001:8001"
+      - "8444:8444"
+    restart: always
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - vpn_network
+
   # API сервис для взаимодействия с базой данных
   database-service:
     build: ./database-service
@@ -38,57 +117,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-    networks:
-      - vpn_network
-
-  # Веб-интерфейс администратора
-  admin-panel:
-    build: ./admin-panel
-    restart: always
-    volumes:
-      - ./admin-panel:/app
-    environment:
-      - API_GATEWAY_URL=http://kong:8000
-      - USE_MOCK_DATA=false
-      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
-      - FLASK_ENV=${FLASK_ENV:-production}
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
-    ports:
-      - "5000:5000"
-    depends_on:
-      database-service:
-        condition: service_healthy
-      wireguard-proxy:
-        condition: service_healthy
-      kong:
-        condition: service_healthy
-    networks:
-      - vpn_network
-
-  # Телеграм-бот
-  telegram-service:
-    build: ./telegram-service
-    restart: always
-    volumes:
-      - ./telegram-service:/app
-      - ./.env:/app/.env
-    environment:
-      - API_GATEWAY_URL=http://kong:8000
-      - TELEGRAM_API_TOKEN=${TELEGRAM_TOKEN}
-      - PAYMENT_TOKEN=${PAYMENT_TOKEN:-test}
-      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
-      - REMOTE_ONLY=${REMOTE_ONLY:-true}
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-    depends_on:
-      database-service:
-        condition: service_healthy
-      wireguard-proxy:
-        condition: service_healthy
-      kong:
-        condition: service_healthy
     networks:
       - vpn_network
 
@@ -119,122 +147,6 @@ services:
     networks:
       - vpn_network
 
-  # Сервис сбора метрик
-  metrics-collector:
-    build: ./metrics-collector
-    restart: no
-    volumes:
-      - ./metrics-collector:/app
-    environment:
-      - API_GATEWAY_URL=http://kong:8000
-      - COLLECTION_INTERVAL=${COLLECTION_INTERVAL:-120}
-      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
-    depends_on:
-      database-service:
-        condition: service_healthy
-      wireguard-proxy:
-        condition: service_healthy
-      kong:
-        condition: service_healthy
-    networks:
-      - vpn_network
-
-  # Сервис миграции пользователей
-  migration-service:
-    build: ./migration-service
-    restart: on-failure
-    volumes:
-      - ./migration-service:/app
-    environment:
-      - API_GATEWAY_URL=http://kong:8000
-      - STARTUP_DELAY=${STARTUP_DELAY:-60}
-      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
-      - POSTGRES_HOST=db
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-5YE2w8bxd9}
-      - POSTGRES_DB=${POSTGRES_DB:-wireguard}
-    depends_on:
-      database-service:
-        condition: service_healthy
-      wireguard-proxy:
-        condition: service_healthy
-      kong:
-        condition: service_healthy
-    networks:
-      - vpn_network
-
-  # Kong Database
-  kong-database:
-    image: postgres:11
-    container_name: kong-database
-    environment:
-      POSTGRES_USER: kong
-      POSTGRES_DB: kong
-      POSTGRES_PASSWORD: ${KONG_DB_PASSWORD:-kong_pass}
-    volumes:
-      - kong-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "kong"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: always
-    networks:
-      - vpn_network
-
-  # Kong Migration
-  kong-migration:
-    build: ./api-gateway
-    container_name: kong-migration
-    depends_on:
-      kong-database:
-        condition: service_healthy
-    environment:
-      KONG_DATABASE: postgres
-      KONG_PG_HOST: kong-database
-      KONG_PG_USER: kong
-      KONG_PG_PASSWORD: ${KONG_DB_PASSWORD:-kong_pass}
-    command: kong migrations bootstrap
-    restart: on-failure
-    networks:
-      - vpn_network
-
-  # Kong API Gateway
-  kong:
-    build: ./api-gateway
-    container_name: kong-gateway
-    depends_on:
-      kong-database:
-        condition: service_healthy
-      kong-migration:
-        condition: service_completed_successfully
-    environment:
-      KONG_DATABASE: postgres
-      KONG_PG_HOST: kong-database
-      KONG_PG_USER: kong
-      KONG_PG_PASSWORD: ${KONG_DB_PASSWORD:-kong_pass}
-      KONG_PROXY_ACCESS_LOG: /dev/stdout
-      KONG_ADMIN_ACCESS_LOG: /dev/stdout
-      KONG_PROXY_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_LISTEN: 0.0.0.0:8001
-      KONG_ADMIN_GUI_URL: http://localhost:8002
-      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
-      ADMIN_SECRET_KEY: ${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
-    ports:
-      - "8000:8000" # Kong proxy
-      - "8443:8443" # Kong proxy SSL
-      - "8001:8001" # Kong admin API
-      - "8444:8444" # Kong admin API SSL
-    restart: always
-    healthcheck:
-      test: ["CMD", "kong", "health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - vpn_network
-
   # Konga Database
   konga-database:
     image: postgres:11
@@ -262,13 +174,13 @@ services:
     depends_on:
       konga-database:
         condition: service_healthy
-    restart: on-failure
+    restart: "no"
     networks:
       - vpn_network
 
   # Konga - Admin UI для Kong
   konga:
-    image: pantsel/konga:0.14.1
+    build: ./konga
     container_name: konga
     depends_on:
       kong:
@@ -285,6 +197,98 @@ services:
     ports:
       - "1337:1337"
     restart: always
+    networks:
+      - vpn_network
+
+  # Остальные сервисы запускаются после Kong
+  admin-panel:
+    build: ./admin-panel
+    restart: always
+    volumes:
+      - ./admin-panel:/app
+    environment:
+      - API_GATEWAY_URL=http://kong:8000
+      - USE_MOCK_DATA=false
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+    ports:
+      - "5000:5000"
+    depends_on:
+      database-service:
+        condition: service_healthy
+      wireguard-proxy:
+        condition: service_healthy
+      kong:
+        condition: service_healthy
+    networks:
+      - vpn_network
+
+  telegram-service:
+    build: ./telegram-service
+    restart: always
+    volumes:
+      - ./telegram-service:/app
+      - ./.env:/app/.env
+    environment:
+      - API_GATEWAY_URL=http://kong:8000
+      - TELEGRAM_API_TOKEN=${TELEGRAM_TOKEN}
+      - PAYMENT_TOKEN=${PAYMENT_TOKEN:-test}
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
+      - REMOTE_ONLY=${REMOTE_ONLY:-true}
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    depends_on:
+      database-service:
+        condition: service_healthy
+      wireguard-proxy:
+        condition: service_healthy
+      kong:
+        condition: service_healthy
+    networks:
+      - vpn_network
+
+  metrics-collector:
+    build: ./metrics-collector
+    restart: "no"
+    volumes:
+      - ./metrics-collector:/app
+    environment:
+      - API_GATEWAY_URL=http://kong:8000
+      - COLLECTION_INTERVAL=${COLLECTION_INTERVAL:-120}
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
+    depends_on:
+      database-service:
+        condition: service_healthy
+      wireguard-proxy:
+        condition: service_healthy
+      kong:
+        condition: service_healthy
+    networks:
+      - vpn_network
+
+  migration-service:
+    build: ./migration-service
+    restart: on-failure
+    volumes:
+      - ./migration-service:/app
+    environment:
+      - API_GATEWAY_URL=http://kong:8000
+      - STARTUP_DELAY=${STARTUP_DELAY:-60}
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY:-fvcfq9d3ycefnvmftiaso}
+      - POSTGRES_HOST=db
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-5YE2w8bxd9}
+      - POSTGRES_DB=${POSTGRES_DB:-wireguard}
+    depends_on:
+      database-service:
+        condition: service_healthy
+      wireguard-proxy:
+        condition: service_healthy
+      kong:
+        condition: service_healthy
     networks:
       - vpn_network
 

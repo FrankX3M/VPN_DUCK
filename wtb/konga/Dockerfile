@@ -1,11 +1,23 @@
+# konga/Dockerfile
 FROM pantsel/konga:0.14.9
 
-# Удалите проблемную версию sails-postgresql
+# Переключаемся на root для установки пакетов
+USER root
+
+# Обновляем npm и Node.js зависимости
+RUN npm cache clean --force
+
+# Удаляем проблемную версию sails-postgresql
 RUN rm -rf /app/node_modules/sails-postgresql
 
-# Установите совместимую версию
+# Устанавливаем рабочую директорию
 WORKDIR /app
-RUN npm install sails-postgresql@1.0.2-10
 
-# Запустите konga
+# Устанавливаем совместимую версию sails-postgresql
+RUN npm install sails-postgresql@1.0.2 --save --no-optional
+
+# Возвращаемся к пользователю konga
+USER konga
+
+# Запускаем konga
 CMD ["npm", "start"]

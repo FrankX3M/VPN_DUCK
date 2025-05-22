@@ -1,27 +1,62 @@
-# konga/Dockerfile - альтернативная версия
-FROM node:14-alpine
+# api-gateway/Dockerfile
+FROM kong:3.9-ubuntu
 
-# Устанавливаем git и другие зависимости
-RUN apk add --no-cache git python3 make g++
+USER root
 
-# Создаем пользователя konga
-RUN addgroup -g 1001 konga && \
-    adduser -D -s /bin/sh -u 1001 -G konga konga
+# Установка необходимых пакетов
+RUN apt-get update && \
+    apt-get install -y curl postgresql-client && \
+    rm -rf /var/lib/apt/lists/*
 
-# Создаем директорию приложения
-WORKDIR /app
+# Создание custom entrypoint скрипта
+COPY <<EOF /docker-entrypoint.sh
+#!/bin/bash
+set -e
 
-# Клонируем Konga из официального репозитория
-RUN git clone https://github.com/pantsel/konga.git .
+# Функция для проверки подключения к базе данных
+wait_for_db() {
+    echo "Ожидание подключения к базе данных..."
+    until pg_isready -h \${KONG_PG_HOST} -p 5432 -U \${KONG_PG_USER}; do
+        echo "База данных недоступна - ожидание..."
+        sleep 2
+    done
+    echo "База данных доступна!"
+}
 
-# Устанавливаем зависимости
-RUN npm install --production
+# Функция для выполнения миграций
+run_migrations() {
+    echo "Проверка и выполнение миграций..."
+    kong migrations bootstrap || echo "Bootstrap уже выполнен"
+    kong migrations up || echo "Миграции уже актуальны"
+    kong migrations finish || echo "Финализация миграций завершена"
+}
 
-# Меняем владельца файлов на пользователя konga
-RUN chown -R konga:konga /app
+# Если команда не указана, запускаем Kong
+if [ "\$1" = "kong" ] && [ "\$2" = "docker-start" ]; then
+    wait_for_db
+    run_migrations
+fi
 
-USER konga
+# Выполняем оригинальную команду
+exec "\$@"
+EOF
 
-EXPOSE 1337
+# Делаем скрипт исполняемым
+RUN chmod +x /docker-entrypoint.sh
 
-CMD ["npm", "start"]
+# Копирование конфигурации Kong (опционально)
+COPY kong.yml /etc/kong/kong.yml
+
+# Установка правильных прав доступа
+RUN chown -R kong:kong /etc/kong
+
+USER kong
+
+ENV KONG_DATABASE=postgres
+ENV KONG_ADMIN_LISTEN=0.0.0.0:8001
+ENV KONG_PROXY_LISTEN=0.0.0.0:8000
+
+EXPOSE 8000 8001 8443 8444
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["kong", "docker-start"]
