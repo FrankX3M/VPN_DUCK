@@ -81,6 +81,7 @@
 ├── api-gateway
 │   ├── check-kong.sh
 │   ├── direct-setup-kong.sh
+│   ├── Dockerfile
 │   ├── kong.yml
 │   ├── setup-kong.sh
 │   └── test-endpoints.sh
@@ -231,4 +232,4 @@
         ├── retry.py
         └── validators.py
 
-48 directories, 184 files
+48 directories, 185 files

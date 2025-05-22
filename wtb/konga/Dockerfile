@@ -1,4 +1,4 @@
-# konga/Dockerfile
+# Путь: wtb/konga/Dockerfile
 FROM pantsel/konga:0.14.9
 
 # Переключаемся на root для установки пакетов
