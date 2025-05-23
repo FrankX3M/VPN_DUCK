@@ -80,6 +80,7 @@
 │       └── template_utils.py
 ├── api-gateway
 │   ├── check-kong.sh
+│   ├── configure-kong-services.sh
 │   ├── direct-setup-kong.sh
 │   ├── Dockerfile
 │   ├── kong.yml
@@ -114,6 +115,7 @@
 │   ├── Dockerfile
 │   ├── README.md
 │   └── requirements.txt
+├── reset-kong.sh
 ├── restart.sh
 ├── run-kong-migrations.sh
 ├── setup.sh
@@ -232,4 +234,4 @@
         ├── retry.py
         └── validators.py
 
-48 directories, 185 files
+48 directories, 187 files
