@@ -205,7 +205,7 @@ def _verify_url(url, endpoint=""):
 async def get_available_geolocations():
     """
     Получает список доступных геолокаций с подсчетом активных серверов.
-    Исправленная версия с правильным подсчетом серверов.
+    Работает с реальными данными из админ-панели.
     """
     global _geo_cache, _geo_cache_last_update
     
@@ -219,151 +219,202 @@ async def get_available_geolocations():
         logger.info("Получение доступных геолокаций с подсчетом серверов (обновление кэша)")
         
         async with aiohttp.ClientSession() as session:
-            # Получаем список всех геолокаций
-            geolocations_url = _verify_url(DATABASE_SERVICE_URL, "geolocations")
-            
-            # Добавляем заголовки авторизации
             headers = API_HEADERS.copy()
             
-            # Сначала получаем список всех геолокаций
-            async with session.get(geolocations_url, timeout=10, headers=headers) as geo_response:
-                logger.info(f"Ответ API геолокаций: код {geo_response.status}")
-                
-                if geo_response.status != 200:
-                    logger.error(f"Ошибка получения геолокаций: {geo_response.status}, тело: {await geo_response.text()}")
-                    # Возвращаем кэшированные данные если есть
-                    if _geo_cache:
-                        logger.warning("Возвращаем устаревшие кэшированные данные из-за ошибки API")
-                        return _geo_cache
-                    return []
-                
-                geolocations_data = await geo_response.json()
-                all_geolocations = geolocations_data.get("geolocations", [])
-                logger.info(f"Получено {len(all_geolocations)} геолокаций")
-            
-            # Получаем список всех серверов
+            # Получаем все серверы
             servers_url = _verify_url(DATABASE_SERVICE_URL, "servers")
-            
             async with session.get(servers_url, timeout=10, headers=headers) as servers_response:
                 logger.info(f"Ответ API серверов: код {servers_response.status}")
                 
                 if servers_response.status != 200:
-                    logger.error(f"Ошибка получения серверов: {servers_response.status}, тело: {await servers_response.text()}")
-                    # Если не можем получить серверы, возвращаем геолокации с 0 серверов
-                    result_geolocations = []
-                    for geo in all_geolocations:
-                        geo_info = {
-                            'id': geo.get('id'),
-                            'name': geo.get('name', 'Неизвестная геолокация'),
-                            'active_servers_count': 0
-                        }
-                        result_geolocations.append(geo_info)
-                    
-                    # Обновляем кэш
-                    _geo_cache = result_geolocations
-                    _geo_cache_last_update = current_time
-                    return result_geolocations
+                    logger.error(f"Ошибка получения серверов: {servers_response.status}")
+                    if _geo_cache:
+                        return _geo_cache
+                    return []
                 
                 servers_data = await servers_response.json()
                 all_servers = servers_data.get("servers", [])
                 logger.info(f"Получено {len(all_servers)} серверов")
             
-            # Подсчитываем активные сервера для каждой геолокации
+            # Получаем все геолокации из справочника
+            geolocations_url = _verify_url(DATABASE_SERVICE_URL, "geolocations")
+            async with session.get(geolocations_url, timeout=10, headers=headers) as geo_response:
+                logger.info(f"Ответ API геолокаций: код {geo_response.status}")
+                
+                if geo_response.status != 200:
+                    logger.error(f"Ошибка получения геолокаций: {geo_response.status}")
+                    if _geo_cache:
+                        return _geo_cache
+                    return []
+                
+                geo_data = await geo_response.json()
+                all_geolocations = geo_data.get("geolocations", [])
+                logger.info(f"Получено {len(all_geolocations)} геолокаций из справочника")
+                
+                # Логируем все геолокации для отладки
+                for geo in all_geolocations:
+                    logger.info(f"Справочник: ID={geo.get('id')}, Название='{geo.get('name')}'")
+                
+                # Логируем все серверы с их geolocation_id для отладки
+                for server in all_servers:
+                    logger.info(f"Сервер ID {server.get('id')}: geolocation_id={server.get('geolocation_id')}, статус={server.get('status')}")
+            
+            # Создаем результирующий список с подсчетом серверов
             result_geolocations = []
             
             for geo in all_geolocations:
                 geo_id = geo.get('id')
-                geo_name = geo.get('name', 'Неизвестная геолокация')
+                geo_name = geo.get('name', f'Геолокация {geo_id}')
+                
+                logger.info(f"Обрабатываем геолокацию '{geo_name}' с ID={geo_id}")
                 
                 # Подсчитываем активные сервера для данной геолокации
                 active_servers_count = 0
                 for server in all_servers:
                     server_geo_id = server.get('geolocation_id')
                     server_status = server.get('status', '').lower()
+                    server_id = server.get('id')
+                    
+                    logger.info(f"Проверяем сервер {server_id}: geo_id={server_geo_id}, статус={server_status}, сравниваем с {geo_id}")
                     
                     # Проверяем соответствие геолокации и статус активности
-                    if (server_geo_id == geo_id and 
-                        server_status in ['active', 'активный', 'активен']):
+                    if server_geo_id == geo_id and server_status == 'active':
                         active_servers_count += 1
+                        logger.info(f"✓ НАЙДЕН активный сервер {server_id} для геолокации '{geo_name}' (ID: {geo_id})")
+                    elif server_geo_id == geo_id:
+                        logger.info(f"- Сервер {server_id} соответствует геолокации, но неактивен: {server_status}")
+                    else:
+                        logger.info(f"- Сервер {server_id} не соответствует геолокации: {server_geo_id} != {geo_id}")
                 
-                # Добавляем геолокацию только если есть активные сервера
-                # или если нужно показывать все геолокации
-                geo_info = {
-                    'id': geo_id,
-                    'name': geo_name,
-                    'active_servers_count': active_servers_count
-                }
+                logger.info(f"ИТОГО для '{geo_name}' (ID: {geo_id}): {active_servers_count} активных серверов")
                 
-                logger.info(f"Геолокация '{geo_name}' (ID: {geo_id}): {active_servers_count} активных серверов")
+                # Добавляем только геолокации с активными серверами
+                if active_servers_count > 0:
+                    result_geolocations.append({
+                        'id': geo_id,
+                        'name': geo_name,
+                        'active_servers_count': active_servers_count
+                    })
+                    logger.info(f"Добавлена геолокация '{geo_name}' с {active_servers_count} серверами")
+                else:
+                    logger.warning(f"Геолокация '{geo_name}' исключена - нет активных серверов")
+            
+            # Если нет доступных геолокаций, логируем подробную диагностику
+            if not result_geolocations:
+                logger.error("ДИАГНОСТИКА: Нет геолокаций с активными серверами!")
+                logger.error("Сопоставление серверов и геолокаций:")
+                for server in all_servers:
+                    server_geo_id = server.get('geolocation_id')
+                    server_status = server.get('status')
+                    matching_geo = next((geo for geo in all_geolocations if geo.get('id') == server_geo_id), None)
+                    geo_name = matching_geo.get('name') if matching_geo else 'НЕ НАЙДЕНА'
+                    logger.error(f"  Сервер {server.get('id')}: geolocation_id={server_geo_id} -> '{geo_name}', статус={server_status}")
                 
-                # Добавляем геолокацию в список (даже с 0 серверов для отладки)
-                result_geolocations.append(geo_info)
+                # Возвращаем все геолокации для возможности создания конфигурации
+                logger.warning("Возвращаем все геолокации для обеспечения работоспособности")
+                for geo in all_geolocations:
+                    result_geolocations.append({
+                        'id': geo.get('id'),
+                        'name': geo.get('name', f'Геолокация {geo.get("id")}'),
+                        'active_servers_count': 0
+                    })
             
-            # Фильтруем геолокации с активными серверами
-            available_geolocations = [geo for geo in result_geolocations if geo['active_servers_count'] > 0]
+            logger.info(f"Итого геолокаций: {len(result_geolocations)}")
             
-            logger.info(f"Доступно {len(available_geolocations)} геолокаций с активными серверами")
-            
-            # Если нет доступных геолокаций, возвращаем все для отладки
-            if not available_geolocations:
-                logger.warning("Нет геолокаций с активными серверами, возвращаем все геолокации для отладки")
-                available_geolocations = result_geolocations
-            
-            # Обновляем кэш и время обновления
-            _geo_cache = available_geolocations
+            # Обновляем кэш
+            _geo_cache = result_geolocations
             _geo_cache_last_update = current_time
             
-            return available_geolocations
+            return result_geolocations
                 
-    except asyncio.TimeoutError:
-        logger.error("Превышено время ожидания при получении геолокаций")
-        # Возвращаем кэшированные данные если есть
-        if _geo_cache:
-            logger.warning("Возвращаем устаревшие кэшированные данные из-за таймаута")
-            return _geo_cache
-        return []
-        
     except Exception as e:
         logger.error(f"Ошибка запроса доступных геолокаций: {str(e)}", exc_info=True)
-        
-        # Возвращаем кэшированные данные даже если они устарели, в случае ошибки
         if _geo_cache:
-            logger.warning("Возвращаем устаревшие кэшированные данные из-за ошибки")
             return _geo_cache
-            
         return []
 
+
+async def get_servers_for_geolocation(geolocation_id):
+    """
+    Получает список серверов для указанной геолокации.
+    Исправленная версия - получает все серверы и фильтрует по geolocation_id.
+    """
+    try:
+        logger.info(f"Получение серверов для геолокации {geolocation_id}")
+        
+        async with aiohttp.ClientSession() as session:
+            # Получаем все серверы
+            servers_url = _verify_url(DATABASE_SERVICE_URL, "servers")
+            headers = API_HEADERS.copy()
+            
+            async with session.get(servers_url, timeout=10, headers=headers) as response:
+                logger.info(f"Ответ API получения всех серверов: код {response.status}")
+                
+                if response.status != 200:
+                    logger.error(f"Ошибка получения серверов: {response.status}")
+                    return []
+                
+                servers_data = await response.json()
+                all_servers = servers_data.get("servers", [])
+                logger.info(f"Получено {len(all_servers)} серверов всего")
+                
+                # Фильтруем серверы по geolocation_id
+                matching_servers = []
+                for server in all_servers:
+                    server_geo_id = server.get('geolocation_id')
+                    server_status = server.get('status', '').lower()
+                    
+                    logger.info(f"Сервер ID {server.get('id')}: geolocation_id={server_geo_id}, статус={server_status}")
+                    
+                    # Проверяем соответствие геолокации и активный статус
+                    if (server_geo_id == geolocation_id and 
+                        server_status == 'active'):
+                        matching_servers.append(server)
+                        logger.info(f"Сервер ID {server.get('id')} подходит для геолокации {geolocation_id}")
+                
+                logger.info(f"Найдено {len(matching_servers)} подходящих серверов для геолокации {geolocation_id}")
+                
+                # Если нет подходящих серверов, возвращаем любой активный сервер
+                if not matching_servers:
+                    logger.warning(f"Нет серверов для геолокации {geolocation_id}, ищем любой активный сервер")
+                    active_servers = [server for server in all_servers if server.get('status', '').lower() == 'active']
+                    
+                    if active_servers:
+                        # Берем первый активный сервер
+                        chosen_server = active_servers[0]
+                        matching_servers.append(chosen_server)
+                        logger.info(f"Используем активный сервер ID {chosen_server.get('id')} (geolocation_id={chosen_server.get('geolocation_id')}) как резервный для геолокации {geolocation_id}")
+                    else:
+                        logger.error("Нет активных серверов вообще!")
+                
+                return matching_servers
+                
+    except Exception as e:
+        logger.error(f"Ошибка при получении серверов для геолокации: {str(e)}", exc_info=True)
+        return []
+
+
 async def change_config_geolocation(user_id, geolocation_id, server_id=None):
-    """Изменяет геолокацию активной конфигурации пользователя."""
+    """
+    Изменяет геолокацию активной конфигурации пользователя.
+    Исправленная версия для работы с серверами без привязки к геолокациям.
+    """
     try:
         logger.info(f"Изменение геолокации для пользователя {user_id} на {geolocation_id}")
         
         async with aiohttp.ClientSession() as session:
-            # Если server_id не предоставлен, нужно получить его
+            # Если server_id не предоставлен, получаем любой активный сервер
             if not server_id:
-                # Получаем список серверов для выбранной геолокации с таймаутом
-                logger.info(f"Запрашиваем список серверов для геолокации {geolocation_id}")
-                try:
-                    async with session.get(
-                        _verify_url(DATABASE_SERVICE_URL, f"servers/geolocation/{geolocation_id}"),
-                        timeout=10,
-                        headers=API_HEADERS
-                    ) as server_response:
-                        
-                        logger.info(f"Получен ответ о серверах: {server_response.status}")
-                        
-                        if server_response.status == 200:
-                            servers_data = await server_response.json()
-                            servers = servers_data.get("servers", [])
-                            if servers:
-                                # Выбираем первый доступный сервер
-                                server_id = servers[0].get("id")
-                                logger.info(f"Автоматически выбран сервер {server_id} для геолокации {geolocation_id}")
-                except asyncio.TimeoutError:
-                    logger.error(f"Превышено время ожидания при запросе серверов для геолокации {geolocation_id}")
-                    return {"error": "Превышено время ожидания при запросе серверов. Пожалуйста, попробуйте позже."}
+                logger.info(f"Ищем активный сервер для геолокации {geolocation_id}")
                 
-                if not server_id:
+                servers = await get_servers_for_geolocation(geolocation_id)
+                
+                if servers:
+                    # Выбираем первый активный сервер
+                    server_id = servers[0].get("id")
+                    logger.info(f"Выбран сервер {server_id} для геолокации {geolocation_id}")
+                else:
+                    logger.warning("Не найдено активных серверов")
                     return {"error": "Не удалось найти подходящий сервер для выбранной геолокации"}
             
             # Формируем данные запроса
@@ -375,44 +426,34 @@ async def change_config_geolocation(user_id, geolocation_id, server_id=None):
             
             logger.info(f"Отправляем запрос на изменение геолокации: {data}")
             
-            # Отправляем запрос на изменение геолокации с увеличенным таймаутом
-            try:
-                async with session.post(
-                    _verify_url(DATABASE_SERVICE_URL, "configs/change_geolocation"),
-                    json=data,
-                    timeout=30,
-                    headers=API_HEADERS
-                ) as response:
-                    
-                    logger.info(f"Ответ API на изменение геолокации: код {response.status}")
-                    
-                    if response.status == 200:
-                        return await response.json()
-                    
-                    # Подробный вывод информации об ошибке
-                    error_message = "Ошибка при изменении геолокации."
-                    response_text = await response.text()
-                    
-                    if response.headers.get('content-type') == 'application/json':
-                        try:
-                            response_data = await response.json()
-                            if "error" in response_data:
-                                error_message = response_data.get("error")
-                        except:
-                            logger.error(f"Не удалось декодировать JSON-ответ: {response_text}")
-                    
-                    logger.error(f"Ошибка API при изменении геолокации: {error_message}")
-                    return {"error": error_message}
-            except asyncio.TimeoutError:
-                logger.error("Превышено время ожидания ответа при изменении геолокации")
-                return {"error": "Превышено время ожидания ответа от сервера. Пожалуйста, попробуйте позже."}
+            # Отправляем запрос на изменение геолокации
+            async with session.post(
+                _verify_url(DATABASE_SERVICE_URL, "configs/change_geolocation"),
+                json=data,
+                timeout=30,
+                headers=API_HEADERS
+            ) as response:
                 
-    except aiohttp.ClientError as e:
-        logger.error(f"Ошибка клиента aiohttp при запросе к API: {str(e)}")
-        return {"error": f"Ошибка соединения при изменении геолокации: {str(e)}. Пожалуйста, попробуйте позже."}
-    except asyncio.TimeoutError:
-        logger.error("Превышено время ожидания ответа от сервера")
-        return {"error": "Превышено время ожидания ответа от сервера. Пожалуйста, попробуйте позже."}
+                logger.info(f"Ответ API на изменение геолокации: код {response.status}")
+                
+                if response.status == 200:
+                    return await response.json()
+                
+                # Подробный вывод информации об ошибке
+                error_message = "Ошибка при изменении геолокации."
+                response_text = await response.text()
+                
+                if response.headers.get('content-type') == 'application/json':
+                    try:
+                        response_data = await response.json()
+                        if "error" in response_data:
+                            error_message = response_data.get("error")
+                    except:
+                        logger.error(f"Не удалось декодировать JSON-ответ: {response_text}")
+                
+                logger.error(f"Ошибка API при изменении геолокации: {error_message}")
+                return {"error": error_message}
+                           
     except Exception as e:
         logger.error(f"Неожиданная ошибка при запросе к API: {str(e)}")
         return {"error": f"Ошибка при изменении геолокации: {str(e)}. Пожалуйста, попробуйте позже."}
@@ -805,81 +846,6 @@ async def are_servers_available():
     except Exception as e:
         logger.error(f"Ошибка при проверке доступных серверов: {str(e)}")
         return False
-
-# async def get_servers_for_geolocation(geolocation_id):
-#     """
-#     Получает список серверов для указанной геолокации.
-    
-#     Args:
-#         geolocation_id: ID геолокации
-        
-#     Returns:
-#         list: Список серверов для данной геолокации
-#     """
-#     try:
-#         logger.info(f"Получение серверов для геолокации {geolocation_id}")
-        
-#         async with aiohttp.ClientSession() as session:
-#             async with session.get(
-#                 _verify_url(DATABASE_SERVICE_URL, f"servers/geolocation/{geolocation_id}"),
-#                 timeout=10
-#             ) as response:
-#                 logger.info(f"Ответ API получения серверов: код {response.status}")
-                
-#                 if response.status == 200:
-#                     data = await response.json()
-#                     return data.get("servers", [])
-                
-#                 # Если серверы не найдены, возвращаем пустой список
-#                 if response.status == 404:
-#                     logger.warning(f"Серверы для геолокации {geolocation_id} не найдены")
-#                     return []
-                
-#                 # Подробный вывод информации об ошибке
-#                 logger.error(f"Ошибка API при получении серверов: {response.status}, тело: {await response.text()}")
-#                 return []
-                
-#     except Exception as e:
-#         logger.error(f"Ошибка при получении серверов для геолокации: {str(e)}", exc_info=True)
-#         return []
-async def get_servers_for_geolocation(geolocation_id):
-    """
-    Получает список серверов для указанной геолокации.
-    
-    Args:
-        geolocation_id: ID геолокации
-        
-    Returns:
-        list: Список серверов для данной геолокации
-    """
-    try:
-        logger.info(f"Получение серверов для геолокации {geolocation_id}")
-        
-        async with aiohttp.ClientSession() as session:
-            # ИСПРАВЛЕНИЕ: Добавляем API_HEADERS к запросу
-            async with session.get(
-                _verify_url(DATABASE_SERVICE_URL, f"servers/geolocation/{geolocation_id}"),
-                timeout=10,
-                headers=API_HEADERS
-            ) as response:
-                logger.info(f"Ответ API получения серверов: код {response.status}")
-                
-                if response.status == 200:
-                    data = await response.json()
-                    return data.get("servers", [])
-                
-                # Если серверы не найдены, возвращаем пустой список
-                if response.status == 404:
-                    logger.warning(f"Серверы для геолокации {geolocation_id} не найдены")
-                    return []
-                
-                # Подробный вывод информации об ошибке
-                logger.error(f"Ошибка API при получении серверов: {response.status}, тело: {await response.text()}")
-                return []
-                
-    except Exception as e:
-        logger.error(f"Ошибка при получении серверов для геолокации: {str(e)}", exc_info=True)
-        return []
 
 async def get_user_location(user_id):
     """
