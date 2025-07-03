@@ -1,3 +1,4 @@
+# wireguard-proxy/auth/auth_handler.py
 import os
 import sys
 import logging
