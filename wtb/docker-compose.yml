@@ -67,7 +67,7 @@ services:
 
   # Kong API Gateway - исправленная версия
   kong:
-    build: ./api-gateway
+    image: kong:3.9-ubuntu
     container_name: kong-gateway
     depends_on:
       kong-database:
@@ -88,7 +88,6 @@ services:
       KONG_PROXY_LISTEN: 0.0.0.0:8000
       KONG_ADMIN_GUI_URL: http://localhost:8002
       KONG_LOG_LEVEL: info
-      # Отключаем фоновый режим nginx для правильной работы в контейнере
       KONG_NGINX_DAEMON: "off"
     ports:
       - "8000:8000"
@@ -97,7 +96,7 @@ services:
       - "8444:8444"
     restart: always
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/status"]
+      test: ["CMD", "kong", "health"]
       interval: 15s
       timeout: 10s
       retries: 10
